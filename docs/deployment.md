@@ -1,6 +1,6 @@
 # Deployment and Operations
 
-**Status:** target design; PR 1 establishes development deployment, later PRs harden production
+**Status:** target design; Work Order 0001 establishes development deployment, later implementation slices harden production
 
 ## 1. Target
 
@@ -21,7 +21,7 @@ Do not run PostgreSQL on a public interface. Do not colocate production secrets 
 
 ## 3. Development environment
 
-PR 1 must provide a repeatable development path using:
+Work Order 0001 must provide a repeatable development path using:
 
 - Python 3.13 managed by `uv`;
 - committed `uv.lock`;

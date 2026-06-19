@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Operating-system metadata and archive/download sidecars
+*:Zone.Identifier
+
 # C extensions
 *.so
 

@@ -19,13 +19,13 @@ Enable:
 - dismiss stale approvals when new commits materially change the PR;
 - require review conversation resolution;
 - require branches to be up to date if CI cost permits;
-- require status checks after PR 1 creates them;
+- require status checks after Work Order 0001 creates them;
 - block force pushes;
 - block deletion;
 - include administrators/bypass roles unless emergency policy says otherwise;
 - do not allow Codex identity to bypass or approve.
 
-Initial required checks after PR 1 should use stable unique job names, expected to be:
+Initial required checks after Work Order 0001 should use stable unique job names, expected to be:
 
 ```text
 quality

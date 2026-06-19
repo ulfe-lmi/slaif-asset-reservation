@@ -457,7 +457,7 @@ The project may call itself an internal alpha only when:
 
 ## 18. Open decisions
 
-These do not block PR 1 but must be resolved before relevant features:
+These do not block Work Order 0001 but must be resolved before relevant features:
 
 - institutional OIDC provider, claims, and group mapping;
 - authoritative list of users/projects and who may create service accounts;

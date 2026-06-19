@@ -51,7 +51,7 @@ Codex does not redefine the product, widen scope silently, merge, deploy, or tou
 
 The constitution-and-design bundle is the one-time bootstrap PR. After it merges, `AGENTS.md` is the governing instruction source for Codex.
 
-No executable application is claimed by the bootstrap PR. PR 1 is the first implementation PR and must establish a green scaffold and CI.
+No executable application is claimed by the bootstrap PR. Work Order 0001 is the first implementation PR after bootstrap and must establish a green scaffold and CI.
 
 ## 3. Standard work loop
 

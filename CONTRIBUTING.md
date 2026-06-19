@@ -50,4 +50,4 @@ Do not place credentials, browser cookies, anti-forgery tokens, API tokens, priv
 
 ## Development environment
 
-The executable development workflow is established by PR 1. Until then, this repository contains architecture, governance, and sanitized bootstrap data only.
+The executable development workflow is established by Work Order 0001. Until then, this repository contains architecture, governance, and sanitized bootstrap data only.

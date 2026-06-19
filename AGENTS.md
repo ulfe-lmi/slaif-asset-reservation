@@ -130,10 +130,11 @@ Keep scheduling and policy logic out of views and serializers. Put business oper
 3. Start from current `main` unless the work order explicitly names an existing repair branch.
 4. Create one branch for one work order, normally `codex/<issue-number>-<short-name>`.
 5. Keep the diff within scope. Do not opportunistically implement neighboring roadmap items.
-6. Commit only related files with a clear message.
-7. Push the branch and open a pull request linked to the work-order issue.
-8. Do not merge, self-approve, bypass branch protection, alter repository secrets, or modify production infrastructure.
-9. Repair review findings on the same PR branch unless the strategic review explicitly requests a separate PR.
+6. Do not commit operating-system metadata or archive/download sidecars such as `*:Zone.Identifier`.
+7. Commit only related files with a clear message.
+8. Push the branch and open a pull request linked to the work-order issue.
+9. Do not merge, self-approve, bypass branch protection, alter repository secrets, or modify production infrastructure.
+10. Repair review findings on the same PR branch unless the strategic review explicitly requests a separate PR.
 
 If a task requires an architectural, security, privacy, or data-migration decision not covered by accepted docs, stop before implementing the assumption. Report the decision needed and propose an ADR.
 

@@ -1,10 +1,10 @@
-# Roadmap and PR Sequence
+# Roadmap and Work-Order Sequence
 
 The sequence is intentionally narrow. Each implementation item should normally be one Codex work-order issue and one pull request.
 
 ## Phase 0: constitution bootstrap
 
-### PR 0 — project constitution and discovery
+### Bootstrap — project constitution and discovery
 
 Contents:
 
@@ -13,7 +13,7 @@ Contents:
 - ADRs;
 - sanitized asset inventory;
 - GitHub issue/PR templates;
-- PR 1 work order.
+- Work Order 0001.
 
 Acceptance:
 
@@ -24,7 +24,7 @@ Acceptance:
 
 ## Phase 1: executable foundation
 
-### PR 1 — Django/PostgreSQL scaffold
+### Work Order 0001 — Django/PostgreSQL scaffold
 
 Use `docs/work-orders/0001-application-scaffold.md`.
 
@@ -42,7 +42,7 @@ Delivers:
 
 Non-goal: asset/reservation behavior.
 
-### PR 2 — asset inventory and import
+### Work Order 0002 — asset inventory and import
 
 Delivers:
 
@@ -52,7 +52,7 @@ Delivers:
 - verified tests that legacy IDs remain provenance;
 - no invented hostname/CUDA/GPU UUID.
 
-### PR 3 — reservation and policy core
+### Work Order 0003 — reservation and policy core
 
 Delivers:
 
@@ -66,7 +66,7 @@ Delivers:
 
 Non-goal: polished UI or public token API.
 
-### PR 4 — human reservation MVP
+### Work Order 0004 — human reservation MVP
 
 Delivers:
 
@@ -79,7 +79,7 @@ Delivers:
 
 ## Phase 2: unified agent API
 
-### PR 5 — scoped API token lifecycle
+### Work Order 0005 — scoped API token lifecycle
 
 Delivers:
 
@@ -90,7 +90,7 @@ Delivers:
 - redaction and security tests;
 - no administrative API tokens yet.
 
-### PR 6 — API v1 reservation operations
+### Work Order 0006 — API v1 reservation operations
 
 Delivers:
 
@@ -102,7 +102,7 @@ Delivers:
 - generated OpenAPI and contract tests;
 - same domain service tests across web/API.
 
-### PR 7 — management, audit, and policy UX
+### Work Order 0007 — management, audit, and policy UX
 
 Delivers:
 
@@ -115,7 +115,7 @@ Delivers:
 
 ## Phase 3: internal alpha
 
-### PR 8 — operational hardening
+### Work Order 0008 — operational hardening
 
 Delivers:
 
@@ -128,7 +128,7 @@ Delivers:
 - migration/deployment smoke tests;
 - operator runbooks.
 
-### PR 9 — SmartScheduling migration tooling
+### Work Order 0009 — SmartScheduling migration tooling
 
 Delivers:
 
@@ -139,9 +139,9 @@ Delivers:
 - cutover runbook;
 - legacy conflict reporting.
 
-### PR 10 — alpha verification and remediation
+### Work Order 0010 — alpha verification and remediation
 
-Verification-only run, strategic/cross-model security and architecture audit, then narrowly scoped repair PRs. Do not combine unrelated audit findings into one large repair.
+Verification-only run, strategic/cross-model security and architecture audit, then narrowly scoped repair pull requests. Do not combine unrelated audit findings into one large repair.
 
 Internal-alpha gate is defined in `docs/discovery-brief.md`.
 
