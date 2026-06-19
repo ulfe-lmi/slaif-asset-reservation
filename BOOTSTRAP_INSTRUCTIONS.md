@@ -12,8 +12,8 @@ git pull --ff-only
 git switch -c bootstrap/constitution
 # Copy the contents of this bundle into the repository root.
 git add AGENTS.md README.md CONTRIBUTING.md SECURITY.md \
-  BOOTSTRAP_INSTRUCTIONS.md .editorconfig .gitattributes \
-  .github docs data
+  BOOTSTRAP_INSTRUCTIONS.md MANIFEST.sha256 .editorconfig \
+  .gitattributes .gitignore .github docs data
 git commit -m "docs: establish project constitution and architecture"
 git push -u origin bootstrap/constitution
 ```

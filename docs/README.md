@@ -16,7 +16,7 @@
 
 - `oap-workflow.md` — human/strategic-model/Codex PR loop.
 - `repository-settings.md` — manual GitHub protection settings.
-- `roadmap.md` — PR sequence and milestone language.
+- `roadmap.md` — work-order sequence and milestone language.
 - `project-handoff.md` — compact current strategic state; verify against GitHub.
 - `decisions/` — accepted architecture decision records.
 - `work-orders/` — issue-ready strategic task baselines.
