@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/slaif-asset-reservation/bootstrap-assets.schema.json",
+  "title": "SLAIF sanitized bootstrap asset inventory",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source",
+    "defaults",
+    "machines",
+    "excluded_legacy_records"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "system",
+        "account",
+        "observed_at",
+        "classification"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "system": {
+          "type": "string"
+        },
+        "account": {
+          "type": "string"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date"
+        },
+        "classification": {
+          "type": "string"
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "required": [
+        "timezone",
+        "booking_mode",
+        "availability"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "timezone": {
+          "type": "string"
+        },
+        "booking_mode": {
+          "const": "exclusive"
+        },
+        "availability": {
+          "type": "string"
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "machines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "active",
+          "hostname",
+          "assets"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "hostname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "assets": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/asset"
+            }
+          }
+        }
+      }
+    },
+    "excluded_legacy_records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "legacy_resource_id",
+          "display_name",
+          "description",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "legacy_resource_id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "asset": {
+      "type": "object",
+      "required": [
+        "slug",
+        "name",
+        "kind",
+        "hardware_display_unverified",
+        "active",
+        "reservable",
+        "legacy",
+        "physical_locator",
+        "ordinal_hint_unverified",
+        "verification_required"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "gpu"
+        },
+        "hardware_display_unverified": {
+          "type": "string",
+          "minLength": 1
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "reservable": {
+          "type": "boolean"
+        },
+        "legacy": {
+          "type": "object",
+          "required": [
+            "system",
+            "resource_id",
+            "public_display_order"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "system": {
+              "const": "smartscheduling"
+            },
+            "resource_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "public_display_order": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            }
+          }
+        },
+        "physical_locator": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ordinal_hint_unverified": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "verification_required": {
+          "const": true
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

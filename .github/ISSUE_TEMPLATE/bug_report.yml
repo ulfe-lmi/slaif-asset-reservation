@@ -1,0 +1,60 @@
+name: Bug report
+description: Report reproducible incorrect behavior without secrets or personal data
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, bearer tokens, cookies, production personal data, or private exports. Use the private security channel for vulnerabilities.
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction using synthetic data
+      description: Include endpoint/page, timestamps with timezone, asset type, and minimal steps.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Commit, release, or deployment version
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Safe logs or screenshots
+      description: Redact tokens, cookies, user data, hostnames, and network details as required.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Reservation correctness
+        - Authentication/authorization
+        - API
+        - Human UI
+        - Inventory
+        - Migration
+        - Deployment/operations
+        - Documentation
+        - Other
+    validations:
+      required: true

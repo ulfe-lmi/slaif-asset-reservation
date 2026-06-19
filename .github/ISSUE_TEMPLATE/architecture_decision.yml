@@ -1,0 +1,48 @@
+name: Architecture decision proposal
+description: Propose a change to an accepted architecture, trust boundary, persistence, authentication, or deployment decision
+title: "[ADR] "
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and problem
+      description: What verified limitation or requirement makes the current decision insufficient?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed decision
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: true
+
+  - type: textarea
+    id: consequences
+    attributes:
+      label: Positive and negative consequences
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and affected repository areas
+      description: Include measurements, failure cases, docs, dependencies, migration impact, and security implications.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: no_implementation
+    attributes:
+      label: Gate
+      options:
+        - label: No implementation PR should assume this decision until the ADR is accepted.
+          required: true
