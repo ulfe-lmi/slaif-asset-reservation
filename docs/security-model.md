@@ -110,6 +110,14 @@ Every reservation command evaluates:
 
 Django admin permission is not automatically equivalent to domain authorization for custom APIs.
 
+Work Order 0003 implements the internal reservation command layer and keeps reservation HTTP
+mutations deferred. Successful reservation and policy mutations append `AuditEvent` rows in the same
+database transaction. The application locks the requesting principal before the target
+asset/reservation for policy counters, and PostgreSQL enforces exclusive overlap with the named
+`reservation_no_overlap_per_asset` constraint. Audit events are append-only through ordinary model
+and admin workflows, but this is not tamper-proof against privileged database operators; retention,
+database-role separation, and backup hardening remain operational work.
+
 ## 7. Privacy and data minimization
 
 Core personal data:

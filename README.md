@@ -6,13 +6,15 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 
 ## Status
 
-**Pre-alpha asset-inventory foundation. Not production-ready and not yet a reservation system.**
+**Pre-alpha reservation-core foundation. Not production-ready and not yet usable as a reservation
+service.**
 
 The repository contains a minimal Django/PostgreSQL application foundation: custom user model,
 health checks, hierarchical asset inventory, sanitized bootstrap asset import, staff-only inventory
 web/API views, generated OpenAPI support with local Swagger UI assets, CI, and container
-configuration. Reservation, policy, audit, API-token, availability, and ordinary member workflows
-are deliberately not implemented yet.
+configuration. It now also contains the internal reservation policy, reservation, PostgreSQL
+exclusivity, and audit-event core. There is still no member booking UI, reservation API,
+availability endpoint, API-token implementation, or ordinary member workflow.
 
 Verified starting point for this implementation slice:
 
@@ -109,6 +111,11 @@ Staff-only inventory paths:
 
 These paths currently require an active staff Django session. Ordinary member login and bearer-token
 agent authentication are not implemented yet.
+
+Reservation mutations currently exist only as internal domain services and Django models. No
+reservation creation, cancellation, release, or availability web/API route is exposed yet. Admin
+inspection is available, but reservation and audit admin screens are read-only and policy admin is
+read-only until a controlled audited adapter is added.
 
 Generate and validate the current OpenAPI shell:
 

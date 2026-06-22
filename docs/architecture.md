@@ -91,7 +91,13 @@ sequenceDiagram
     V-->>C: HTML response or API problem detail
 ```
 
-The application performs an early overlap query for useful feedback, but PostgreSQL remains the final arbiter. A constraint violation is converted to a stable domain conflict.
+The Work Order 0003 implementation provides this domain service layer without exposing reservation
+HTTP mutations yet. `create_reservation`, `cancel_reservation`, and `release_reservation` run inside
+transactions, lock the requesting principal before the target asset/reservation, resolve policy, and
+append audit evidence in the same transaction. The application performs an early overlap query for
+useful feedback, but PostgreSQL remains the final arbiter. The named exclusion constraint
+`reservation_no_overlap_per_asset` is the only database conflict translated to the stable
+`reservation_conflict` domain code.
 
 ### 4.2 Agent API authentication
 
@@ -130,7 +136,9 @@ SQLite may be used only for isolated pure-unit tests that do not claim database-
 
 ### Reservation interval
 
-Intervals use `[start_at, effective_end_at)` semantics. Adjacent reservations are valid. An active blocking reservation participates in an exclusion constraint equivalent to:
+Intervals use `[start_at, effective_end_at)` semantics, as accepted in ADR 0007. Adjacent
+reservations are valid. Confirmed and released reservations participate in an exclusion constraint
+equivalent to:
 
 ```text
 asset_id WITH =
@@ -138,7 +146,8 @@ reservation_range WITH &&
 WHERE status IN blocking statuses
 ```
 
-The exact implementation is established and tested in the reservation-core PR. It may use a `DateTimeRangeField`, a generated range expression, or equivalent reviewed Django/PostgreSQL support.
+The implemented constraint uses `TSTZRANGE(start_at, effective_end_at, '[)')` with GiST operators
+after installing PostgreSQL `btree_gist`.
 
 ### Idempotency
 

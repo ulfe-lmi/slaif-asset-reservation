@@ -198,7 +198,12 @@ Suggested fields:
 - optional allowed projects/groups
 - active/effective dates
 
-Initial resolution order:
+Work Order 0003 implements `ReservationPolicy` with UUID identity, optional asset target, active
+flag, min/max duration, booking horizon, lead time, cancellation cutoff, upcoming/concurrent
+principal limits, purpose requirement, and timestamps. A `NULL` asset is the active global policy.
+No project, group, tag, or effective-date targeting exists in this slice.
+
+Implemented resolution order:
 
 1. asset-specific active policy;
 2. nearest parent-machine policy;
@@ -206,26 +211,26 @@ Initial resolution order:
 
 Ambiguous equal-priority policy is a configuration error and fails closed.
 
+Active policy uniqueness is enforced for a specific asset and for the global policy. Numeric policy
+fields are constrained so durations and limits fail closed before mutation. Policies are intended to
+be deactivated rather than hard-deleted.
+
 ## 10. Reservation
 
-Suggested fields:
+Work Order 0003 implements:
 
 - `id: UUID`
 - `asset_id`
 - `requested_by_user_id`
-- optional `project_id`
-- optional `created_via_token_id`
 - `source`: `web`, `api`, `admin`, `migration`
 - `status`: `confirmed`, `cancelled`, `released`
 - `start_at`
 - `end_at` as originally confirmed end
-- optional `released_at`
-- `effective_end_at` implemented explicitly or as a database expression
+- `effective_end_at` as the active blocking end
 - `purpose`
-- safe user notes if approved
+- `released_at`
 - `cancelled_at`, `cancelled_by`, `cancellation_reason`
 - `created_at`, `updated_at`
-- optional legacy provenance
 
 Derived temporal state:
 
@@ -237,16 +242,32 @@ Derived temporal state:
 
 Do not persist a `completed` status merely because the clock passed; derive it unless a later operational need justifies materialization.
 
-### Blocking range
+### Implemented blocking range
 
-Blocking reservations are those whose status and release state still reserve future time. The database representation must allow the constraint to release the remaining interval while preserving original history. Implementation options must be evaluated in PR 3, for example:
+`end_at` is immutable original history. `effective_end_at` initially equals `end_at` and is set to
+`released_at` on early release. Confirmed and released rows block `[start_at, effective_end_at)` by
+the PostgreSQL exclusion constraint `reservation_no_overlap_per_asset`; cancelled rows do not block.
 
-- store immutable `requested_end_at` plus mutable/audited `effective_end_at`;
-- or store a database range field updated on release while retaining original end separately.
+## 11. Audit event
 
-The chosen design requires an ADR amendment and regression tests.
+Work Order 0003 implements append-only `AuditEvent` records for reservation and policy mutations.
+Fields include UUID identity, `occurred_at`, optional actor user, action code, target type/UUID,
+correlation UUID, source channel, and bounded safe JSON metadata.
 
-## 11. Idempotency record
+Initial actions:
+
+- `reservation.created`
+- `reservation.cancelled`
+- `reservation.released`
+- `reservation_policy.created`
+- `reservation_policy.updated`
+- `reservation_policy.deactivated`
+
+Audit metadata intentionally excludes passwords, tokens, cookies, raw request bodies, email
+addresses, reservation purpose, cancellation reason text, and private physical locators. This is
+append-only application evidence, not a tamper-proof ledger.
+
+## 12. Idempotency record
 
 Suggested fields:
 
