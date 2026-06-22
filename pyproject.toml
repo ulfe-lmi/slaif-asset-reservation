@@ -1,0 +1,79 @@
+[project]
+name = "slaif-asset-reservation"
+version = "0.1.0"
+description = "SLAIF Asset Reservation Django/PostgreSQL foundation."
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = "Apache-2.0"
+dependencies = [
+  "django>=5.2,<5.3",
+  "djangorestframework>=3.16,<3.17",
+  "drf-spectacular>=0.29,<0.30",
+  "drf-spectacular-sidecar>=2026.6,<2027",
+  "gunicorn>=23,<24",
+  "psycopg[binary]>=3.2,<3.3",
+  "whitenoise>=6.9,<7",
+]
+
+[dependency-groups]
+dev = [
+  "coverage[toml]>=7.13,<8",
+  "django-stubs[compatible-mypy]>=5.2,<5.3",
+  "mypy>=1.19,<1.20",
+  "pip-audit>=2.10,<3",
+  "pytest>=9,<10",
+  "pytest-cov>=7,<8",
+  "pytest-django>=4.11,<5",
+  "ruff>=0.14,<0.15",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "DJ"]
+ignore = [
+  "DJ008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/slaif_reservation/accounts/migrations/*.py" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "slaif_reservation.config.settings.test"
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = [
+  "--cov=src/slaif_reservation",
+  "--cov-report=term-missing",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/slaif_reservation"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.mypy]
+python_version = "3.13"
+plugins = ["mypy_django_plugin.main"]
+strict = true
+mypy_path = "src"
+exclude = ["src/slaif_reservation/accounts/migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["rest_framework.*", "drf_spectacular.*"]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "slaif_reservation.config.settings.test"
