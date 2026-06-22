@@ -46,6 +46,24 @@ def env_required(name: str, *, env: Env | None = None) -> str:
     return value
 
 
+def env_non_negative_int(name: str, *, default: int, env: Env | None = None) -> int:
+    source = os.environ if env is None else env
+    raw_value = source.get(name)
+    if raw_value is None:
+        return default
+
+    try:
+        value = int(raw_value.strip())
+    except ValueError as exc:
+        msg = f"{name} must be a non-negative integer"
+        raise ImproperlyConfigured(msg) from exc
+
+    if value < 0:
+        msg = f"{name} must be a non-negative integer"
+        raise ImproperlyConfigured(msg)
+    return value
+
+
 def postgres_database_from_url(url: str) -> dict[str, str | int | dict[str, str]]:
     parsed = urlparse(url)
     if parsed.scheme not in {"postgres", "postgresql"}:

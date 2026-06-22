@@ -9,9 +9,9 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 **Pre-alpha executable foundation. Not production-ready and not yet a reservation system.**
 
 The repository contains a minimal Django/PostgreSQL application scaffold: custom user model,
-health checks, an empty `/api/v1/` namespace, generated OpenAPI support, CI, and container
-configuration. Asset, reservation, policy, audit, API-token, and UI workflows are deliberately
-not implemented yet.
+health checks, an empty `/api/v1/` namespace, generated OpenAPI support with local Swagger UI
+assets, CI, and container configuration. Asset, reservation, policy, audit, API-token, and UI
+workflows are deliberately not implemented yet.
 
 Verified starting point for this implementation slice:
 
@@ -99,6 +99,7 @@ DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation TEST_DATABA
 uv run pip-audit
 docker compose config
 docker build --tag slaif-asset-reservation:local .
+test "$(docker image inspect slaif-asset-reservation:local --format '{{.Config.User}}')" = "10001:10001"
 ```
 
 ## Configuration
@@ -115,16 +116,20 @@ Current environment variables:
 - `SLAIF_ALLOWED_HOSTS`: comma-separated host allowlist.
 - `SLAIF_CSRF_TRUSTED_ORIGINS`: comma-separated CSRF trusted origins.
 - `SLAIF_ENABLE_API_DOCS`: exposes schema/docs routes when explicitly enabled.
-- `SLAIF_PUBLIC_API_DOCS`: allows public docs only in non-production settings.
+- `SLAIF_PUBLIC_API_DOCS`: allows anonymous docs only in non-production settings. Production
+  always forces private docs when docs routes are enabled.
 - `SLAIF_SECURE_SSL_REDIRECT`, `SLAIF_SECURE_HSTS_SECONDS`,
   `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`, `SLAIF_SECURE_HSTS_PRELOAD`: production-shaped
-  HTTPS controls.
+  HTTPS controls. HSTS defaults to disabled until HTTPS is verified, then must be enabled
+  explicitly.
 
 ## Production Dependencies
 
 - `Django`: web framework, authentication, admin, ORM, migrations, sessions, CSRF, and settings.
 - `djangorestframework`: versioned API foundation for later agent endpoints.
 - `drf-spectacular`: generated OpenAPI schema from implemented DRF views.
+- `drf-spectacular-sidecar`: local Swagger UI CSS, JavaScript, and favicon assets so API
+  documentation does not depend on an unpinned CDN resource.
 - `psycopg[binary]`: PostgreSQL driver for Django and health/readiness checks.
 - `gunicorn`: production WSGI process runner used by the container image.
 - `whitenoise`: conservative static-file middleware for the monolith deployment shape.

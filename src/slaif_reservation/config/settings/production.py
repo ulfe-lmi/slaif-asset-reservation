@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import os
-
 from django.core.exceptions import ImproperlyConfigured
 
-from slaif_reservation.config.env import env_bool, env_list, env_required
+from slaif_reservation.config.env import env_bool, env_list, env_non_negative_int, env_required
 from slaif_reservation.config.settings.base import *  # noqa: F403
 from slaif_reservation.config.settings.base import apply_database_url
 
@@ -31,8 +29,11 @@ apply_database_url(env_required("DATABASE_URL"))
 SECURE_SSL_REDIRECT = env_bool("SLAIF_SECURE_SSL_REDIRECT", default=True)
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
-SECURE_HSTS_SECONDS = int(os.environ.get("SLAIF_SECURE_HSTS_SECONDS", "31536000"))
-SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS", default=True)
+SECURE_HSTS_SECONDS = env_non_negative_int("SLAIF_SECURE_HSTS_SECONDS", default=0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
+    "SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS",
+    default=False,
+)
 SECURE_HSTS_PRELOAD = env_bool("SLAIF_SECURE_HSTS_PRELOAD", default=False)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 

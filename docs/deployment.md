@@ -81,6 +81,11 @@ Implemented variables:
 - `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`;
 - `SLAIF_SECURE_HSTS_PRELOAD`.
 
+`SLAIF_SECURE_HSTS_SECONDS`, `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`, and
+`SLAIF_SECURE_HSTS_PRELOAD` default to disabled in production settings. Enable them only after
+the final HTTPS hostname, redirects, and subdomain ownership are verified. `SECURE_SSL_REDIRECT`
+and secure session/CSRF cookies remain enabled by default in production settings.
+
 Deferred variables:
 
 - token-verifier pepper, because API tokens are not implemented yet;
@@ -95,6 +100,7 @@ The scaffold image:
 - uses the Python 3.13 slim image;
 - run as a non-root user;
 - install only locked production dependencies;
+- collects Django admin and drf-spectacular-sidecar static assets during image build;
 - exclude tests, caches, `.git`, local secrets, and development data;
 - does not bake secrets into the image;
 - expose no development server;
@@ -107,6 +113,8 @@ Build and inspect the runtime user:
 ```bash
 docker build --tag slaif-asset-reservation:local .
 docker image inspect slaif-asset-reservation:local --format '{{.Config.User}}'
+docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/staticfiles/admin/css/base.css
+docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/staticfiles/drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js
 ```
 
 The configured runtime user must be `10001:10001`.
@@ -242,5 +250,5 @@ The scaffold is intentionally not production-ready. Remaining gaps include:
 - reservation, asset, policy, audit, and authorization domain behavior;
 - backup/restore runbook and restore drill;
 - logging redaction tests beyond the current health/settings scaffold;
-- static collection/release process;
+- reverse-proxy static-asset strategy for production if WhiteNoise is later replaced;
 - operational monitoring and incident runbooks.

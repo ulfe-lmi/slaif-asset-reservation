@@ -19,7 +19,11 @@ RUN uv sync --locked --no-dev
 COPY manage.py ./
 COPY src ./src
 
-RUN mkdir -p /app/staticfiles \
+RUN DJANGO_SETTINGS_MODULE=slaif_reservation.config.settings.local \
+    SLAIF_DEBUG=false \
+    python manage.py collectstatic --noinput --clear \
+    && test -f /app/staticfiles/admin/css/base.css \
+    && test -f /app/staticfiles/drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js \
     && chown -R slaif:slaif /app
 
 USER 10001:10001

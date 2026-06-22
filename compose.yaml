@@ -27,7 +27,7 @@ services:
       SLAIF_ALLOWED_HOSTS: localhost,127.0.0.1,0.0.0.0
       SLAIF_CSRF_TRUSTED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
       SLAIF_ENABLE_API_DOCS: "true"
-      SLAIF_PUBLIC_API_DOCS: "true"
+      SLAIF_PUBLIC_API_DOCS: "false"
       DATABASE_URL: postgres://slaif:slaif@db:5432/slaif_reservation
     ports:
       - "8000:8000"

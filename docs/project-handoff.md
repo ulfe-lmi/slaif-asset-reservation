@@ -45,9 +45,10 @@ Constitution and architecture accepted. Work Order 0001 has an executable founda
 - custom UUID user model with email identity;
 - PostgreSQL-backed initial migrations;
 - `/health/live`, `/health/ready`, and empty `/api/v1/` shell;
-- generated OpenAPI support;
+- generated OpenAPI support with private-by-default docs permissions and local Swagger UI assets;
 - `uv` lockfile, pytest/Ruff/mypy/pip-audit tooling;
-- Dockerfile, Compose, and GitHub Actions jobs named `quality`, `test`, `security`, and `container`.
+- Dockerfile with collected static assets, Compose, and GitHub Actions jobs named `quality`,
+  `test`, `security`, and `container`.
 
 Verified starting `main` SHA for Work Order 0001:
 
