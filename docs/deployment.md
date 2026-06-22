@@ -1,6 +1,6 @@
 # Deployment and Operations
 
-**Status:** target design; Work Order 0001 establishes development deployment, later implementation slices harden production
+**Status:** development scaffold implemented; later implementation slices harden production
 
 ## 1. Target
 
@@ -21,55 +21,110 @@ Do not run PostgreSQL on a public interface. Do not colocate production secrets 
 
 ## 3. Development environment
 
-Work Order 0001 must provide a repeatable development path using:
+Work Order 0001 provides a repeatable development path using:
 
 - Python 3.13 managed by `uv`;
 - committed `uv.lock`;
-- PostgreSQL 17 through Docker Compose or an explicitly documented local service;
-- synthetic seed data;
-- one command or short sequence for migrations and tests.
+- PostgreSQL 17 through Docker Compose;
+- synthetic test data only;
+- documented commands for migrations, checks, tests, OpenAPI validation, and container smoke.
 
 No developer should need SmartScheduling credentials or production data.
 
+Start the database:
+
+```bash
+docker compose up -d db
+```
+
+Install locked dependencies:
+
+```bash
+uv sync --locked --all-groups
+```
+
+Apply migrations to the local PostgreSQL service:
+
+```bash
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py migrate
+```
+
+Run the application locally:
+
+```bash
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py runserver
+```
+
+Start the Compose application service:
+
+```bash
+docker compose up --build app
+```
+
+Migrations are a deliberate command. They are not hidden inside the application worker startup.
+
 ## 4. Configuration
 
-Expected categories; exact variable names are created and documented by implementation:
+Implemented variables:
 
-- Django secret key;
-- token-verifier pepper distinct from Django secret;
-- database URL/credentials;
-- allowed hosts and canonical external URL;
-- CSRF trusted origins;
-- secure-proxy/HTTPS settings;
-- default timezone and language;
-- email backend/relay, if enabled;
-- log level and structured-log destination;
-- optional OIDC configuration later;
-- backup destination configured outside application environment where possible.
+- `DJANGO_SETTINGS_MODULE`;
+- `DATABASE_URL`;
+- `TEST_DATABASE_URL`;
+- `SLAIF_DJANGO_SECRET_KEY`;
+- `SLAIF_DEBUG`;
+- `SLAIF_ALLOWED_HOSTS`;
+- `SLAIF_CSRF_TRUSTED_ORIGINS`;
+- `SLAIF_ENABLE_API_DOCS`;
+- `SLAIF_PUBLIC_API_DOCS`;
+- `SLAIF_SECURE_SSL_REDIRECT`;
+- `SLAIF_SECURE_HSTS_SECONDS`;
+- `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`;
+- `SLAIF_SECURE_HSTS_PRELOAD`.
+
+Deferred variables:
+
+- token-verifier pepper, because API tokens are not implemented yet;
+- canonical external URL, email relay, structured-log destination, OIDC, and backup destination.
 
 Provide `.env.example` with safe placeholders and explanations. Never provide a production `.env`.
 
 ## 5. Containers
 
-The production image should:
+The scaffold image:
 
-- use a pinned Python base image or digest policy established by the PR;
+- uses the Python 3.13 slim image;
 - run as a non-root user;
 - install only locked production dependencies;
 - exclude tests, caches, `.git`, local secrets, and development data;
-- collect static assets at build or release time;
+- does not bake secrets into the image;
 - expose no development server;
-- include a health check or documented external probe;
 - emit logs to stdout/stderr.
 
 Database migrations run as a deliberate release step, not unpredictably in every worker startup.
 
+Build and inspect the runtime user:
+
+```bash
+docker build --tag slaif-asset-reservation:local .
+docker image inspect slaif-asset-reservation:local --format '{{.Config.User}}'
+```
+
+The configured runtime user must be `10001:10001`.
+
 ## 6. Health endpoints
 
 - `/health/live`: application process responds; no expensive dependencies.
-- `/health/ready`: database reachable, required tables/migration state usable, critical configuration present.
+- `/health/ready`: database reachable. Later production hardening may add required migration-state
+  checks once domain migrations exist.
 
 Health responses contain no secrets, build environment, database host, or dependency versions beyond an approved release identifier.
+
+Local smoke:
+
+```bash
+curl http://127.0.0.1:8000/health/live
+curl http://127.0.0.1:8000/health/ready
+```
 
 ## 7. Database lifecycle
 
@@ -176,3 +231,16 @@ Do not label the service production-ready until all are evidenced:
 - administrator and incident runbooks;
 - migration/cutover plan from SmartScheduling;
 - human security and release approval.
+
+## 14. Remaining Production Gaps
+
+The scaffold is intentionally not production-ready. Remaining gaps include:
+
+- accepted production host, DNS, TLS, and reverse-proxy configuration;
+- production secret management;
+- token-verifier pepper and API-token lifecycle implementation;
+- reservation, asset, policy, audit, and authorization domain behavior;
+- backup/restore runbook and restore drill;
+- logging redaction tests beyond the current health/settings scaffold;
+- static collection/release process;
+- operational monitoring and incident runbooks.

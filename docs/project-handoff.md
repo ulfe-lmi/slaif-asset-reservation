@@ -1,6 +1,6 @@
 # Project Handoff
 
-**Snapshot date:** 2026-06-19
+**Snapshot date:** 2026-06-22
 **Purpose:** compact strategic continuity aid; verify against live GitHub before every work order
 
 ## Product goal
@@ -39,15 +39,27 @@ Build an authenticated asset reservation authority for shared laboratory compute
 
 ## Current milestone after bootstrap merge
 
-Constitution and architecture accepted; no executable application.
+Constitution and architecture accepted. Work Order 0001 has an executable foundation in progress:
+
+- Django project under `src/slaif_reservation/`;
+- custom UUID user model with email identity;
+- PostgreSQL-backed initial migrations;
+- `/health/live`, `/health/ready`, and empty `/api/v1/` shell;
+- generated OpenAPI support;
+- `uv` lockfile, pytest/Ruff/mypy/pip-audit tooling;
+- Dockerfile, Compose, and GitHub Actions jobs named `quality`, `test`, `security`, and `container`.
+
+Verified starting `main` SHA for Work Order 0001:
+
+```text
+5cf7fbc46c7d45e966215ebf07a81e8722b8a572
+```
 
 ## Next recommended task
 
-Create/approve the GitHub work-order issue from:
-
-`docs/work-orders/0001-application-scaffold.md`
-
-Assign it to the Codex programming agent. Require one PR and no merge by the agent.
+After human review and merge of Work Order 0001, start the next approved work order from the
+resulting `main` branch. Likely next slices are account/admin hardening or the first asset model,
+depending on maintainer priority.
 
 ## Do not do next
 

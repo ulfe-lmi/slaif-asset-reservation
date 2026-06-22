@@ -1,0 +1,29 @@
+FROM python:3.13-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PYTHONPATH=/app/src \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+RUN groupadd --system --gid 10001 slaif \
+    && useradd --system --uid 10001 --gid 10001 --home-dir /app --shell /usr/sbin/nologin slaif
+
+COPY --from=ghcr.io/astral-sh/uv:0.11.23 /uv /usr/local/bin/uv
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev
+
+COPY manage.py ./
+COPY src ./src
+
+RUN mkdir -p /app/staticfiles \
+    && chown -R slaif:slaif /app
+
+USER 10001:10001
+
+EXPOSE 8000
+
+CMD ["gunicorn", "slaif_reservation.config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2"]

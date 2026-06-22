@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - run: uv sync --locked --all-groups
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy src
+      - run: git diff --check
+      - run: sha256sum -c MANIFEST.sha256
+
+  test:
+    name: test
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: slaif_reservation
+          POSTGRES_USER: slaif
+          POSTGRES_PASSWORD: slaif
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U slaif -d slaif_reservation"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://slaif:slaif@localhost:5432/slaif_reservation
+      TEST_DATABASE_URL: postgres://slaif:slaif@localhost:5432/slaif_reservation
+      DJANGO_SETTINGS_MODULE: slaif_reservation.config.settings.test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - run: uv sync --locked --all-groups
+      - run: uv run python manage.py migrate --noinput
+      - run: uv run python manage.py makemigrations --check --dry-run
+      - run: uv run python manage.py check
+      - run: mkdir -p build/openapi
+      - run: uv run python manage.py spectacular --file build/openapi/schema.yaml --validate --fail-on-warn
+      - run: uv run pytest
+
+  security:
+    name: security
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - run: uv sync --locked --all-groups
+      - run: uv run pip-audit
+      - run: |
+          set +e
+          PYTHONPATH=src uv run python - <<'PY'
+          import os
+          os.environ["DJANGO_SETTINGS_MODULE"] = "slaif_reservation.config.settings.production"
+          import django
+          django.setup()
+          PY
+          test "$?" -ne 0
+
+  container:
+    name: container
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config
+      - run: docker build --tag slaif-asset-reservation:ci .
+      - run: test "$(docker image inspect slaif-asset-reservation:ci --format '{{.Config.User}}')" = "10001:10001"

@@ -156,19 +156,30 @@ A finding is triaged; do not silence a check merely to make CI green.
 
 ## 8. Standard commands
 
-The scaffold PR establishes exact commands. Intended interface:
+The scaffold PR establishes these exact commands:
 
 ```bash
 uv sync --locked --all-groups
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
-uv run python manage.py check
-uv run python manage.py makemigrations --check --dry-run
-uv run pytest
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py check
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py makemigrations --check --dry-run
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation TEST_DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run pytest
 ```
 
 Provide `make` aliases only as conveniences; CI should use transparent commands or clearly report aliases.
+
+Additional scaffold checks:
+
+```bash
+mkdir -p build/openapi
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py spectacular --file build/openapi/schema.yaml --validate --fail-on-warn
+uv run pip-audit
+docker compose config
+docker build --tag slaif-asset-reservation:local .
+docker image inspect slaif-asset-reservation:local --format '{{.Config.User}}'
+```
 
 ## 9. CI stages
 

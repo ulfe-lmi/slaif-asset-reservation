@@ -6,9 +6,18 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 
 ## Status
 
-**Architecture and repository bootstrap. No deployable application exists yet.**
+**Pre-alpha executable foundation. Not production-ready and not yet a reservation system.**
 
-The first implementation work is defined in `docs/work-orders/0001-application-scaffold.md` and must be delivered through a pull request.
+The repository contains a minimal Django/PostgreSQL application scaffold: custom user model,
+health checks, an empty `/api/v1/` namespace, generated OpenAPI support, CI, and container
+configuration. Asset, reservation, policy, audit, API-token, and UI workflows are deliberately
+not implemented yet.
+
+Verified starting point for this implementation slice:
+
+```text
+main SHA before Work Order 0001: 5cf7fbc46c7d45e966215ebf07a81e8722b8a572
+```
 
 ## Product promise
 
@@ -34,6 +43,91 @@ A reservation accepted by the system is:
 - server-rendered UI, progressively enhanced
 - OpenAPI-described `/api/v1/`
 - Docker Compose deployment on an external Linux server behind HTTPS
+
+## Development Quickstart
+
+Prerequisites:
+
+- Python 3.13 managed by `uv`
+- Docker with Compose v2
+
+Start PostgreSQL and install dependencies:
+
+```bash
+docker compose up -d db
+uv sync --locked --all-groups
+```
+
+Run migrations and local checks:
+
+```bash
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py migrate
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py check
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run pytest
+```
+
+Run the local application:
+
+```bash
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py runserver
+```
+
+Health endpoints:
+
+```bash
+curl http://127.0.0.1:8000/health/live
+curl http://127.0.0.1:8000/health/ready
+```
+
+Generate and validate the current OpenAPI shell:
+
+```bash
+mkdir -p build/openapi
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py spectacular --file build/openapi/schema.yaml --validate --fail-on-warn
+```
+
+Run the full scaffold evidence set:
+
+```bash
+uv sync --locked --all-groups
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py check
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py makemigrations --check --dry-run
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation TEST_DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run pytest
+uv run pip-audit
+docker compose config
+docker build --tag slaif-asset-reservation:local .
+```
+
+## Configuration
+
+`.env.example` documents local placeholders. Do not commit a real `.env`.
+
+Current environment variables:
+
+- `DJANGO_SETTINGS_MODULE`: selects `local`, `test`, or `production` settings.
+- `DATABASE_URL`: PostgreSQL connection URL. SQLite is not the normal development or CI path.
+- `TEST_DATABASE_URL`: optional PostgreSQL URL for pytest.
+- `SLAIF_DJANGO_SECRET_KEY`: required by production settings.
+- `SLAIF_DEBUG`: parsed strictly; values such as `false` and `0` disable debug.
+- `SLAIF_ALLOWED_HOSTS`: comma-separated host allowlist.
+- `SLAIF_CSRF_TRUSTED_ORIGINS`: comma-separated CSRF trusted origins.
+- `SLAIF_ENABLE_API_DOCS`: exposes schema/docs routes when explicitly enabled.
+- `SLAIF_PUBLIC_API_DOCS`: allows public docs only in non-production settings.
+- `SLAIF_SECURE_SSL_REDIRECT`, `SLAIF_SECURE_HSTS_SECONDS`,
+  `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`, `SLAIF_SECURE_HSTS_PRELOAD`: production-shaped
+  HTTPS controls.
+
+## Production Dependencies
+
+- `Django`: web framework, authentication, admin, ORM, migrations, sessions, CSRF, and settings.
+- `djangorestframework`: versioned API foundation for later agent endpoints.
+- `drf-spectacular`: generated OpenAPI schema from implemented DRF views.
+- `psycopg[binary]`: PostgreSQL driver for Django and health/readiness checks.
+- `gunicorn`: production WSGI process runner used by the container image.
+- `whitenoise`: conservative static-file middleware for the monolith deployment shape.
 
 See:
 
