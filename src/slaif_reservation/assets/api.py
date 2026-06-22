@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.db.models import QuerySet
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import ValidationError
@@ -26,7 +27,12 @@ class AssetLimitOffsetPagination(LimitOffsetPagination):  # type: ignore[misc]
 
 asset_filter_parameters = [
     OpenApiParameter("kind", str, OpenApiParameter.QUERY, description="Asset kind."),
-    OpenApiParameter("parent", str, OpenApiParameter.QUERY, description="Parent asset UUID."),
+    OpenApiParameter(
+        "parent",
+        OpenApiTypes.UUID,
+        OpenApiParameter.QUERY,
+        description="Parent asset UUID.",
+    ),
     OpenApiParameter("tag", str, OpenApiParameter.QUERY, description="Asset tag slug."),
     OpenApiParameter("active", bool, OpenApiParameter.QUERY, description="Filter active assets."),
     OpenApiParameter(

@@ -59,6 +59,19 @@ def test_schema_invalid_bootstrap_is_rejected(tmp_path: Path) -> None:
             ),
             "duplicate legacy ID",
         ),
+        (
+            lambda document: document["excluded_legacy_records"].append(
+                dict(document["excluded_legacy_records"][0])
+            ),
+            "duplicate excluded legacy ID",
+        ),
+        (
+            lambda document: document["excluded_legacy_records"][0].__setitem__(
+                "legacy_resource_id",
+                document["machines"][0]["assets"][0]["legacy"]["resource_id"],
+            ),
+            "duplicate legacy ID also excluded",
+        ),
     ],
 )
 def test_semantic_duplicates_are_rejected(tmp_path: Path, mutator, message: str) -> None:
@@ -68,6 +81,52 @@ def test_semantic_duplicates_are_rejected(tmp_path: Path, mutator, message: str)
 
     with pytest.raises(BootstrapAssetError, match=message):
         load_bootstrap_plan(path, Path("data/bootstrap/assets.schema.json"))
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+    [
+        (
+            lambda document: document["defaults"].__setitem__("timezone", "Not/AZone"),
+            "Timezone must resolve",
+        ),
+        (
+            lambda document: (
+                document["machines"][0]["assets"][0].__setitem__("active", False),
+                document["machines"][0]["assets"][0].__setitem__("reservable", True),
+            ),
+            "Inactive assets cannot be reservable",
+        ),
+        (
+            lambda document: document["machines"][0]["assets"][0].__setitem__("slug", "a" * 121),
+            "Ensure this value has at most 120 characters",
+        ),
+        (
+            lambda document: document["machines"][0]["assets"][0].__setitem__("name", "A" * 181),
+            "Ensure this value has at most 180 characters",
+        ),
+        (
+            lambda document: document["machines"][0]["assets"][0].__setitem__("note", "x" * 9000),
+            "Legacy metadata exceeds the allowed size",
+        ),
+    ],
+)
+@pytest.mark.parametrize("apply_mode", [False, True])
+def test_invalid_plan_data_fails_before_writes(
+    tmp_path: Path,
+    mutator,
+    message: str,
+    apply_mode: bool,
+) -> None:
+    document = _load_document()
+    mutator(document)
+    path = _write_document(tmp_path, document)
+
+    with pytest.raises(CommandError, match=message):
+        call_command("import_bootstrap_assets", input=str(path), apply=apply_mode)
+
+    assert Asset.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -168,4 +227,10 @@ def _load_document() -> dict[str, object]:
 def _write_document(tmp_path: Path, document: dict[str, object]) -> Path:
     path = tmp_path / "assets.yaml"
     path.write_text(yaml.safe_dump(document), encoding="utf-8")
+    schema_path = tmp_path / "assets.schema.json"
+    if not schema_path.exists():
+        schema_path.write_text(
+            Path("data/bootstrap/assets.schema.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
     return path

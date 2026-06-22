@@ -100,6 +100,17 @@ class Asset(models.Model):
                 name="asset_legacy_source_id_paired",
             ),
             models.CheckConstraint(
+                condition=(
+                    Q(legacy_source__isnull=True, legacy_id__isnull=True)
+                    | (
+                        Q(legacy_source__isnull=False, legacy_id__isnull=False)
+                        & Q(legacy_source__regex=r"\S")
+                        & Q(legacy_id__regex=r"\S")
+                    )
+                ),
+                name="asset_legacy_source_id_meaningful",
+            ),
+            models.CheckConstraint(
                 condition=Q(booking_mode="exclusive"),
                 name="asset_booking_mode_exclusive_only",
             ),
@@ -148,8 +159,17 @@ class Asset(models.Model):
         if not self.active and self.reservable:
             errors.setdefault("reservable", []).append("Inactive assets cannot be reservable.")
 
-        if bool(self.legacy_source) != bool(self.legacy_id):
+        source_present = self.legacy_source is not None
+        legacy_id_present = self.legacy_id is not None
+        if source_present != legacy_id_present:
             errors.setdefault("legacy_id", []).append("Legacy source and legacy ID must be paired.")
+        elif source_present and legacy_id_present:
+            assert self.legacy_source is not None
+            assert self.legacy_id is not None
+            if not self.legacy_source.strip() or not self.legacy_id.strip():
+                errors.setdefault("legacy_id", []).append(
+                    "Legacy source and legacy ID must be non-empty strings."
+                )
 
         try:
             ZoneInfo(self.timezone)

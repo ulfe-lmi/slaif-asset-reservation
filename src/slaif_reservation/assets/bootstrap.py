@@ -179,14 +179,35 @@ def build_bootstrap_plan(document: dict[str, Any]) -> BootstrapPlan:
         )
         for record in document["excluded_legacy_records"]
     )
-    return BootstrapPlan(records=tuple(records), excluded=excluded)
+    plan = BootstrapPlan(records=tuple(records), excluded=excluded)
+    validate_bootstrap_plan(plan)
+    return plan
 
 
 def load_bootstrap_plan(input_path: Path, schema_path: Path | None = None) -> BootstrapPlan:
     return build_bootstrap_plan(load_bootstrap_document(input_path, schema_path))
 
 
+def validate_bootstrap_plan(plan: BootstrapPlan) -> None:
+    planned_assets: dict[str, Asset] = {}
+    for record in plan.records:
+        parent = planned_assets.get(record.parent_slug) if record.parent_slug else None
+        asset = _asset_from_record(record, parent)
+        try:
+            asset.full_clean(
+                exclude={"parent"},
+                validate_unique=False,
+                validate_constraints=False,
+            )
+        except ValidationError as exc:
+            raise BootstrapAssetError(
+                f"Planned asset {record.slug} failed validation: {_format_validation_error(exc)}"
+            ) from exc
+        planned_assets[record.slug] = asset
+
+
 def preview_bootstrap_import(plan: BootstrapPlan) -> ImportCounts:
+    validate_bootstrap_plan(plan)
     created, unchanged, conflicted = _classify_existing_records(plan)
     return ImportCounts(
         planned=plan.planned_count,
@@ -198,6 +219,7 @@ def preview_bootstrap_import(plan: BootstrapPlan) -> ImportCounts:
 
 
 def apply_bootstrap_import(plan: BootstrapPlan) -> ImportCounts:
+    validate_bootstrap_plan(plan)
     counts = preview_bootstrap_import(plan)
     if counts.conflicted:
         return counts
@@ -217,24 +239,7 @@ def apply_bootstrap_import(plan: BootstrapPlan) -> ImportCounts:
                 continue
 
             parent = created_by_slug.get(record.parent_slug) if record.parent_slug else None
-            asset = Asset(
-                parent=parent,
-                slug=record.slug,
-                name=record.name,
-                kind=record.kind,
-                booking_mode=record.booking_mode,
-                description=record.description,
-                location=record.location,
-                timezone=record.timezone,
-                active=record.active,
-                reservable=record.reservable,
-                capabilities=record.capabilities,
-                verification_required=record.verification_required,
-                physical_locator=record.physical_locator,
-                legacy_source=record.legacy_source,
-                legacy_id=record.legacy_id,
-                legacy_metadata=record.legacy_metadata,
-            )
+            asset = _asset_from_record(record, parent)
             asset.full_clean()
             asset.save()
             created_by_slug[record.slug] = asset
@@ -284,6 +289,7 @@ def _semantic_errors(document: dict[str, Any]) -> list[str]:
                 )
 
     excluded_ids = [record["legacy_resource_id"] for record in document["excluded_legacy_records"]]
+    errors.extend(_duplicates("duplicate excluded legacy ID", excluded_ids))
     for duplicate in sorted(set(legacy_ids) & set(excluded_ids)):
         errors.append(f"duplicate legacy ID also excluded: {duplicate}")
 
@@ -293,6 +299,36 @@ def _semantic_errors(document: dict[str, Any]) -> list[str]:
 def _duplicates(label: str, values: list[str]) -> list[str]:
     counts = Counter(values)
     return [f"{label}: {value}" for value, count in sorted(counts.items()) if count > 1]
+
+
+def _asset_from_record(record: AssetImportRecord, parent: Asset | None) -> Asset:
+    return Asset(
+        parent=parent,
+        slug=record.slug,
+        name=record.name,
+        kind=record.kind,
+        booking_mode=record.booking_mode,
+        description=record.description,
+        location=record.location,
+        timezone=record.timezone,
+        active=record.active,
+        reservable=record.reservable,
+        capabilities=record.capabilities,
+        verification_required=record.verification_required,
+        physical_locator=record.physical_locator,
+        legacy_source=record.legacy_source,
+        legacy_id=record.legacy_id,
+        legacy_metadata=record.legacy_metadata,
+    )
+
+
+def _format_validation_error(exc: ValidationError) -> str:
+    if hasattr(exc, "message_dict"):
+        parts = []
+        for field_name, messages in exc.message_dict.items():
+            parts.append(f"{field_name}: {', '.join(str(message) for message in messages)}")
+        return "; ".join(parts)
+    return ", ".join(str(message) for message in exc.messages)
 
 
 def _classify_existing_records(plan: BootstrapPlan) -> tuple[int, int, int]:

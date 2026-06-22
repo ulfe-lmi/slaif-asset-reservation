@@ -128,6 +128,47 @@ def test_legacy_provenance_pair_is_unique_when_present() -> None:
         )
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"legacy_source": "smartscheduling", "legacy_id": None},
+        {"legacy_source": None, "legacy_id": "resource-a"},
+        {"legacy_source": "", "legacy_id": ""},
+        {"legacy_source": "   ", "legacy_id": "resource-a"},
+        {"legacy_source": "smartscheduling", "legacy_id": "   "},
+    ],
+)
+def test_legacy_provenance_requires_meaningful_paired_values(
+    values: dict[str, str | None],
+) -> None:
+    asset = Asset(slug="legacy-invalid", name="Legacy Invalid", kind=Asset.KIND_GPU, **values)
+
+    with pytest.raises(ValidationError, match="Legacy source and legacy ID"):
+        asset.full_clean()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"legacy_source": "", "legacy_id": ""},
+        {"legacy_source": "   ", "legacy_id": "resource-a"},
+        {"legacy_source": "smartscheduling", "legacy_id": "   "},
+    ],
+)
+def test_legacy_provenance_meaningfulness_is_database_enforced(
+    values: dict[str, str],
+) -> None:
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Asset.objects.create(
+            slug="legacy-db-invalid",
+            name="Legacy DB Invalid",
+            kind=Asset.KIND_GPU,
+            **values,
+        )
+
+
 @pytest.mark.parametrize(
     "capabilities",
     [

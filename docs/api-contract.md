@@ -132,14 +132,14 @@ Implemented in Work Order 0002 as a read-only staff-session endpoint. This is a 
 pre-alpha limitation: `SessionAuthentication` plus staff permission is required until scoped bearer
 tokens are implemented. Anonymous and ordinary non-staff users cannot read inventory data.
 
-Filters planned for MVP:
+Implemented filters:
 
 - `kind`
 - `parent` UUID
 - `tag`
 - `active`
 - `reservable`
-- text search over safe display fields
+- `q` text search over safe display fields
 
 Example item:
 
@@ -184,6 +184,9 @@ The detail identifier is the opaque asset UUID.
 Returns one authorized asset. Hidden and unauthorized assets should use a non-disclosing not-found response where appropriate.
 
 ### `GET /api/v1/assets/{asset_id}/availability`
+
+Deferred/not implemented in Work Order 0002. This section describes the intended future contract
+for a later availability slice.
 
 Query:
 

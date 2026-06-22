@@ -30,26 +30,71 @@ def imported_assets() -> None:
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("path", ["/assets/", "/api/v1/assets/"])
-def test_asset_inventory_denies_anonymous_users(client, imported_assets, path: str) -> None:
-    response = client.get(path)
+@pytest.mark.parametrize(
+    ("path_factory", "expected_status"),
+    [
+        (lambda: "/assets/", 302),
+        (lambda: reverse("assets:detail", args=[Asset.objects.get(slug="neumann-gpu-0").id]), 302),
+        (lambda: "/api/v1/assets/", 403),
+        (lambda: f"/api/v1/assets/{Asset.objects.get(slug='neumann-gpu-0').id}/", 403),
+    ],
+)
+def test_asset_inventory_denies_anonymous_users(
+    client,
+    imported_assets,
+    path_factory,
+    expected_status: int,
+) -> None:
+    response = client.get(path_factory())
 
-    assert response.status_code in {302, 403}
+    assert response.status_code == expected_status
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("path", ["/assets/", "/api/v1/assets/"])
+@pytest.mark.parametrize(
+    ("path_factory", "expected_status"),
+    [
+        (lambda: "/assets/", 302),
+        (lambda: reverse("assets:detail", args=[Asset.objects.get(slug="neumann-gpu-0").id]), 302),
+        (lambda: "/api/v1/assets/", 403),
+        (lambda: f"/api/v1/assets/{Asset.objects.get(slug='neumann-gpu-0').id}/", 403),
+    ],
+)
 def test_asset_inventory_denies_non_staff_users(
     client,
     imported_assets,
     ordinary_user: User,
-    path: str,
+    path_factory,
+    expected_status: int,
 ) -> None:
     client.force_login(ordinary_user)
 
-    response = client.get(path)
+    response = client.get(path_factory())
 
-    assert response.status_code == 302 if path == "/assets/" else 403
+    assert response.status_code == expected_status
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "path_factory",
+    [
+        lambda: "/assets/",
+        lambda: reverse("assets:detail", args=[Asset.objects.get(slug="neumann-gpu-0").id]),
+        lambda: "/api/v1/assets/",
+        lambda: f"/api/v1/assets/{Asset.objects.get(slug='neumann-gpu-0').id}/",
+    ],
+)
+def test_asset_inventory_allows_staff_users(
+    client,
+    imported_assets,
+    staff_user: User,
+    path_factory,
+) -> None:
+    client.force_login(staff_user)
+
+    response = client.get(path_factory())
+
+    assert response.status_code == 200
 
 
 @pytest.mark.django_db
@@ -137,6 +182,53 @@ def test_staff_api_invalid_filter_returns_400_without_stack_details(
 
     assert response.status_code == 400
     assert "Traceback" not in response.content.decode()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"parent": "not-a-uuid"},
+        {"active": "maybe"},
+        {"reservable": "maybe"},
+    ],
+)
+def test_staff_api_invalid_filter_variants_return_400(
+    client,
+    imported_assets,
+    staff_user: User,
+    params: dict[str, str],
+) -> None:
+    client.force_login(staff_user)
+
+    response = client.get("/api/v1/assets/", params)
+
+    assert response.status_code == 400
+    assert "Traceback" not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_staff_api_missing_detail_returns_404(client, imported_assets, staff_user: User) -> None:
+    client.force_login(staff_user)
+
+    response = client.get("/api/v1/assets/00000000-0000-0000-0000-000000000001/")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_staff_api_pagination_is_bounded(client, imported_assets, staff_user: User) -> None:
+    client.force_login(staff_user)
+
+    response = client.get("/api/v1/assets/", {"limit": 2, "offset": 1})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 47
+    assert len(payload["results"]) == 2
+    assert "limit=2" in payload["next"]
+    assert "offset=3" in payload["next"]
+    assert "limit=2" in payload["previous"]
 
 
 @pytest.mark.django_db
