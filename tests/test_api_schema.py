@@ -17,7 +17,9 @@ def test_api_v1_namespace_exists(client) -> None:
     assert response.json() == {
         "name": "SLAIF Asset Reservation API",
         "version": "v1",
-        "endpoints": {},
+        "endpoints": {
+            "assets": "/api/v1/assets/",
+        },
     }
 
 
@@ -29,6 +31,8 @@ def test_openapi_schema_generation_succeeds(tmp_path: Path) -> None:
     schema = schema_path.read_text(encoding="utf-8")
     assert "SLAIF Asset Reservation API" in schema
     assert "/api/v1/" in schema
+    assert "/api/v1/assets/" in schema
+    assert "/api/v1/assets/{asset_id}/" in schema
 
 
 @pytest.mark.django_db

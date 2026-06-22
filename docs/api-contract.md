@@ -1,6 +1,7 @@
 # API v1 Design Contract
 
-**Status:** pre-implementation design contract
+**Status:** pre-alpha implementation contract; asset read endpoints are implemented with a temporary
+staff-session limitation
 **Base path:** `/api/v1/`
 
 The implemented OpenAPI document generated from code becomes the mechanical schema source of truth. This document defines intended semantics and must remain aligned with implementation.
@@ -125,16 +126,19 @@ Returns the effective principal and safe token context.
 
 Never return the bearer token or verifier.
 
-### `GET /api/v1/assets`
+### `GET /api/v1/assets/`
+
+Implemented in Work Order 0002 as a read-only staff-session endpoint. This is a temporary
+pre-alpha limitation: `SessionAuthentication` plus staff permission is required until scoped bearer
+tokens are implemented. Anonymous and ordinary non-staff users cannot read inventory data.
 
 Filters planned for MVP:
 
 - `kind`
-- `parent`
+- `parent` UUID
 - `tag`
 - `active`
 - `reservable`
-- capability filters explicitly implemented and documented
 - text search over safe display fields
 
 Example item:
@@ -163,7 +167,19 @@ Example item:
 
 Capabilities are administrator-verified before clients may rely on normalized values.
 
-### `GET /api/v1/assets/{asset_id}`
+Implemented response fields are limited to:
+
+- `id`, `slug`, `name`, `kind`, `parent`, `description`, `timezone`, `active`, `reservable`,
+  `verification_required`, `tags`, and normalized `capabilities`.
+
+The API never serializes `physical_locator`, legacy IDs, raw legacy metadata, or internal notes.
+Invalid filter values return HTTP 400 without ORM/SQL/stack details. Pagination uses DRF
+limit/offset pagination with a default limit of 50 and maximum limit of 100.
+
+### `GET /api/v1/assets/{asset_id}/`
+
+Implemented in Work Order 0002 with the same temporary staff-session limitation and safe field set.
+The detail identifier is the opaque asset UUID.
 
 Returns one authorized asset. Hidden and unauthorized assets should use a non-disclosing not-found response where appropriate.
 

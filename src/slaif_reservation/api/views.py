@@ -26,6 +26,8 @@ class ApiRootView(APIView):  # type: ignore[misc]
             {
                 "name": "SLAIF Asset Reservation API",
                 "version": "v1",
-                "endpoints": {},
+                "endpoints": {
+                    "assets": "/api/v1/assets/",
+                },
             }
         )

@@ -1,6 +1,6 @@
 # Deployment and Operations
 
-**Status:** development scaffold implemented; later implementation slices harden production
+**Status:** development foundation implemented; later implementation slices harden production
 
 ## 1. Target
 
@@ -51,6 +51,13 @@ Apply migrations to the local PostgreSQL service:
 ```bash
 cp .env.example .env
 uv run --env-file .env python manage.py migrate
+```
+
+Validate and optionally import the sanitized bootstrap inventory:
+
+```bash
+uv run --env-file .env python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
+uv run --env-file .env python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml --apply
 ```
 
 Run the application locally:
@@ -254,7 +261,8 @@ The scaffold is intentionally not production-ready. Remaining gaps include:
 - accepted production host, DNS, TLS, and reverse-proxy configuration;
 - production secret management;
 - token-verifier pepper and API-token lifecycle implementation;
-- reservation, asset, policy, audit, and authorization domain behavior;
+- reservation, policy, audit, API-token, ordinary member authorization, and availability behavior;
+- administrator verification of imported asset hardware identity and capabilities;
 - backup/restore runbook and restore drill;
 - logging redaction tests beyond the current health/settings scaffold;
 - reverse-proxy static-asset strategy for production if WhiteNoise is later replaced;

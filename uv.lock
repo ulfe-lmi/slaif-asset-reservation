@@ -741,7 +741,9 @@ dependencies = [
     { name = "drf-spectacular" },
     { name = "drf-spectacular-sidecar" },
     { name = "gunicorn" },
+    { name = "jsonschema" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "pyyaml" },
     { name = "whitenoise" },
 ]
 
@@ -764,7 +766,9 @@ requires-dist = [
     { name = "drf-spectacular", specifier = ">=0.29,<0.30" },
     { name = "drf-spectacular-sidecar", specifier = ">=2026.6,<2027" },
     { name = "gunicorn", specifier = ">=23,<24" },
+    { name = "jsonschema", specifier = ">=4.25,<5" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<3.3" },
+    { name = "pyyaml", specifier = ">=6.0,<7" },
     { name = "whitenoise", specifier = ">=6.9,<7" },
 ]
 
