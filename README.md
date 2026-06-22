@@ -73,7 +73,7 @@ Run migrations and local checks:
 ```bash
 uv run --env-file .env python manage.py migrate
 uv run --env-file .env python manage.py check
-TEST_DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run --env-file .env pytest
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test
 ```
 
 Run the local application:
