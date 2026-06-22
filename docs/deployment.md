@@ -31,6 +31,9 @@ Work Order 0001 provides a repeatable development path using:
 
 No developer should need SmartScheduling credentials or production data.
 
+The committed Compose file is development-only. It publishes PostgreSQL and the application on
+`127.0.0.1` only, while keeping app-to-database communication on the internal Compose network.
+
 Start the database:
 
 ```bash
@@ -46,13 +49,14 @@ uv sync --locked --all-groups
 Apply migrations to the local PostgreSQL service:
 
 ```bash
-DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py migrate
+cp .env.example .env
+uv run --env-file .env python manage.py migrate
 ```
 
 Run the application locally:
 
 ```bash
-DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py runserver
+uv run --env-file .env python manage.py runserver
 ```
 
 Start the Compose application service:
@@ -91,7 +95,10 @@ Deferred variables:
 - token-verifier pepper, because API tokens are not implemented yet;
 - canonical external URL, email relay, structured-log destination, OIDC, and backup destination.
 
-Provide `.env.example` with safe placeholders and explanations. Never provide a production `.env`.
+`.env.example` is for host-side local commands run explicitly as `uv run --env-file .env ...`;
+Django does not automatically load it. Its `DATABASE_URL` points at the loopback-published
+development database. Compose supplies the application service with its own container-internal
+`DATABASE_URL` that uses hostname `db`. Never provide a production `.env`.
 
 ## 5. Containers
 

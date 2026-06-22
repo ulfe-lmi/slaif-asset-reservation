@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from slaif_reservation.config.env import env_bool, env_list, postgres_database_from_url
+from slaif_reservation.config.env import postgres_database_from_url
 
 BASE_DIR = Path(__file__).resolve().parents[4]
 
@@ -124,15 +124,3 @@ LOGGING = {
 
 def apply_database_url(database_url: str) -> None:
     DATABASES["default"] = postgres_database_from_url(database_url)
-
-
-def configure_common_from_environment() -> None:
-    global API_DOCS_ENABLED, API_DOCS_PUBLIC, ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS
-
-    ALLOWED_HOSTS = env_list("SLAIF_ALLOWED_HOSTS", default=tuple(ALLOWED_HOSTS))
-    CSRF_TRUSTED_ORIGINS = env_list(
-        "SLAIF_CSRF_TRUSTED_ORIGINS",
-        default=tuple(CSRF_TRUSTED_ORIGINS),
-    )
-    API_DOCS_ENABLED = env_bool("SLAIF_ENABLE_API_DOCS", default=API_DOCS_ENABLED)
-    API_DOCS_PUBLIC = env_bool("SLAIF_PUBLIC_API_DOCS", default=API_DOCS_PUBLIC)

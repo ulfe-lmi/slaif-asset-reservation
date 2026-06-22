@@ -58,18 +58,28 @@ docker compose up -d db
 uv sync --locked --all-groups
 ```
 
+The committed Compose file is for development only. It publishes PostgreSQL and the application
+only on `127.0.0.1`; app-to-database traffic inside Compose still uses the internal `db` hostname.
+
+For host-side commands, copy the example environment and pass it explicitly to `uv run`. Django
+does not automatically load `.env` files.
+
+```bash
+cp .env.example .env
+```
+
 Run migrations and local checks:
 
 ```bash
-DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py migrate
-DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py check
-DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run pytest
+uv run --env-file .env python manage.py migrate
+uv run --env-file .env python manage.py check
+TEST_DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run --env-file .env pytest
 ```
 
 Run the local application:
 
 ```bash
-DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py runserver
+uv run --env-file .env python manage.py runserver
 ```
 
 Health endpoints:
@@ -83,7 +93,7 @@ Generate and validate the current OpenAPI shell:
 
 ```bash
 mkdir -p build/openapi
-DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py spectacular --file build/openapi/schema.yaml --validate --fail-on-warn
+uv run --env-file .env python manage.py spectacular --file build/openapi/schema.yaml --validate --fail-on-warn
 ```
 
 Run the full scaffold evidence set:
@@ -104,7 +114,9 @@ test "$(docker image inspect slaif-asset-reservation:local --format '{{.Config.U
 
 ## Configuration
 
-`.env.example` documents local placeholders. Do not commit a real `.env`.
+`.env.example` documents host-side local placeholders for `uv run --env-file .env ...`.
+Do not commit a real `.env`. Compose does not load this file into the application service; it
+sets its own container-internal `DATABASE_URL` that uses hostname `db`.
 
 Current environment variables:
 

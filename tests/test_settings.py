@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -97,6 +98,117 @@ def test_asgi_respects_explicit_local_settings_module() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_local_settings_honor_custom_allowed_hosts_and_csrf_origins() -> None:
+    env = clean_subprocess_env() | {
+        "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.local",
+        "SLAIF_ALLOWED_HOSTS": "example.test,localhost",
+        "SLAIF_CSRF_TRUSTED_ORIGINS": "https://example.test,http://localhost:8000",
+    }
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                """
+                import json
+                import django
+                django.setup()
+                from django.conf import settings
+                print(json.dumps({
+                    "allowed_hosts": settings.ALLOWED_HOSTS,
+                    "csrf_trusted_origins": settings.CSRF_TRUSTED_ORIGINS,
+                }))
+                """
+            ),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["allowed_hosts"] == ["example.test", "localhost"]
+    assert payload["csrf_trusted_origins"] == ["https://example.test", "http://localhost:8000"]
+
+
+def test_local_settings_honor_custom_api_docs_flags() -> None:
+    env = clean_subprocess_env() | {
+        "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.local",
+        "SLAIF_ENABLE_API_DOCS": "false",
+        "SLAIF_PUBLIC_API_DOCS": "false",
+    }
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                """
+                import json
+                import django
+                django.setup()
+                from django.conf import settings
+                print(json.dumps({
+                    "api_docs_enabled": settings.API_DOCS_ENABLED,
+                    "api_docs_public": settings.API_DOCS_PUBLIC,
+                }))
+                """
+            ),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload == {"api_docs_enabled": False, "api_docs_public": False}
+
+
+def test_local_settings_preserve_safe_defaults_when_environment_absent() -> None:
+    env = clean_subprocess_env() | {
+        "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.local",
+    }
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                """
+                import json
+                import django
+                django.setup()
+                from django.conf import settings
+                print(json.dumps({
+                    "allowed_hosts": settings.ALLOWED_HOSTS,
+                    "csrf_trusted_origins": settings.CSRF_TRUSTED_ORIGINS,
+                    "api_docs_enabled": settings.API_DOCS_ENABLED,
+                    "api_docs_public": settings.API_DOCS_PUBLIC,
+                }))
+                """
+            ),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "allowed_hosts": ["localhost", "127.0.0.1", "0.0.0.0"],
+        "csrf_trusted_origins": ["http://localhost:8000", "http://127.0.0.1:8000"],
+        "api_docs_enabled": True,
+        "api_docs_public": True,
+    }
 
 
 def test_production_hsts_defaults_are_safe_and_https_controls_remain_enabled() -> None:

@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: slaif
       POSTGRES_PASSWORD: slaif
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U slaif -d slaif_reservation"]
       interval: 5s
@@ -30,7 +30,7 @@ services:
       SLAIF_PUBLIC_API_DOCS: "false"
       DATABASE_URL: postgres://slaif:slaif@db:5432/slaif_reservation
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     command: >
       gunicorn slaif_reservation.config.wsgi:application
       --bind 0.0.0.0:8000
