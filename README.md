@@ -6,12 +6,13 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 
 ## Status
 
-**Pre-alpha executable foundation. Not production-ready and not yet a reservation system.**
+**Pre-alpha asset-inventory foundation. Not production-ready and not yet a reservation system.**
 
-The repository contains a minimal Django/PostgreSQL application scaffold: custom user model,
-health checks, an empty `/api/v1/` namespace, generated OpenAPI support with local Swagger UI
-assets, CI, and container configuration. Asset, reservation, policy, audit, API-token, and UI
-workflows are deliberately not implemented yet.
+The repository contains a minimal Django/PostgreSQL application foundation: custom user model,
+health checks, hierarchical asset inventory, sanitized bootstrap asset import, staff-only inventory
+web/API views, generated OpenAPI support with local Swagger UI assets, CI, and container
+configuration. Reservation, policy, audit, API-token, availability, and ordinary member workflows
+are deliberately not implemented yet.
 
 Verified starting point for this implementation slice:
 
@@ -76,6 +77,18 @@ uv run --env-file .env python manage.py check
 uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test
 ```
 
+Validate the sanitized bootstrap inventory without writing rows:
+
+```bash
+uv run --env-file .env python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
+```
+
+Apply it to the local development database only after reviewing the dry-run counts:
+
+```bash
+uv run --env-file .env python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml --apply
+```
+
 Run the local application:
 
 ```bash
@@ -88,6 +101,14 @@ Health endpoints:
 curl http://127.0.0.1:8000/health/live
 curl http://127.0.0.1:8000/health/ready
 ```
+
+Staff-only inventory paths:
+
+- `http://127.0.0.1:8000/assets/`
+- `http://127.0.0.1:8000/api/v1/assets/`
+
+These paths currently require an active staff Django session. Ordinary member login and bearer-token
+agent authentication are not implemented yet.
 
 Generate and validate the current OpenAPI shell:
 
@@ -142,7 +163,9 @@ Current environment variables:
 - `drf-spectacular`: generated OpenAPI schema from implemented DRF views.
 - `drf-spectacular-sidecar`: local Swagger UI CSS, JavaScript, and favicon assets so API
   documentation does not depend on an unpinned CDN resource.
+- `jsonschema`: Draft 2020-12 validation for the sanitized bootstrap inventory schema.
 - `psycopg[binary]`: PostgreSQL driver for Django and health/readiness checks.
+- `PyYAML`: safe parsing for the sanitized bootstrap inventory import command.
 - `gunicorn`: production WSGI process runner used by the container image.
 - `whitenoise`: conservative static-file middleware for the monolith deployment shape.
 

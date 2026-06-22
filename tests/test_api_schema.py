@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 from django.contrib.staticfiles import finders
 from django.core.management import call_command
 from django.test import override_settings
@@ -17,7 +18,9 @@ def test_api_v1_namespace_exists(client) -> None:
     assert response.json() == {
         "name": "SLAIF Asset Reservation API",
         "version": "v1",
-        "endpoints": {},
+        "endpoints": {
+            "assets": "/api/v1/assets/",
+        },
     }
 
 
@@ -29,6 +32,34 @@ def test_openapi_schema_generation_succeeds(tmp_path: Path) -> None:
     schema = schema_path.read_text(encoding="utf-8")
     assert "SLAIF Asset Reservation API" in schema
     assert "/api/v1/" in schema
+    assert "/api/v1/assets/" in schema
+    assert "/api/v1/assets/{asset_id}/" in schema
+
+    parsed_schema = yaml.safe_load(schema)
+    assert "/api/v1/assets/" in parsed_schema["paths"]
+    assert "/api/v1/assets/{asset_id}/" in parsed_schema["paths"]
+
+    list_operation = parsed_schema["paths"]["/api/v1/assets/"]["get"]
+    detail_operation = parsed_schema["paths"]["/api/v1/assets/{asset_id}/"]["get"]
+    list_parameters = {parameter["name"]: parameter for parameter in list_operation["parameters"]}
+    assert {
+        "kind",
+        "parent",
+        "tag",
+        "active",
+        "reservable",
+        "q",
+        "limit",
+        "offset",
+    } <= set(list_parameters)
+    assert list_parameters["parent"]["schema"]["format"] == "uuid"
+    assert detail_operation["parameters"][0]["name"] == "asset_id"
+    assert detail_operation["parameters"][0]["schema"]["format"] == "uuid"
+    assert "Staff-session-authenticated" in list_operation["description"]
+    assert (
+        "Bearer/API-token authentication is intentionally deferred" in list_operation["description"]
+    )
+    assert "Staff-session-authenticated" in detail_operation["description"]
 
 
 @pytest.mark.django_db

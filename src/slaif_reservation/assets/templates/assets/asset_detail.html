@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>{{ asset.name }}</title>
+  </head>
+  <body>
+    <main>
+      <p><a href="{% url 'assets:list' %}">Asset inventory</a></p>
+      <h1>{{ asset.name }}</h1>
+      {% if asset.verification_required %}
+        <p>This asset is unverified and requires administrator verification.</p>
+      {% endif %}
+
+      <dl>
+        <dt>Slug</dt>
+        <dd>{{ asset.slug }}</dd>
+        <dt>Kind</dt>
+        <dd>{{ asset.get_kind_display }}</dd>
+        <dt>Parent</dt>
+        <dd>{% if asset.parent %}{{ asset.parent.name }}{% else %}None{% endif %}</dd>
+        <dt>Description</dt>
+        <dd>{{ asset.description }}</dd>
+        <dt>Timezone</dt>
+        <dd>{{ asset.timezone }}</dd>
+        <dt>Active</dt>
+        <dd>{{ asset.active|yesno:"yes,no" }}</dd>
+        <dt>Reservable</dt>
+        <dd>{{ asset.reservable|yesno:"yes,no" }}</dd>
+        <dt>Verification required</dt>
+        <dd>{{ asset.verification_required|yesno:"yes,no" }}</dd>
+        <dt>Tags</dt>
+        <dd>
+          {% for tag in asset.tags.all %}
+            {{ tag.name }}{% if not forloop.last %}, {% endif %}
+          {% empty %}
+            None
+          {% endfor %}
+        </dd>
+        <dt>Normalized capabilities</dt>
+        <dd>
+          {% if asset.capabilities %}
+            <pre>{{ asset.capabilities }}</pre>
+          {% else %}
+            <span>No verified normalized capabilities.</span>
+          {% endif %}
+        </dd>
+      </dl>
+    </main>
+  </body>
+</html>

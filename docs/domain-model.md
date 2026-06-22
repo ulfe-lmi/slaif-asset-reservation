@@ -124,12 +124,25 @@ Examples of normalized capability keys after administrator verification:
   "vendor": "NVIDIA",
   "model": "A100-SXM4-80GB",
   "memory_gib": 80,
-  "accelerator_family": "ampere",
-  "device_uuid": "GPU-..."
+  "accelerator_family": "ampere"
 }
 ```
 
 Do not populate physical identifiers by guessing from legacy usernames or display order.
+`physical_locator` is internal administrator metadata, not a public normalized capability.
+
+Work Order 0002 implemented the initial `Asset` and `AssetTag` schema with these refinements:
+
+- `AssetTag`: UUID primary key, unique `slug`, `name`, optional `description`, timestamps.
+- `Asset`: UUID primary key, nullable `parent` protected from deletion, unique `slug`, `name`,
+  `kind`, exclusive-only `booking_mode`, `description`, `location`, `timezone`, `active`,
+  `reservable`, JSON `capabilities`, `verification_required`, internal `physical_locator`,
+  optional paired `legacy_source`/`legacy_id`, bounded JSON `legacy_metadata`, tags, timestamps.
+- The first-release hierarchy is limited by validation to machine -> child. Machines cannot have
+  parents and children must have a machine parent.
+- Imported bootstrap rows keep normalized `capabilities` empty until administrator verification.
+- `physical_locator`, legacy IDs, and raw legacy metadata are internal/admin provenance and are not
+  exposed by the temporary staff-only read API.
 
 ## 7. Availability rule
 

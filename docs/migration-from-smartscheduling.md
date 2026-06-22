@@ -35,6 +35,25 @@ Migrate useful reservation-system truth without preserving the wrong salon/appoi
 
 Legacy resource IDs remain provenance only. Several suffixes do not match displayed GPU numbers; never infer identity from them.
 
+Work Order 0002 implements the sanitized bootstrap inventory import:
+
+```bash
+python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
+python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml --apply
+```
+
+The default command is a dry-run and performs no writes. Apply mode validates the complete file
+before mutation and runs atomically. The implemented import creates 17 machine parents and 30 GPU
+children for 47 total `Asset` rows, while excluding the single `chatgptpro` legacy record.
+
+Imported parent machines are not reservable. Imported GPU children keep `verification_required=true`;
+the disabled `askljof` machine/GPU remains inactive and non-reservable. Public hardware display text
+is preserved only as unverified description/provenance. The importer does not populate hostnames,
+physical locators, normalized capabilities, CUDA indices, or GPU UUIDs.
+
+The explicit `neumanngpu4` -> `neumann-gpu-0` mapping comes from the sanitized file content and is
+not derived from the legacy ID suffix.
+
 ## 4. Duration services
 
 The old account contains fixed durations and three distinct 12-hour service IDs. The new system accepts an explicit start/end or duration constrained by policy.

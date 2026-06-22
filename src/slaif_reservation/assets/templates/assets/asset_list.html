@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Asset inventory</title>
+  </head>
+  <body>
+    <main>
+      <h1>Asset inventory</h1>
+
+      <form method="get">
+        <label>
+          Search
+          <input name="q" value="{{ request.GET.q }}">
+        </label>
+        <label>
+          Kind
+          <select name="kind">
+            <option value="">Any</option>
+            {% for value, label in kinds %}
+              <option value="{{ value }}" {% if request.GET.kind == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Parent
+          <select name="parent">
+            <option value="">Any</option>
+            {% for parent in parents %}
+              <option value="{{ parent.id }}" {% if request.GET.parent == parent.id|stringformat:"s" %}selected{% endif %}>{{ parent.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Tag
+          <select name="tag">
+            <option value="">Any</option>
+            {% for tag in tags %}
+              <option value="{{ tag.slug }}" {% if request.GET.tag == tag.slug %}selected{% endif %}>{{ tag.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Active
+          <select name="active">
+            <option value="">Any</option>
+            <option value="true" {% if request.GET.active == "true" %}selected{% endif %}>Active</option>
+            <option value="false" {% if request.GET.active == "false" %}selected{% endif %}>Inactive</option>
+          </select>
+        </label>
+        <label>
+          Reservable
+          <select name="reservable">
+            <option value="">Any</option>
+            <option value="true" {% if request.GET.reservable == "true" %}selected{% endif %}>Reservable</option>
+            <option value="false" {% if request.GET.reservable == "false" %}selected{% endif %}>Not reservable</option>
+          </select>
+        </label>
+        <button type="submit">Filter</button>
+      </form>
+
+      <table>
+        <caption>Staff-only asset inventory</caption>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Kind</th>
+            <th>Parent</th>
+            <th>Active</th>
+            <th>Reservable</th>
+            <th>Verification</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for asset in assets %}
+            <tr>
+              <td><a href="{% url 'assets:detail' asset.id %}">{{ asset.name }}</a></td>
+              <td>{{ asset.get_kind_display }}</td>
+              <td>{% if asset.parent %}{{ asset.parent.name }}{% endif %}</td>
+              <td>{{ asset.active|yesno:"yes,no" }}</td>
+              <td>{{ asset.reservable|yesno:"yes,no" }}</td>
+              <td>{% if asset.verification_required %}unverified{% else %}verified{% endif %}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6">No assets match these filters.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </main>
+  </body>
+</html>

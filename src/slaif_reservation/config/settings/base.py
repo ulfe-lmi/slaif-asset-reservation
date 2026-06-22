@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "drf_spectacular_sidecar",
     "slaif_reservation.accounts",
+    "slaif_reservation.assets",
     "slaif_reservation.api",
     "slaif_reservation.web",
 ]
