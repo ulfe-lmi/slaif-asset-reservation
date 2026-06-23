@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from django.core.exceptions import ValidationError
@@ -23,6 +24,28 @@ FORBIDDEN_METADATA_KEYS = {
 }
 
 
+def _normalized_key(value: Any) -> str:
+    return re.sub(r"[\s-]+", "_", str(value).strip().lower())
+
+
+def _forbidden_keys(value: Any) -> set[str]:
+    if isinstance(value, dict):
+        dict_found = {
+            normalized_key
+            for key in value
+            if (normalized_key := _normalized_key(key)) in FORBIDDEN_METADATA_KEYS
+        }
+        for nested in value.values():
+            dict_found.update(_forbidden_keys(nested))
+        return dict_found
+    if isinstance(value, list):
+        list_found: set[str] = set()
+        for item in value:
+            list_found.update(_forbidden_keys(item))
+        return list_found
+    return set()
+
+
 def validate_audit_metadata(value: Any) -> None:
     if not isinstance(value, dict):
         raise ValidationError("Audit metadata must be a JSON object.")
@@ -31,7 +54,7 @@ def validate_audit_metadata(value: Any) -> None:
     if len(encoded.encode("utf-8")) > MAX_AUDIT_METADATA_BYTES:
         raise ValidationError("Audit metadata is too large.")
 
-    forbidden = FORBIDDEN_METADATA_KEYS & set(value)
+    forbidden = _forbidden_keys(value)
     if forbidden:
         raise ValidationError(
             f"Audit metadata contains forbidden key(s): {', '.join(sorted(forbidden))}."

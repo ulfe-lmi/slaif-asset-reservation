@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections import Counter
 from datetime import timedelta
 
@@ -43,7 +44,7 @@ def make_policy(**overrides: object) -> None:
         "max_concurrent_per_principal": 5,
     }
     values.update(overrides)
-    ReservationPolicy.objects.create(**values)
+    return ReservationPolicy.objects.create(**values)
 
 
 def run_parallel(calls) -> list[str]:
@@ -174,3 +175,87 @@ def test_simultaneous_non_overlapping_creates_serialize_principal_upcoming_limit
 
     assert Counter(outcomes) == Counter([MAX_UPCOMING_EXCEEDED, "committed"])
     assert Reservation.objects.count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_policy_update_waits_for_reservation_operation_policy_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reservation_policy = make_policy(max_upcoming_per_principal=5, max_concurrent_per_principal=5)
+    gpu = make_asset("gpu-a")
+    principal = make_user("a@example.com")
+    admin = User.objects.create_user(
+        email="staff@example.com",
+        password="not-a-secret",
+        is_staff=True,
+    )
+    now = timezone.now()
+    start = now + timedelta(minutes=10)
+    policy_locked = threading.Event()
+    release_reservation = threading.Event()
+    outcomes: list[str] = []
+    outcomes_lock = threading.Lock()
+    original_overlap = services._raise_if_asset_overlap
+
+    def pause_after_policy_lock(*args: object, **kwargs: object) -> None:
+        policy_locked.set()
+        assert release_reservation.wait(timeout=10)
+        original_overlap(*args, **kwargs)
+
+    monkeypatch.setattr(services, "_raise_if_asset_overlap", pause_after_policy_lock)
+
+    def create_call() -> None:
+        close_old_connections()
+        try:
+            services.create_reservation(
+                asset=gpu,
+                requested_by_user=principal,
+                start_at=start,
+                end_at=start + timedelta(minutes=30),
+                purpose="",
+                now=now,
+            )
+            outcome = "reservation_committed"
+        except ReservationDomainError as exc:
+            outcome = exc.code
+        finally:
+            close_old_connections()
+        with outcomes_lock:
+            outcomes.append(outcome)
+
+    def update_call() -> None:
+        close_old_connections()
+        try:
+            services.update_policy(
+                policy=reservation_policy,
+                actor_user=admin,
+                max_duration_minutes=300,
+            )
+            outcome = "policy_updated"
+        except ReservationDomainError as exc:
+            outcome = exc.code
+        finally:
+            close_old_connections()
+        with outcomes_lock:
+            outcomes.append(outcome)
+
+    create_thread = threading.Thread(target=create_call)
+    create_thread.start()
+    assert policy_locked.wait(timeout=10)
+
+    update_thread = threading.Thread(target=update_call)
+    update_thread.start()
+    time.sleep(0.25)
+    assert update_thread.is_alive()
+    reservation_policy.refresh_from_db()
+    assert reservation_policy.max_duration_minutes == 240
+
+    release_reservation.set()
+    create_thread.join(timeout=10)
+    update_thread.join(timeout=10)
+
+    assert not create_thread.is_alive()
+    assert not update_thread.is_alive()
+    assert Counter(outcomes) == Counter(["reservation_committed", "policy_updated"])
+    reservation_policy.refresh_from_db()
+    assert reservation_policy.max_duration_minutes == 300

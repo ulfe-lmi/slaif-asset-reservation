@@ -12,6 +12,30 @@ from django.db.models import F, Q, Value
 from django.db.models.expressions import Func
 
 from slaif_reservation.assets.models import Asset
+from slaif_reservation.reservations.time_utils import InstantError, require_aware_utc
+
+SERVICE_UPDATE_ATTR = "_slaif_reservation_service_update"
+
+
+class ProtectedMutationQuerySet(models.QuerySet[Any]):
+    def update(self, **kwargs: Any) -> int:
+        raise ValidationError("Reservation domain rows must be changed through services.")
+
+    def delete(self) -> tuple[int, dict[str, int]]:
+        raise ValidationError("Reservation domain rows cannot be hard-deleted.")
+
+
+ProtectedMutationManagerBase = models.Manager.from_queryset(ProtectedMutationQuerySet)
+
+
+class ProtectedMutationManager(ProtectedMutationManagerBase[Any]):
+    def bulk_update(
+        self,
+        objs: Any,
+        fields: Any,
+        batch_size: int | None = None,
+    ) -> int:
+        raise ValidationError("Reservation domain rows must be changed through services.")
 
 
 class TsTzRange(Func):
@@ -40,6 +64,8 @@ class ReservationPolicy(models.Model):
     purpose_required = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ProtectedMutationManager()
 
     class Meta:
         ordering = ["name", "id"]
@@ -89,10 +115,20 @@ class ReservationPolicy(models.Model):
             return f"{self.name} ({self.asset})"
         return f"{self.name} (global)"
 
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding and not getattr(self, SERVICE_UPDATE_ATTR, False):
+            raise ValidationError("Reservation policies must be changed through audited services.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args: object, **kwargs: object) -> tuple[int, dict[str, int]]:
+        raise ValidationError("Reservation policies cannot be hard-deleted.")
+
     def clean(self) -> None:
         super().clean()
         errors: dict[str, list[str]] = {}
-        if self.asset is not None and self.asset.kind not in {Asset.KIND_MACHINE, Asset.KIND_GPU}:
+        if self.asset is not None and not (
+            self.asset.kind == Asset.KIND_MACHINE or self.asset.parent_id is not None
+        ):
             errors.setdefault("asset", []).append(
                 "Policy asset target must be a machine or child asset."
             )
@@ -162,6 +198,8 @@ class Reservation(models.Model):
     cancellation_reason = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ProtectedMutationManager()
 
     class Meta:
         ordering = ["start_at", "id"]
@@ -253,19 +291,37 @@ class Reservation(models.Model):
     def __str__(self) -> str:
         return f"{self.asset} {self.start_at.isoformat()}-{self.effective_end_at.isoformat()}"
 
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding and not getattr(self, SERVICE_UPDATE_ATTR, False):
+            raise ValidationError("Reservations must be changed through authoritative services.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args: object, **kwargs: object) -> tuple[int, dict[str, int]]:
+        raise ValidationError("Reservations cannot be hard-deleted.")
+
     def clean(self) -> None:
         super().clean()
         errors: dict[str, list[str]] = {}
+        instants: dict[str, Any] = {}
         for field in ("start_at", "end_at", "effective_end_at", "released_at", "cancelled_at"):
             value = getattr(self, field)
-            if value is not None and value.tzinfo is None:
-                errors.setdefault(field, []).append("Timestamp must be timezone-aware.")
+            if value is None:
+                continue
+            try:
+                instants[field] = require_aware_utc(value, field_name=field)
+            except InstantError as exc:
+                errors.setdefault(field, []).append(str(exc))
 
-        if self.end_at <= self.start_at:
+        start_at = instants.get("start_at")
+        end_at = instants.get("end_at")
+        effective_end_at = instants.get("effective_end_at")
+        released_at = instants.get("released_at")
+
+        if start_at is not None and end_at is not None and end_at <= start_at:
             errors.setdefault("end_at", []).append("End must be after start.")
-        if self.effective_end_at <= self.start_at:
+        if start_at is not None and effective_end_at is not None and effective_end_at <= start_at:
             errors.setdefault("effective_end_at", []).append("Effective end must be after start.")
-        if self.effective_end_at > self.end_at:
+        if end_at is not None and effective_end_at is not None and effective_end_at > end_at:
             errors.setdefault("effective_end_at", []).append("Effective end cannot exceed end.")
         if self.source not in {
             self.SOURCE_WEB,
@@ -278,7 +334,7 @@ class Reservation(models.Model):
             errors.setdefault("status", []).append("Unsupported reservation status.")
 
         if self.status == self.STATUS_CONFIRMED:
-            if self.effective_end_at != self.end_at:
+            if effective_end_at is not None and end_at is not None and effective_end_at != end_at:
                 errors.setdefault("effective_end_at", []).append(
                     "Confirmed reservations end at end_at."
                 )
@@ -300,7 +356,7 @@ class Reservation(models.Model):
                 errors.setdefault("released_at", []).append(
                     "Cancelled reservations cannot be released."
                 )
-            if self.effective_end_at != self.end_at:
+            if effective_end_at is not None and end_at is not None and effective_end_at != end_at:
                 errors.setdefault("effective_end_at", []).append(
                     "Cancelled reservations keep original end."
                 )
@@ -309,7 +365,12 @@ class Reservation(models.Model):
                 errors.setdefault("released_at", []).append(
                     "Released reservations require released_at."
                 )
-            elif not (self.start_at < self.released_at < self.end_at):
+            elif (
+                start_at is not None
+                and end_at is not None
+                and released_at is not None
+                and not (start_at < released_at < end_at)
+            ):
                 errors.setdefault("released_at", []).append(
                     "Release must be within the reservation."
                 )
@@ -317,7 +378,12 @@ class Reservation(models.Model):
                 errors.setdefault("status", []).append(
                     "Released reservations cannot have cancellation fields."
                 )
-            if self.released_at and self.effective_end_at != self.released_at:
+            if (
+                self.released_at
+                and effective_end_at is not None
+                and released_at is not None
+                and effective_end_at != released_at
+            ):
                 errors.setdefault("effective_end_at", []).append(
                     "Released reservations end at released_at."
                 )
@@ -335,12 +401,21 @@ class ReservationLifecycle(models.TextChoices):
 
 
 def derive_lifecycle(reservation: Reservation, *, at: Any) -> ReservationLifecycle:
+    try:
+        at_utc = require_aware_utc(at, field_name="at")
+        start_at = require_aware_utc(reservation.start_at, field_name="start_at")
+        effective_end_at = require_aware_utc(
+            reservation.effective_end_at, field_name="effective_end_at"
+        )
+    except InstantError as exc:
+        raise ValidationError(str(exc)) from exc
+
     if reservation.status == Reservation.STATUS_CANCELLED:
         return ReservationLifecycle.CANCELLED
     if reservation.status == Reservation.STATUS_RELEASED:
         return ReservationLifecycle.RELEASED
-    if reservation.start_at > at:
+    if start_at > at_utc:
         return ReservationLifecycle.UPCOMING
-    if reservation.effective_end_at <= at:
+    if effective_end_at <= at_utc:
         return ReservationLifecycle.COMPLETED
     return ReservationLifecycle.ACTIVE

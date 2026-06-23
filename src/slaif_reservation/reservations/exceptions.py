@@ -10,6 +10,8 @@ class ReservationDomainError(Exception):
 
 POLICY_NOT_CONFIGURED = "policy_not_configured"
 POLICY_AMBIGUOUS = "policy_ambiguous"
+POLICY_MUTATION_NOT_AUTHORIZED = "policy_mutation_not_authorized"
+INVALID_POLICY_UPDATE = "invalid_policy_update"
 PRINCIPAL_INACTIVE = "principal_inactive"
 ASSET_INACTIVE = "asset_inactive"
 ASSET_NOT_RESERVABLE = "asset_not_reservable"

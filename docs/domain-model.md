@@ -203,6 +203,9 @@ flag, min/max duration, booking horizon, lead time, cancellation cutoff, upcomin
 principal limits, purpose requirement, and timestamps. A `NULL` asset is the active global policy.
 No project, group, tag, or effective-date targeting exists in this slice.
 
+Policy targets may be the global policy, a machine, or any specific child asset such as a GPU,
+CPU pool, or service. Orphan non-machine assets are rejected as policy targets.
+
 Implemented resolution order:
 
 1. asset-specific active policy;
@@ -213,7 +216,9 @@ Ambiguous equal-priority policy is a configuration error and fails closed.
 
 Active policy uniqueness is enforced for a specific asset and for the global policy. Numeric policy
 fields are constrained so durations and limits fail closed before mutation. Policies are intended to
-be deactivated rather than hard-deleted.
+be deactivated rather than hard-deleted. Policy creation, update, and deactivation are staff-only
+service operations that write audit events; ordinary model updates, queryset updates, and hard
+deletes are blocked at the application/ORM layer.
 
 ## 10. Reservation
 
@@ -247,6 +252,16 @@ Do not persist a `completed` status merely because the clock passed; derive it u
 `end_at` is immutable original history. `effective_end_at` initially equals `end_at` and is set to
 `released_at` on early release. Confirmed and released rows block `[start_at, effective_end_at)` by
 the PostgreSQL exclusion constraint `reservation_no_overlap_per_asset`; cancelled rows do not block.
+After creation, reservation identity/history fields such as asset, requester, source, `start_at`,
+and `end_at` are not ordinary mutable fields. Cancellation and release services update only their
+intended lifecycle fields and write audit evidence in the same transaction.
+
+Reservation creation grants new entitlement and therefore requires an active, reservable,
+exclusive-mode asset plus a locked effective policy. Cancellation is a pre-start lifecycle operation
+that still evaluates the policy cutoff. Release reduces an active entitlement and may proceed for an
+authorized owner or active staff user even if the asset or policy was later deactivated. All
+duration, lifecycle, lead, horizon, cutoff, overlap, and counter calculations use UTC-normalized
+absolute instants.
 
 ## 11. Audit event
 
@@ -263,9 +278,12 @@ Initial actions:
 - `reservation_policy.updated`
 - `reservation_policy.deactivated`
 
-Audit metadata intentionally excludes passwords, tokens, cookies, raw request bodies, email
-addresses, reservation purpose, cancellation reason text, and private physical locators. This is
-append-only application evidence, not a tamper-proof ledger.
+Audit metadata intentionally excludes passwords, tokens, cookies, authorization values, raw request
+bodies, email addresses, reservation purpose, cancellation reason text, and private physical
+locators. The validator checks nested dictionaries and lists with case-insensitive key comparison
+and normalizes spaces/hyphens to underscores. Audit events are append-only through normal model,
+queryset, bulk-update, delete, and admin paths. This is application evidence, not a tamper-proof
+ledger against privileged database operators.
 
 ## 12. Idempotency record
 

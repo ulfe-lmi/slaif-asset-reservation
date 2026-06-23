@@ -20,11 +20,13 @@ from slaif_reservation.reservations.exceptions import (
     CANCELLATION_CUTOFF,
     DURATION_TOO_LONG,
     DURATION_TOO_SHORT,
+    INVALID_POLICY_UPDATE,
     INVALID_TIME_RANGE,
     LEAD_TIME_VIOLATION,
     MAX_CONCURRENT_EXCEEDED,
     MAX_UPCOMING_EXCEEDED,
     POLICY_AMBIGUOUS,
+    POLICY_MUTATION_NOT_AUTHORIZED,
     POLICY_NOT_CONFIGURED,
     PRINCIPAL_INACTIVE,
     PURPOSE_REQUIRED,
@@ -36,7 +38,12 @@ from slaif_reservation.reservations.exceptions import (
     UNSUPPORTED_BOOKING_MODE,
     ReservationDomainError,
 )
-from slaif_reservation.reservations.models import Reservation, ReservationPolicy
+from slaif_reservation.reservations.models import (
+    SERVICE_UPDATE_ATTR,
+    Reservation,
+    ReservationPolicy,
+)
+from slaif_reservation.reservations.time_utils import InstantError, require_aware_utc
 
 UserModel = get_user_model()
 
@@ -61,6 +68,23 @@ def _raise(code: str, message: str) -> None:
     raise ReservationDomainError(code, message)
 
 
+def _instant(value: datetime, *, field_name: str) -> datetime:
+    try:
+        return require_aware_utc(value, field_name=field_name)
+    except InstantError as exc:
+        _raise(INVALID_TIME_RANGE, str(exc))
+    raise AssertionError("unreachable")
+
+
+def _service_save(instance: Any) -> None:
+    setattr(instance, SERVICE_UPDATE_ATTR, True)
+    try:
+        instance.save()
+    finally:
+        if hasattr(instance, SERVICE_UPDATE_ATTR):
+            delattr(instance, SERVICE_UPDATE_ATTR)
+
+
 def _lock_principal(principal: Any) -> Any:
     locked = UserModel.objects.select_for_update().get(pk=principal.pk)
     if not locked.is_active:
@@ -68,8 +92,22 @@ def _lock_principal(principal: Any) -> Any:
     return locked
 
 
+def _lock_staff_actor(actor_user: Any) -> Any:
+    actor = _lock_principal(actor_user)
+    if not actor.is_staff:
+        _raise(POLICY_MUTATION_NOT_AUTHORIZED, "Policy mutation requires an active staff user.")
+    return actor
+
+
 def _lock_asset(asset: Asset) -> Asset:
     locked = Asset.objects.select_for_update().get(pk=asset.pk)
+    if locked.parent_id:
+        locked.parent = Asset.objects.get(pk=locked.parent_id)
+    return locked
+
+
+def _lock_asset_by_id(asset_id: Any) -> Asset:
+    locked = Asset.objects.select_for_update().get(pk=asset_id)
     if locked.parent_id:
         locked.parent = Asset.objects.get(pk=locked.parent_id)
     return locked
@@ -84,25 +122,21 @@ def _validate_asset(asset: Asset) -> None:
         _raise(UNSUPPORTED_BOOKING_MODE, "Only exclusive assets are supported.")
 
 
-def _asset_for_reservation(reservation: Reservation) -> Asset:
-    asset = Asset.objects.get(pk=reservation.asset_id)
-    if asset.parent_id:
-        asset.parent = Asset.objects.get(pk=asset.parent_id)
-    return asset
+def _active_policies_for(query: Q, *, for_update: bool = False) -> list[ReservationPolicy]:
+    queryset = ReservationPolicy.objects.filter(active=True).filter(query).order_by("id")
+    if for_update:
+        queryset = queryset.select_for_update()
+    return list(queryset[:2])
 
 
-def _active_policies_for(query: Q) -> list[ReservationPolicy]:
-    return list(ReservationPolicy.objects.filter(active=True).filter(query)[:2])
-
-
-def resolve_effective_policy(asset: Asset) -> ReservationPolicy:
+def _resolve_effective_policy(asset: Asset, *, for_update: bool) -> ReservationPolicy:
     candidates: list[tuple[str, Q]] = [("asset", Q(asset=asset))]
     if asset.parent_id:
         candidates.append(("parent", Q(asset=asset.parent)))
     candidates.append(("global", Q(asset__isnull=True)))
 
     for _level, query in candidates:
-        policies = _active_policies_for(query)
+        policies = _active_policies_for(query, for_update=for_update)
         if len(policies) > 1:
             _raise(POLICY_AMBIGUOUS, "Multiple active policies match at the same priority.")
         if len(policies) == 1:
@@ -112,9 +146,15 @@ def resolve_effective_policy(asset: Asset) -> ReservationPolicy:
     raise AssertionError("unreachable")
 
 
+def resolve_effective_policy(asset: Asset) -> ReservationPolicy:
+    return _resolve_effective_policy(asset, for_update=False)
+
+
+def lock_effective_policy(asset: Asset) -> ReservationPolicy:
+    return _resolve_effective_policy(asset, for_update=True)
+
+
 def _validate_time_range(start_at: datetime, end_at: datetime, now: datetime) -> timedelta:
-    if start_at.tzinfo is None or end_at.tzinfo is None:
-        _raise(INVALID_TIME_RANGE, "Reservation timestamps must be timezone-aware.")
     if end_at <= start_at:
         _raise(INVALID_TIME_RANGE, "Reservation end must be after start.")
     if start_at < now:
@@ -175,9 +215,7 @@ def _raise_if_asset_overlap(asset: Asset, start_at: Any, end_at: Any) -> None:
 def _is_named_reservation_constraint(exc: IntegrityError) -> bool:
     cause = getattr(exc, "__cause__", None)
     constraint_name = getattr(getattr(cause, "diag", None), "constraint_name", None)
-    if constraint_name == Reservation.EXCLUSION_CONSTRAINT_NAME:
-        return True
-    return Reservation.EXCLUSION_CONSTRAINT_NAME in str(exc)
+    return constraint_name == Reservation.EXCLUSION_CONSTRAINT_NAME
 
 
 def create_reservation(
@@ -191,35 +229,38 @@ def create_reservation(
     now: Any | None = None,
     correlation_id: uuid.UUID | None = None,
 ) -> ReservationMutationResult:
-    now = now or timezone.now()
+    now = timezone.now() if now is None else now
+    now_utc = _instant(now, field_name="now")
+    start_utc = _instant(start_at, field_name="start_at")
+    end_utc = _instant(end_at, field_name="end_at")
     correlation = _correlation(correlation_id)
 
     with transaction.atomic():
         principal = _lock_principal(requested_by_user)
         locked_asset = _lock_asset(asset)
         _validate_asset(locked_asset)
-        policy = resolve_effective_policy(locked_asset)
+        policy = lock_effective_policy(locked_asset)
         _enforce_policy(
             policy=policy,
             principal=principal,
-            start_at=start_at,
-            end_at=end_at,
+            start_at=start_utc,
+            end_at=end_utc,
             purpose=purpose,
-            now=now,
+            now=now_utc,
         )
-        _raise_if_asset_overlap(locked_asset, start_at, end_at)
+        _raise_if_asset_overlap(locked_asset, start_utc, end_utc)
 
         reservation = Reservation(
             asset=locked_asset,
             requested_by_user=principal,
             source=source,
             status=Reservation.STATUS_CONFIRMED,
-            start_at=start_at,
-            end_at=end_at,
-            effective_end_at=end_at,
+            start_at=start_utc,
+            end_at=end_utc,
+            effective_end_at=end_utc,
             purpose=purpose,
         )
-        reservation.full_clean()
+        reservation.full_clean(validate_constraints=False)
 
         try:
             with transaction.atomic():
@@ -241,8 +282,8 @@ def create_reservation(
             actor_user=principal,
             metadata={
                 "asset_id": str(locked_asset.id),
-                "start_at": start_at.isoformat(),
-                "end_at": end_at.isoformat(),
+                "start_at": start_utc.isoformat(),
+                "end_at": end_utc.isoformat(),
             },
         )
         return ReservationMutationResult(reservation=reservation, correlation_id=correlation)
@@ -261,7 +302,8 @@ def cancel_reservation(
     now: Any | None = None,
     correlation_id: uuid.UUID | None = None,
 ) -> ReservationMutationResult:
-    now = now or timezone.now()
+    now = timezone.now() if now is None else now
+    now_utc = _instant(now, field_name="now")
     correlation = _correlation(correlation_id)
 
     with transaction.atomic():
@@ -273,20 +315,22 @@ def cancel_reservation(
         )
         if not _authorized_for_existing_reservation(requester, locked):
             _raise(RESERVATION_NOT_OWNED, "Requester cannot cancel this reservation.")
-        if locked.status != Reservation.STATUS_CONFIRMED or locked.start_at <= now:
+        locked_asset = _lock_asset_by_id(locked.asset_id)
+        start_utc = _instant(locked.start_at, field_name="start_at")
+        if locked.status != Reservation.STATUS_CONFIRMED or start_utc <= now_utc:
             _raise(RESERVATION_NOT_CANCELLABLE, "Reservation is not cancellable.")
-        policy = resolve_effective_policy(_asset_for_reservation(locked))
-        cutoff_at = locked.start_at - timedelta(minutes=policy.cancellation_cutoff_minutes)
-        if now > cutoff_at:
+        policy = lock_effective_policy(locked_asset)
+        cutoff_at = start_utc - timedelta(minutes=policy.cancellation_cutoff_minutes)
+        if now_utc > cutoff_at:
             _raise(CANCELLATION_CUTOFF, "Reservation is past the cancellation cutoff.")
 
         locked.status = Reservation.STATUS_CANCELLED
-        locked.cancelled_at = now
+        locked.cancelled_at = now_utc
         locked.cancelled_by = requester
         locked.cancellation_reason = reason
         locked.effective_end_at = locked.end_at
         locked.full_clean()
-        locked.save()
+        _service_save(locked)
         append_audit_event(
             action=AuditEvent.ACTION_RESERVATION_CANCELLED,
             target_type="reservation",
@@ -307,7 +351,8 @@ def release_reservation(
     now: Any | None = None,
     correlation_id: uuid.UUID | None = None,
 ) -> ReservationMutationResult:
-    now = now or timezone.now()
+    now = timezone.now() if now is None else now
+    now_utc = _instant(now, field_name="now")
     correlation = _correlation(correlation_id)
 
     with transaction.atomic():
@@ -319,17 +364,19 @@ def release_reservation(
         )
         if not _authorized_for_existing_reservation(requester, locked):
             _raise(RESERVATION_NOT_OWNED, "Requester cannot release this reservation.")
+        _lock_asset_by_id(locked.asset_id)
+        start_utc = _instant(locked.start_at, field_name="start_at")
+        effective_end_utc = _instant(locked.effective_end_at, field_name="effective_end_at")
         if locked.status != Reservation.STATUS_CONFIRMED or not (
-            locked.start_at < now < locked.effective_end_at
+            start_utc < now_utc < effective_end_utc
         ):
             _raise(RESERVATION_NOT_RELEASABLE, "Reservation is not releasable.")
-        resolve_effective_policy(_asset_for_reservation(locked))
 
         locked.status = Reservation.STATUS_RELEASED
-        locked.released_at = now
-        locked.effective_end_at = now
+        locked.released_at = now_utc
+        locked.effective_end_at = now_utc
         locked.full_clean()
-        locked.save()
+        _service_save(locked)
         append_audit_event(
             action=AuditEvent.ACTION_RESERVATION_RELEASED,
             target_type="reservation",
@@ -337,9 +384,32 @@ def release_reservation(
             correlation_id=correlation,
             source=source,
             actor_user=requester,
-            metadata={"asset_id": str(locked.asset_id), "released_at": now.isoformat()},
+            metadata={"asset_id": str(locked.asset_id), "released_at": now_utc.isoformat()},
         )
         return ReservationMutationResult(reservation=locked, correlation_id=correlation)
+
+
+MUTABLE_POLICY_FIELDS = {
+    "name",
+    "asset",
+    "min_duration_minutes",
+    "max_duration_minutes",
+    "booking_horizon_days",
+    "min_lead_minutes",
+    "cancellation_cutoff_minutes",
+    "max_upcoming_per_principal",
+    "max_concurrent_per_principal",
+    "purpose_required",
+}
+
+
+def _validate_policy_update_fields(values: dict[str, Any]) -> None:
+    invalid = sorted(set(values) - MUTABLE_POLICY_FIELDS)
+    if invalid:
+        _raise(
+            INVALID_POLICY_UPDATE,
+            f"Policy update contains immutable or unknown field(s): {', '.join(invalid)}.",
+        )
 
 
 def create_policy(
@@ -351,7 +421,7 @@ def create_policy(
 ) -> PolicyMutationResult:
     correlation = _correlation(correlation_id)
     with transaction.atomic():
-        actor = _lock_principal(actor_user)
+        actor = _lock_staff_actor(actor_user)
         policy = ReservationPolicy(**values)
         policy.full_clean()
         policy.save()
@@ -377,12 +447,13 @@ def update_policy(
 ) -> PolicyMutationResult:
     correlation = _correlation(correlation_id)
     with transaction.atomic():
-        actor = _lock_principal(actor_user)
+        actor = _lock_staff_actor(actor_user)
+        _validate_policy_update_fields(values)
         locked = ReservationPolicy.objects.select_for_update().get(pk=policy.pk)
         for field, value in values.items():
             setattr(locked, field, value)
         locked.full_clean()
-        locked.save()
+        _service_save(locked)
         append_audit_event(
             action=AuditEvent.ACTION_POLICY_UPDATED,
             target_type="reservation_policy",
@@ -404,11 +475,11 @@ def deactivate_policy(
 ) -> PolicyMutationResult:
     correlation = _correlation(correlation_id)
     with transaction.atomic():
-        actor = _lock_principal(actor_user)
+        actor = _lock_staff_actor(actor_user)
         locked = ReservationPolicy.objects.select_for_update().get(pk=policy.pk)
         locked.active = False
         locked.full_clean()
-        locked.save()
+        _service_save(locked)
         append_audit_event(
             action=AuditEvent.ACTION_POLICY_DEACTIVATED,
             target_type="reservation_policy",

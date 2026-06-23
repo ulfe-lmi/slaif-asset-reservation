@@ -4,8 +4,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from django.utils import timezone
+
 
 class LocalTimeError(ValueError):
+    pass
+
+
+class InstantError(ValueError):
     pass
 
 
@@ -15,6 +21,12 @@ class LocalTimeResult:
     instant: datetime
     timezone: str
     fold: int
+
+
+def require_aware_utc(value: datetime, *, field_name: str = "datetime") -> datetime:
+    if not isinstance(value, datetime) or not timezone.is_aware(value):
+        raise InstantError(f"{field_name} must be timezone-aware.")
+    return value.astimezone(UTC)
 
 
 def interpret_local_wall_time(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.db import IntegrityError
@@ -17,10 +18,13 @@ from slaif_reservation.reservations.exceptions import (
     CANCELLATION_CUTOFF,
     DURATION_TOO_LONG,
     DURATION_TOO_SHORT,
+    INVALID_POLICY_UPDATE,
+    INVALID_TIME_RANGE,
     LEAD_TIME_VIOLATION,
     MAX_CONCURRENT_EXCEEDED,
     MAX_UPCOMING_EXCEEDED,
     POLICY_AMBIGUOUS,
+    POLICY_MUTATION_NOT_AUTHORIZED,
     POLICY_NOT_CONFIGURED,
     PRINCIPAL_INACTIVE,
     PURPOSE_REQUIRED,
@@ -72,6 +76,7 @@ def assert_domain_error(code: str):
 
 @pytest.mark.django_db
 def test_policy_resolution_order_asset_parent_global() -> None:
+    admin = user("staff@example.com", is_staff=True)
     machine = asset("machine-a", kind=Asset.KIND_MACHINE, reservable=False)
     child = asset("machine-a-gpu-0", parent=machine)
     global_policy = policy(name="global")
@@ -79,11 +84,9 @@ def test_policy_resolution_order_asset_parent_global() -> None:
     asset_policy = policy(name="asset", asset=child)
 
     assert services.resolve_effective_policy(child) == asset_policy
-    asset_policy.active = False
-    asset_policy.save()
+    services.deactivate_policy(policy=asset_policy, actor_user=admin)
     assert services.resolve_effective_policy(child) == parent_policy
-    parent_policy.active = False
-    parent_policy.save()
+    services.deactivate_policy(policy=parent_policy, actor_user=admin)
     assert services.resolve_effective_policy(child) == global_policy
 
 
@@ -108,7 +111,11 @@ def test_equal_priority_policy_ambiguity_fails_closed(monkeypatch: pytest.Monkey
         max_upcoming_per_principal=1,
         max_concurrent_per_principal=1,
     )
-    monkeypatch.setattr(services, "_active_policies_for", lambda _query: [first, second])
+    monkeypatch.setattr(
+        services,
+        "_active_policies_for",
+        lambda _query, for_update=False: [first, second],
+    )
 
     with assert_domain_error(POLICY_AMBIGUOUS):
         services.resolve_effective_policy(gpu)
@@ -136,6 +143,123 @@ def test_create_reservation_success_writes_matching_audit_event() -> None:
     assert event.target_id == result.reservation.id
     assert event.correlation_id == result.correlation_id
     assert "purpose" not in event.metadata
+
+
+@pytest.mark.django_db
+def test_spring_dst_duration_uses_absolute_instants() -> None:
+    principal = user()
+    gpu = asset()
+    policy(max_duration_minutes=60)
+    now = datetime(2026, 3, 28, 12, 0, tzinfo=ZoneInfo("Europe/Ljubljana"))
+    start = datetime(2026, 3, 29, 1, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+    end = datetime(2026, 3, 29, 3, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+
+    result = services.create_reservation(
+        asset=gpu,
+        requested_by_user=principal,
+        start_at=start,
+        end_at=end,
+        purpose="",
+        now=now,
+    )
+
+    assert result.reservation.start_at.isoformat() == "2026-03-29T00:30:00+00:00"
+    assert result.reservation.end_at.isoformat() == "2026-03-29T01:30:00+00:00"
+
+
+@pytest.mark.django_db
+def test_spring_dst_duration_rejects_smaller_absolute_maximum() -> None:
+    principal = user()
+    gpu = asset()
+    policy(max_duration_minutes=59)
+    now = datetime(2026, 3, 28, 12, 0, tzinfo=ZoneInfo("Europe/Ljubljana"))
+    start = datetime(2026, 3, 29, 1, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+    end = datetime(2026, 3, 29, 3, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+
+    with assert_domain_error(DURATION_TOO_LONG):
+        services.create_reservation(
+            asset=gpu,
+            requested_by_user=principal,
+            start_at=start,
+            end_at=end,
+            purpose="",
+            now=now,
+        )
+
+
+@pytest.mark.django_db
+def test_fall_dst_duration_uses_absolute_instants() -> None:
+    principal = user()
+    gpu = asset()
+    policy(max_duration_minutes=180)
+    now = datetime(2026, 10, 24, 12, 0, tzinfo=ZoneInfo("Europe/Ljubljana"))
+    start = datetime(2026, 10, 25, 1, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+    end = datetime(2026, 10, 25, 3, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+
+    services.create_reservation(
+        asset=gpu,
+        requested_by_user=principal,
+        start_at=start,
+        end_at=end,
+        purpose="",
+        now=now,
+    )
+
+    assert Reservation.objects.get().end_at.isoformat() == "2026-10-25T02:30:00+00:00"
+
+
+@pytest.mark.django_db
+def test_fall_dst_duration_rejects_smaller_absolute_maximum() -> None:
+    principal = user()
+    gpu = asset()
+    policy(max_duration_minutes=179)
+    now = datetime(2026, 10, 24, 12, 0, tzinfo=ZoneInfo("Europe/Ljubljana"))
+    start = datetime(2026, 10, 25, 1, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+    end = datetime(2026, 10, 25, 3, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+
+    with assert_domain_error(DURATION_TOO_LONG):
+        services.create_reservation(
+            asset=gpu,
+            requested_by_user=principal,
+            start_at=start,
+            end_at=end,
+            purpose="",
+            now=now,
+        )
+
+
+@pytest.mark.django_db
+def test_lead_and_horizon_boundaries_use_absolute_instants_across_dst_change() -> None:
+    principal = user()
+    first_gpu = asset()
+    second_gpu = asset("asset-b")
+    policy(
+        min_lead_minutes=24 * 60,
+        booking_horizon_days=1,
+        max_upcoming_per_principal=5,
+    )
+    now = datetime(2026, 3, 28, 1, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+    exact_start = datetime(2026, 3, 29, 1, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+    too_late = datetime(2026, 3, 29, 3, 30, tzinfo=ZoneInfo("Europe/Ljubljana"))
+
+    services.create_reservation(
+        asset=first_gpu,
+        requested_by_user=principal,
+        start_at=exact_start,
+        end_at=exact_start + timedelta(minutes=30),
+        purpose="",
+        now=now,
+    )
+
+    with assert_domain_error(BOOKING_HORIZON_VIOLATION):
+        services.create_reservation(
+            asset=second_gpu,
+            requested_by_user=principal,
+            start_at=too_late,
+            end_at=too_late + timedelta(minutes=30),
+            purpose="",
+            now=now,
+        )
 
 
 @pytest.mark.django_db
@@ -293,6 +417,65 @@ def test_conflict_produces_stable_code_and_no_failed_audit() -> None:
     assert AuditEvent.objects.count() == audit_count
 
 
+@pytest.mark.django_db(transaction=True)
+def test_named_exclusion_constraint_conflict_is_translated_without_audit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    principal = user()
+    gpu = asset()
+    policy(max_upcoming_per_principal=5, max_concurrent_per_principal=5)
+    now = timezone.now()
+    start = now + timedelta(hours=1)
+    services.create_reservation(
+        asset=gpu,
+        requested_by_user=principal,
+        start_at=start,
+        end_at=start + timedelta(hours=1),
+        purpose="",
+        now=now,
+    )
+    audit_count = AuditEvent.objects.count()
+    monkeypatch.setattr(services, "_raise_if_asset_overlap", lambda *args, **kwargs: None)
+
+    with assert_domain_error(RESERVATION_CONFLICT):
+        services.create_reservation(
+            asset=gpu,
+            requested_by_user=principal,
+            start_at=start + timedelta(minutes=15),
+            end_at=start + timedelta(minutes=45),
+            purpose="",
+            now=now,
+        )
+
+    assert AuditEvent.objects.count() == audit_count
+
+
+@pytest.mark.django_db
+def test_unrelated_integrity_error_is_reraised(monkeypatch: pytest.MonkeyPatch) -> None:
+    principal = user()
+    gpu = asset()
+    policy()
+    now = timezone.now()
+    start = now + timedelta(hours=1)
+    original_save = Reservation.save
+
+    def fail_save(self: Reservation, *args: object, **kwargs: object) -> None:
+        raise IntegrityError("unrelated failure")
+
+    monkeypatch.setattr(Reservation, "save", fail_save)
+    with pytest.raises(IntegrityError, match="unrelated failure"):
+        services.create_reservation(
+            asset=gpu,
+            requested_by_user=principal,
+            start_at=start,
+            end_at=start + timedelta(minutes=30),
+            purpose="",
+            now=now,
+        )
+    monkeypatch.setattr(Reservation, "save", original_save)
+    assert AuditEvent.objects.count() == 0
+
+
 @pytest.mark.django_db
 def test_upcoming_limit() -> None:
     principal = user()
@@ -443,6 +626,92 @@ def test_release_authorization_active_requirement_transition_and_audit() -> None
 
 
 @pytest.mark.django_db
+def test_cancel_and_release_reject_naive_injected_clock() -> None:
+    owner = user()
+    gpu = asset()
+    policy()
+    now = timezone.now()
+    start = now + timedelta(hours=1)
+    reservation = services.create_reservation(
+        asset=gpu,
+        requested_by_user=owner,
+        start_at=start,
+        end_at=start + timedelta(hours=1),
+        purpose="",
+        now=now,
+    ).reservation
+
+    with assert_domain_error(INVALID_TIME_RANGE):
+        services.cancel_reservation(
+            reservation=reservation,
+            requested_by_user=owner,
+            now=datetime(2026, 1, 1, 12, 0),
+        )
+    with assert_domain_error(INVALID_TIME_RANGE):
+        services.release_reservation(
+            reservation=reservation,
+            requested_by_user=owner,
+            now=datetime(2026, 1, 1, 12, 0),
+        )
+
+
+@pytest.mark.django_db
+def test_staff_can_release_another_users_reservation_after_asset_deactivation() -> None:
+    owner = user()
+    staff = user("staff@example.com", is_staff=True)
+    gpu = asset()
+    policy()
+    now = timezone.now()
+    start = now + timedelta(minutes=10)
+    reservation = services.create_reservation(
+        asset=gpu,
+        requested_by_user=owner,
+        start_at=start,
+        end_at=start + timedelta(hours=1),
+        purpose="",
+        now=now,
+    ).reservation
+    gpu.active = False
+    gpu.reservable = False
+    gpu.save()
+
+    result = services.release_reservation(
+        reservation=reservation,
+        requested_by_user=staff,
+        now=start + timedelta(minutes=10),
+    )
+
+    assert result.reservation.status == Reservation.STATUS_RELEASED
+
+
+@pytest.mark.django_db
+def test_release_succeeds_after_policy_deactivation() -> None:
+    owner = user()
+    staff = user("staff@example.com", is_staff=True)
+    gpu = asset()
+    reservation_policy = policy()
+    now = timezone.now()
+    start = now + timedelta(minutes=10)
+    reservation = services.create_reservation(
+        asset=gpu,
+        requested_by_user=owner,
+        start_at=start,
+        end_at=start + timedelta(hours=1),
+        purpose="",
+        now=now,
+    ).reservation
+    services.deactivate_policy(policy=reservation_policy, actor_user=staff)
+
+    result = services.release_reservation(
+        reservation=reservation,
+        requested_by_user=owner,
+        now=start + timedelta(minutes=10),
+    )
+
+    assert result.reservation.status == Reservation.STATUS_RELEASED
+
+
+@pytest.mark.django_db
 def test_released_future_remainder_becomes_reservable_after_commit() -> None:
     owner = user()
     gpu = asset()
@@ -518,3 +787,148 @@ def test_policy_services_write_audit() -> None:
         AuditEvent.ACTION_POLICY_UPDATED,
         AuditEvent.ACTION_POLICY_DEACTIVATED,
     ]
+
+
+@pytest.mark.django_db
+def test_policy_mutation_requires_active_staff_and_writes_no_audit_on_denial() -> None:
+    ordinary = user()
+    inactive_staff = user("inactive-staff@example.com", is_staff=True, is_active=False)
+    admin = user("staff@example.com", is_staff=True)
+    reservation_policy = policy()
+
+    with assert_domain_error(POLICY_MUTATION_NOT_AUTHORIZED):
+        services.create_policy(
+            actor_user=ordinary,
+            name="Denied",
+            min_duration_minutes=1,
+            max_duration_minutes=60,
+            booking_horizon_days=1,
+            max_upcoming_per_principal=1,
+            max_concurrent_per_principal=1,
+        )
+    with assert_domain_error(PRINCIPAL_INACTIVE):
+        services.update_policy(policy=reservation_policy, actor_user=inactive_staff, name="Denied")
+    with assert_domain_error(POLICY_MUTATION_NOT_AUTHORIZED):
+        services.deactivate_policy(policy=reservation_policy, actor_user=ordinary)
+
+    assert AuditEvent.objects.count() == 0
+    services.update_policy(policy=reservation_policy, actor_user=admin, name="Allowed")
+    reservation_policy.refresh_from_db()
+    assert reservation_policy.name == "Allowed"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("field", ["id", "pk", "created_at", "updated_at", "active", "unknown"])
+def test_policy_update_rejects_immutable_or_unknown_fields(field: str) -> None:
+    admin = user(is_staff=True)
+    reservation_policy = policy()
+    before = reservation_policy.name
+
+    with assert_domain_error(INVALID_POLICY_UPDATE):
+        services.update_policy(policy=reservation_policy, actor_user=admin, **{field: "x"})
+
+    reservation_policy.refresh_from_db()
+    assert reservation_policy.name == before
+    assert AuditEvent.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_audit_failure_rolls_back_cancellation(monkeypatch: pytest.MonkeyPatch) -> None:
+    owner = user()
+    gpu = asset()
+    policy()
+    now = timezone.now()
+    start = now + timedelta(hours=1)
+    reservation = services.create_reservation(
+        asset=gpu,
+        requested_by_user=owner,
+        start_at=start,
+        end_at=start + timedelta(hours=1),
+        purpose="",
+        now=now,
+    ).reservation
+    before = Reservation.objects.get(pk=reservation.pk)
+
+    def fail_audit(*args: object, **kwargs: object) -> None:
+        raise IntegrityError("audit failed")
+
+    monkeypatch.setattr(services, "append_audit_event", fail_audit)
+    with pytest.raises(IntegrityError, match="audit failed"):
+        services.cancel_reservation(
+            reservation=reservation,
+            requested_by_user=owner,
+            now=start - timedelta(minutes=1),
+        )
+
+    reservation.refresh_from_db()
+    assert reservation.status == before.status
+    assert reservation.cancelled_at is None
+    assert reservation.cancelled_by is None
+
+
+@pytest.mark.django_db
+def test_audit_failure_rolls_back_release(monkeypatch: pytest.MonkeyPatch) -> None:
+    owner = user()
+    gpu = asset()
+    policy()
+    now = timezone.now()
+    start = now + timedelta(minutes=10)
+    reservation = services.create_reservation(
+        asset=gpu,
+        requested_by_user=owner,
+        start_at=start,
+        end_at=start + timedelta(hours=1),
+        purpose="",
+        now=now,
+    ).reservation
+
+    def fail_audit(*args: object, **kwargs: object) -> None:
+        raise IntegrityError("audit failed")
+
+    monkeypatch.setattr(services, "append_audit_event", fail_audit)
+    with pytest.raises(IntegrityError, match="audit failed"):
+        services.release_reservation(
+            reservation=reservation,
+            requested_by_user=owner,
+            now=start + timedelta(minutes=10),
+        )
+
+    reservation.refresh_from_db()
+    assert reservation.status == Reservation.STATUS_CONFIRMED
+    assert reservation.released_at is None
+    assert reservation.effective_end_at == reservation.end_at
+
+
+@pytest.mark.django_db
+def test_audit_failure_rolls_back_policy_create_update_and_deactivation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin = user(is_staff=True)
+    reservation_policy = policy()
+
+    def fail_audit(*args: object, **kwargs: object) -> None:
+        raise IntegrityError("audit failed")
+
+    monkeypatch.setattr(services, "append_audit_event", fail_audit)
+    with pytest.raises(IntegrityError, match="audit failed"):
+        services.create_policy(
+            actor_user=admin,
+            name="new",
+            asset=asset("policy-asset", kind=Asset.KIND_MACHINE, reservable=False),
+            min_duration_minutes=1,
+            max_duration_minutes=60,
+            booking_horizon_days=1,
+            max_upcoming_per_principal=1,
+            max_concurrent_per_principal=1,
+        )
+    assert ReservationPolicy.objects.filter(name="new").count() == 0
+
+    with pytest.raises(IntegrityError, match="audit failed"):
+        services.update_policy(policy=reservation_policy, actor_user=admin, name="changed")
+    reservation_policy.refresh_from_db()
+    assert reservation_policy.name == "Default policy"
+
+    with pytest.raises(IntegrityError, match="audit failed"):
+        services.deactivate_policy(policy=reservation_policy, actor_user=admin)
+    reservation_policy.refresh_from_db()
+    assert reservation_policy.active is True

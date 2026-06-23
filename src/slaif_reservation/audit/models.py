@@ -10,6 +10,27 @@ from django.db import models
 from slaif_reservation.audit.validators import validate_audit_metadata
 
 
+class AuditEventQuerySet(models.QuerySet["AuditEvent"]):
+    def update(self, **kwargs: Any) -> int:
+        raise ValidationError("Audit events are append-only.")
+
+    def delete(self) -> tuple[int, dict[str, int]]:
+        raise ValidationError("Audit events are append-only.")
+
+
+AuditEventManagerBase = models.Manager.from_queryset(AuditEventQuerySet)
+
+
+class AuditEventManager(AuditEventManagerBase["AuditEvent"]):
+    def bulk_update(
+        self,
+        objs: Any,
+        fields: Any,
+        batch_size: int | None = None,
+    ) -> int:
+        raise ValidationError("Audit events are append-only.")
+
+
 class AuditEvent(models.Model):
     ACTION_RESERVATION_CREATED = "reservation.created"
     ACTION_RESERVATION_CANCELLED = "reservation.cancelled"
@@ -53,6 +74,8 @@ class AuditEvent(models.Model):
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES)
     metadata = models.JSONField(default=dict, blank=True, validators=[validate_audit_metadata])
 
+    objects = AuditEventManager()
+
     class Meta:
         ordering = ["-occurred_at", "-id"]
         indexes = [
@@ -84,8 +107,12 @@ class AuditEvent(models.Model):
         return f"{self.action} {self.target_type}:{self.target_id}"
 
     def save(self, *args: Any, **kwargs: Any) -> None:
+        if self._state.adding and self.pk and type(self)._base_manager.filter(pk=self.pk).exists():
+            raise ValidationError("Audit events are append-only.")
         if not self._state.adding and type(self).objects.filter(pk=self.pk).exists():
             raise ValidationError("Audit events are append-only.")
+        if self._state.adding:
+            self.full_clean()
         super().save(*args, **kwargs)
 
     def delete(self, *args: object, **kwargs: object) -> tuple[int, dict[str, int]]:
