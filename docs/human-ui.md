@@ -108,6 +108,9 @@ Separate active, upcoming, and past. Actions:
 
 The implemented member pages show only the current user's reservations. A guessed or other-user UUID
 returns a non-disclosing 404. Staff users on member routes do not get a hidden cross-user bypass.
+Active, upcoming, completed, cancelled, and released reservation sections are database-filtered and
+bounded with independent pagination parameters rather than loading the complete reservation history
+into memory.
 
 ### API tokens
 
@@ -162,7 +165,10 @@ Target WCAG 2.2 AA principles:
 - screen-reader-friendly calendar alternatives, such as an availability list.
 
 Work Order 0004 implements the availability list, not a drag-and-drop calendar. It is advisory and
-does not yet model maintenance blackouts or operating hours.
+does not yet model maintenance blackouts or operating hours. Local-day display windows are interpreted
+through the user's configured IANA timezone. If a requested local-day boundary is nonexistent or
+ambiguous, the request fails closed with a safe bad-request response instead of guessing an offset or
+silently substituting another timezone.
 
 Automated accessibility checks supplement, not replace, manual keyboard and screen-reader review.
 

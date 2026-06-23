@@ -4,6 +4,7 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any, cast
 
+from django.contrib.auth import SESSION_KEY, logout
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpRequest, HttpResponse
 
@@ -18,6 +19,8 @@ def active_human_required[
     @wraps(view_func)
     def _wrapped(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         if not is_active_human(request.user):
+            if request.user.is_authenticated or SESSION_KEY in request.session:
+                logout(request)
             return cast(HttpResponse, redirect_to_login(request.get_full_path()))
         return view_func(request, *args, **kwargs)
 

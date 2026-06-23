@@ -88,5 +88,6 @@ jobs:
       - run: docker compose config
       - run: docker build --tag slaif-asset-reservation:ci .
       - run: test "$(docker image inspect slaif-asset-reservation:ci --format '{{.Config.User}}')" = "10001:10001"
+      - run: docker run --rm --entrypoint test slaif-asset-reservation:ci -f /app/staticfiles/web/site.css
       - run: docker run --rm --entrypoint test slaif-asset-reservation:ci -f /app/staticfiles/admin/css/base.css
       - run: docker run --rm --entrypoint test slaif-asset-reservation:ci -f /app/staticfiles/drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js

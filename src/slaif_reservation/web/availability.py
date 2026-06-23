@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 
@@ -18,6 +17,10 @@ from slaif_reservation.reservations.time_utils import (
 )
 
 MAX_AVAILABILITY_DAYS = 7
+
+
+class AvailabilityInputError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -133,9 +136,10 @@ def _local_midnight(value: date, timezone_name: str) -> datetime:
             datetime.combine(value, time.min),
             timezone_name=timezone_name,
         ).instant
-    except LocalTimeError:
-        zone = ZoneInfo(timezone_name)
-        return datetime.combine(value, time.min, tzinfo=zone).astimezone(UTC)
+    except LocalTimeError as exc:
+        raise AvailabilityInputError(
+            "Availability window boundary is not a valid local time."
+        ) from exc
 
 
 def _busy_intervals(

@@ -239,7 +239,7 @@ def test_browser_cancel_release_and_other_user_denial(
         end_at=future_end + timedelta(hours=2),
         purpose="other",
     ).reservation
-    active_end = timezone.now() + timedelta(hours=1)
+    active_end = timezone.now() + timedelta(hours=2)
     active = Reservation.objects.create(
         asset=second_asset,
         requested_by_user=member_user,
@@ -257,11 +257,13 @@ def test_browser_cancel_release_and_other_user_denial(
     assert response.status == 404
 
     page.goto(f"{live_server.url}/reservations/{future.id}/")
-    page.get_by_role("button", name="Cancel reservation").click()
+    with page.expect_navigation():
+        page.get_by_role("button", name="Cancel reservation").click()
     assert "Reservation cancelled" in page.content()
 
     page.goto(f"{live_server.url}/reservations/{active.id}/")
-    page.get_by_role("button", name="Release reservation").click()
+    with page.expect_navigation():
+        page.get_by_role("button", name="Release reservation").click()
     assert "Reservation released" in page.content()
 
 

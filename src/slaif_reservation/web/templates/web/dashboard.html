@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n tz %}
+{% load i18n tz web_time %}
 
 {% block title %}{% trans "Dashboard" %}{% endblock %}
 
@@ -10,9 +10,9 @@
     {% for reservation in active %}
       {% timezone request.user.timezone %}
         <p><a href="{% url 'web:reservation-detail' reservation.id %}">{{ reservation.asset.name }}</a>
-          <time datetime="{{ reservation.start_at|date:'c' }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time>
+          <time datetime="{{ reservation.start_at|utc_datetime }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time>
           -
-          <time datetime="{{ reservation.effective_end_at|date:'c' }}">{{ reservation.effective_end_at|date:"Y-m-d H:i" }}</time>
+          <time datetime="{{ reservation.effective_end_at|utc_datetime }}">{{ reservation.effective_end_at|date:"Y-m-d H:i" }}</time>
         </p>
       {% endtimezone %}
     {% empty %}
@@ -25,7 +25,7 @@
       {% for reservation in upcoming %}
         {% timezone request.user.timezone %}
           <li><a href="{% url 'web:reservation-detail' reservation.id %}">{{ reservation.asset.name }}</a>,
-            <time datetime="{{ reservation.start_at|date:'c' }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time>
+            <time datetime="{{ reservation.start_at|utc_datetime }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time>
           </li>
         {% endtimezone %}
       {% empty %}

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from typing import Any
-from zoneinfo import ZoneInfo
+from typing import Any, cast
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
+from django.contrib.auth import SESSION_KEY
+from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.views import LoginView, LogoutView
 from django.core.exceptions import ObjectDoesNotExist
-from django.core.paginator import Paginator
+from django.core.paginator import Page, Paginator
 from django.http import (
     Http404,
     HttpRequest,
@@ -48,7 +50,6 @@ from slaif_reservation.reservations.exceptions import (
 )
 from slaif_reservation.reservations.models import (
     Reservation,
-    ReservationLifecycle,
     derive_lifecycle,
 )
 from slaif_reservation.reservations.services import (
@@ -56,8 +57,12 @@ from slaif_reservation.reservations.services import (
     create_reservation,
     release_reservation,
 )
-from slaif_reservation.web.auth import active_human_required
-from slaif_reservation.web.availability import MAX_AVAILABILITY_DAYS, availability_for_asset
+from slaif_reservation.web.auth import active_human_required, is_active_human
+from slaif_reservation.web.availability import (
+    MAX_AVAILABILITY_DAYS,
+    AvailabilityInputError,
+    availability_for_asset,
+)
 from slaif_reservation.web.forms import (
     CancellationForm,
     HumanAuthenticationForm,
@@ -101,6 +106,13 @@ class HumanLoginView(LoginView):
     template_name = "web/login.html"
     authentication_form = HumanAuthenticationForm
     redirect_authenticated_user = True
+
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        if (
+            request.user.is_authenticated or SESSION_KEY in request.session
+        ) and not is_active_human(request.user):
+            auth_logout(request)
+        return cast(HttpResponse, super().dispatch(request, *args, **kwargs))
 
 
 @method_decorator(active_human_required, name="dispatch")
@@ -202,28 +214,48 @@ def reserve_asset(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
 @active_human_required
 def reservation_list(request: HttpRequest) -> HttpResponse:
     now = timezone.now()
-    reservations = list(owned_reservations_queryset(request.user))
-    grouped: dict[ReservationLifecycle, list[Reservation]] = {
-        ReservationLifecycle.ACTIVE: [],
-        ReservationLifecycle.UPCOMING: [],
-        ReservationLifecycle.COMPLETED: [],
-        ReservationLifecycle.CANCELLED: [],
-        ReservationLifecycle.RELEASED: [],
-    }
-    for reservation in reservations:
-        grouped[derive_lifecycle(reservation, at=now)].append(reservation)
-    history = grouped[ReservationLifecycle.COMPLETED]
-    paginator = Paginator(history, 25)
-    history_page = paginator.get_page(request.GET.get("page"))
+    owned = owned_reservations_queryset(request.user)
     return render(
         request,
         "web/reservation_list.html",
         {
-            "active": grouped[ReservationLifecycle.ACTIVE],
-            "upcoming": grouped[ReservationLifecycle.UPCOMING],
-            "cancelled": grouped[ReservationLifecycle.CANCELLED],
-            "released": grouped[ReservationLifecycle.RELEASED],
-            "history_page": history_page,
+            "active_page": _page_queryset(
+                request,
+                owned.filter(
+                    status=Reservation.STATUS_CONFIRMED,
+                    start_at__lte=now,
+                    effective_end_at__gt=now,
+                ),
+                "active_page",
+                per_page=10,
+            ),
+            "upcoming_page": _page_queryset(
+                request,
+                owned.filter(status=Reservation.STATUS_CONFIRMED, start_at__gt=now),
+                "upcoming_page",
+                per_page=10,
+            ),
+            "completed_page": _page_queryset(
+                request,
+                owned.filter(
+                    status=Reservation.STATUS_CONFIRMED,
+                    effective_end_at__lte=now,
+                ),
+                "completed_page",
+                per_page=25,
+            ),
+            "cancelled_page": _page_queryset(
+                request,
+                owned.filter(status=Reservation.STATUS_CANCELLED),
+                "cancelled_page",
+                per_page=25,
+            ),
+            "released_page": _page_queryset(
+                request,
+                owned.filter(status=Reservation.STATUS_RELEASED),
+                "released_page",
+                per_page=25,
+            ),
         },
     )
 
@@ -304,7 +336,7 @@ def _availability_from_request(request: HttpRequest, asset: Asset) -> Any:
             if raw_date
             else timezone.now().astimezone(ZoneInfo(timezone_name)).date()
         )
-    except ValueError:
+    except (ValueError, ZoneInfoNotFoundError):
         return HttpResponseBadRequest("Invalid availability date.")
     try:
         days = int(raw_days) if raw_days else 7
@@ -312,14 +344,28 @@ def _availability_from_request(request: HttpRequest, asset: Asset) -> Any:
         return HttpResponseBadRequest("Invalid availability window.")
     if days < 1 or days > MAX_AVAILABILITY_DAYS:
         return HttpResponseBadRequest("Availability window must be between 1 and 7 days.")
-    return availability_for_asset(
-        asset=asset,
-        principal=request.user,
-        start_date=start_date,
-        days=days,
-        display_timezone=timezone_name,
-    )
+    try:
+        return availability_for_asset(
+            asset=asset,
+            principal=request.user,
+            start_date=start_date,
+            days=days,
+            display_timezone=timezone_name,
+        )
+    except AvailabilityInputError:
+        return HttpResponseBadRequest("Invalid availability date.")
 
 
 def _domain_message(error: ReservationDomainError) -> str:
     return str(DOMAIN_ERROR_MESSAGES.get(error.code, _("The reservation could not be changed.")))
+
+
+def _page_queryset(
+    request: HttpRequest,
+    queryset: Any,
+    page_param: str,
+    *,
+    per_page: int,
+) -> Page[Any]:
+    paginator = Paginator(queryset, per_page)
+    return paginator.get_page(request.GET.get(page_param))

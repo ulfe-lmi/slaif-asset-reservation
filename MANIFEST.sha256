@@ -28,13 +28,13 @@ eb8976ab9062b7f634c21b783aafca483fa2e0c8dfaf218d0b514b862f5eebf6  ./docs/decisio
 929e98eac6fcdcfdc435a5cbc7761a5d01eb8287fd712ef367aee436a64b0444  ./docs/deployment.md
 633049a550b712f54b85bdcedc257cdcc2958d66a7e9ade26cfa17d6edf0227c  ./docs/discovery-brief.md
 4cddabf4d7d5259c4845fe75575a8a1b01f4671287d7264722710d01f92a6175  ./docs/domain-model.md
-0262236929f84b023d5b4241a8ec5b43775b2083c1b441f5ba6eddda1ef45851  ./docs/human-ui.md
+3fbb77cb2b3260119c5f787f4d14cc8030f92f1907a4215650c313ff47c37777  ./docs/human-ui.md
 b78dc6b078e83d27707fcaaf834f2197ce733ccb6bbd13ea3a5e359dfdb63372  ./docs/migration-from-smartscheduling.md
 eb8863e8ceddee6b829ac0e3b77bbe2cd3974175260ab24174d97a964d86705c  ./docs/oap-workflow.md
 3e276c6a0ce3b9a46a22632af280e65b4991c6acb89c554bcb3725246be36df9  ./docs/project-handoff.md
 9758209070f33a2b6043d839161f8a9ecb89a7a213e8d0f4b32f5e3d7ae7f6bd  ./docs/repository-settings.md
 c668545baa0d1ba39c218620115ed0ce4b73ffbbfde7d71e5365b0c5d828601c  ./docs/roadmap.md
-04491daa102ed2a52a1ba7811742e62380c0fcbd851daacdec1247c01e546c66  ./docs/security-model.md
+4ba11819a21bbdf781a1c465dbb1391280e50cfbdb3625bea91afefc1af759c9  ./docs/security-model.md
 627538ad61d6025bdc1ae5a1257adf36460f9f3f3835278758cdda5159bac70b  ./docs/testing-strategy.md
 4b47e9b0819783d68e7114fa3f0fe15062ac66259a6c728db06f42aaed6c59d1  ./docs/work-orders/0001-application-scaffold.md
 f9cac26799ac424ef3d97090fb1cebe4405945f858cf27627340c923401d05d7  ./docs/work-orders/README.md

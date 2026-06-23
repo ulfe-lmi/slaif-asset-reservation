@@ -1,4 +1,4 @@
-{% load i18n tz %}
+{% load i18n tz web_time %}
 <section aria-labelledby="availability-heading">
   <h2 id="availability-heading">{% trans "Availability" %}</h2>
   <p>{{ availability.advisory_notice }}</p>
@@ -15,9 +15,9 @@
           {% else %}
             {{ interval.label }}
           {% endif %}
-          <time datetime="{{ interval.start|date:'c' }}">{{ interval.start|date:"Y-m-d H:i" }}</time>
+          <time datetime="{{ interval.start|utc_datetime }}">{{ interval.start|date:"Y-m-d H:i" }}</time>
           -
-          <time datetime="{{ interval.end|date:'c' }}">{{ interval.end|date:"Y-m-d H:i" }}</time>
+          <time datetime="{{ interval.end|utc_datetime }}">{{ interval.end|date:"Y-m-d H:i" }}</time>
         </li>
       {% empty %}
         <li>{% trans "No busy intervals in this window." %}</li>
@@ -27,11 +27,11 @@
     <ul>
       {% for interval in availability.free %}
         <li>
-          <time datetime="{{ interval.start|date:'c' }}">{{ interval.start|date:"Y-m-d H:i" }}</time>
+          <time datetime="{{ interval.start|utc_datetime }}">{{ interval.start|date:"Y-m-d H:i" }}</time>
           -
-          <time datetime="{{ interval.end|date:'c' }}">{{ interval.end|date:"Y-m-d H:i" }}</time>
+          <time datetime="{{ interval.end|utc_datetime }}">{{ interval.end|date:"Y-m-d H:i" }}</time>
           ({% trans "latest valid start" %}
-          <time datetime="{{ interval.latest_start|date:'c' }}">{{ interval.latest_start|date:"Y-m-d H:i" }}</time>)
+          <time datetime="{{ interval.latest_start|utc_datetime }}">{{ interval.latest_start|date:"Y-m-d H:i" }}</time>)
         </li>
       {% empty %}
         <li>{% trans "No policy-valid free intervals in this window." %}</li>

@@ -70,6 +70,9 @@ form uses email identity, denies inactive users and `is_service_account=true` us
 generic failure, preserves Django CSRF/session protections, and exposes logout only as POST. Login
 rate limiting is not implemented in Django in this slice and must be supplied by a future
 authentication hardening work order or trusted reverse-proxy policy before public deployment.
+If an already-authenticated browser session later belongs to a service account or inactive user, the
+member UI clears that session and terminates at the login page rather than looping through member
+routes.
 
 ## 5. API token design
 
@@ -125,6 +128,9 @@ cancel, or release another user's reservation.
 Shared availability reveals only busy intervals. Other users' identity, email, display name,
 purpose, cancellation reason, and reservation UUID are not rendered. The current user's own busy
 interval may be labelled and linked to their own detail page.
+Availability windows fail closed when the requested local-day boundary cannot be represented in the
+user's configured IANA timezone. The UI returns a privacy-safe bad-request response and does not
+guess an offset or substitute `Europe/Ljubljana`/UTC.
 
 Work Order 0003 implements the internal reservation command layer and keeps reservation HTTP
 mutations deferred. Successful reservation and policy mutations append `AuditEvent` rows in the same
