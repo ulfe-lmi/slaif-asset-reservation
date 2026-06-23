@@ -20,13 +20,16 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "django.contrib.postgres",
     "django.contrib.staticfiles",
     "rest_framework",
     "drf_spectacular",
     "drf_spectacular_sidecar",
     "slaif_reservation.accounts",
+    "slaif_reservation.audit",
     "slaif_reservation.assets",
     "slaif_reservation.api",
+    "slaif_reservation.reservations",
     "slaif_reservation.web",
 ]
 

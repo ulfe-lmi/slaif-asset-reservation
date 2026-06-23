@@ -91,7 +91,21 @@ sequenceDiagram
     V-->>C: HTML response or API problem detail
 ```
 
-The application performs an early overlap query for useful feedback, but PostgreSQL remains the final arbiter. A constraint violation is converted to a stable domain conflict.
+The Work Order 0003 implementation provides this domain service layer without exposing reservation
+HTTP mutations yet. `create_reservation`, `cancel_reservation`, and `release_reservation` run inside
+transactions and append audit evidence in the same transaction. Creation normalizes `now`,
+`start_at`, and `end_at` to UTC before comparison or storage, then locks rows in this order:
+requesting principal, authoritative asset, selected effective policy. Cancellation normalizes the
+server clock and locks requester, reservation, asset, and selected policy before applying the cutoff.
+This prevents a policy update from committing midway through an operation that already selected that
+policy. Release is entitlement-reducing: it locks the requester, reservation, and asset for
+consistency but does not require the asset to remain active/reservable and does not require an
+effective policy to still exist.
+
+The application performs an early overlap query for useful feedback, but PostgreSQL remains the
+final arbiter. Only a PostgreSQL diagnostic constraint name exactly equal to
+`reservation_no_overlap_per_asset` is translated to the stable `reservation_conflict` domain code;
+unrelated integrity errors propagate for operator investigation.
 
 ### 4.2 Agent API authentication
 
@@ -108,10 +122,15 @@ The implementation design may refine prefix lookup, but plaintext token storage 
 ### 4.3 Early release
 
 1. Principal requests release of an owned active reservation.
-2. Service checks policy and current time.
+2. Service checks ownership/staff authority and current time against UTC-normalized instants.
 3. Reservation transitions to `released` with `released_at` and an audit event.
 4. Released reservations no longer block future allocation.
 5. Historical start/end and original requested end remain inspectable.
+
+Release reduces entitlement and frees the future remainder. It remains available to an authorized
+owner or active staff user even if the asset has since been deactivated or the original effective
+policy has been deactivated. Cancellation remains policy-aware because it evaluates the configured
+cutoff before the reservation starts.
 
 ## 5. Persistence and consistency
 
@@ -130,7 +149,9 @@ SQLite may be used only for isolated pure-unit tests that do not claim database-
 
 ### Reservation interval
 
-Intervals use `[start_at, effective_end_at)` semantics. Adjacent reservations are valid. An active blocking reservation participates in an exclusion constraint equivalent to:
+Intervals use `[start_at, effective_end_at)` semantics, as accepted in ADR 0007. Adjacent
+reservations are valid. Confirmed and released reservations participate in an exclusion constraint
+equivalent to:
 
 ```text
 asset_id WITH =
@@ -138,7 +159,8 @@ reservation_range WITH &&
 WHERE status IN blocking statuses
 ```
 
-The exact implementation is established and tested in the reservation-core PR. It may use a `DateTimeRangeField`, a generated range expression, or equivalent reviewed Django/PostgreSQL support.
+The implemented constraint uses `TSTZRANGE(start_at, effective_end_at, '[)')` with GiST operators
+after installing PostgreSQL `btree_gist`.
 
 ### Idempotency
 

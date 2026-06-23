@@ -198,7 +198,15 @@ Suggested fields:
 - optional allowed projects/groups
 - active/effective dates
 
-Initial resolution order:
+Work Order 0003 implements `ReservationPolicy` with UUID identity, optional asset target, active
+flag, min/max duration, booking horizon, lead time, cancellation cutoff, upcoming/concurrent
+principal limits, purpose requirement, and timestamps. A `NULL` asset is the active global policy.
+No project, group, tag, or effective-date targeting exists in this slice.
+
+Policy targets may be the global policy, a machine, or any specific child asset such as a GPU,
+CPU pool, or service. Orphan non-machine assets are rejected as policy targets.
+
+Implemented resolution order:
 
 1. asset-specific active policy;
 2. nearest parent-machine policy;
@@ -206,26 +214,28 @@ Initial resolution order:
 
 Ambiguous equal-priority policy is a configuration error and fails closed.
 
+Active policy uniqueness is enforced for a specific asset and for the global policy. Numeric policy
+fields are constrained so durations and limits fail closed before mutation. Policies are intended to
+be deactivated rather than hard-deleted. Policy creation, update, and deactivation are staff-only
+service operations that write audit events; ordinary reconstructed-object overwrites, bulk creates,
+model updates, queryset updates, and hard deletes are blocked at the application/ORM layer.
+
 ## 10. Reservation
 
-Suggested fields:
+Work Order 0003 implements:
 
 - `id: UUID`
 - `asset_id`
 - `requested_by_user_id`
-- optional `project_id`
-- optional `created_via_token_id`
 - `source`: `web`, `api`, `admin`, `migration`
 - `status`: `confirmed`, `cancelled`, `released`
 - `start_at`
 - `end_at` as originally confirmed end
-- optional `released_at`
-- `effective_end_at` implemented explicitly or as a database expression
+- `effective_end_at` as the active blocking end
 - `purpose`
-- safe user notes if approved
+- `released_at`
 - `cancelled_at`, `cancelled_by`, `cancellation_reason`
 - `created_at`, `updated_at`
-- optional legacy provenance
 
 Derived temporal state:
 
@@ -237,16 +247,46 @@ Derived temporal state:
 
 Do not persist a `completed` status merely because the clock passed; derive it unless a later operational need justifies materialization.
 
-### Blocking range
+### Implemented blocking range
 
-Blocking reservations are those whose status and release state still reserve future time. The database representation must allow the constraint to release the remaining interval while preserving original history. Implementation options must be evaluated in PR 3, for example:
+`end_at` is immutable original history. `effective_end_at` initially equals `end_at` and is set to
+`released_at` on early release. Confirmed and released rows block `[start_at, effective_end_at)` by
+the PostgreSQL exclusion constraint `reservation_no_overlap_per_asset`; cancelled rows do not block.
+After creation, reservation identity/history fields such as asset, requester, source, `start_at`,
+and `end_at` are not ordinary mutable fields. Cancellation and release services update only their
+intended lifecycle fields and write audit evidence in the same transaction. Reconstructed-object
+overwrites and bulk creates are blocked through ordinary ORM paths.
 
-- store immutable `requested_end_at` plus mutable/audited `effective_end_at`;
-- or store a database range field updated on release while retaining original end separately.
+Reservation creation grants new entitlement and therefore requires an active, reservable,
+exclusive-mode asset plus a locked effective policy. Cancellation is a pre-start lifecycle operation
+that still evaluates the policy cutoff. Release reduces an active entitlement and may proceed for an
+authorized owner or active staff user even if the asset or policy was later deactivated. All
+duration, lifecycle, lead, horizon, cutoff, overlap, and counter calculations use UTC-normalized
+absolute instants.
 
-The chosen design requires an ADR amendment and regression tests.
+## 11. Audit event
 
-## 11. Idempotency record
+Work Order 0003 implements append-only `AuditEvent` records for reservation and policy mutations.
+Fields include UUID identity, `occurred_at`, optional actor user, action code, target type/UUID,
+correlation UUID, source channel, and bounded safe JSON metadata.
+
+Initial actions:
+
+- `reservation.created`
+- `reservation.cancelled`
+- `reservation.released`
+- `reservation_policy.created`
+- `reservation_policy.updated`
+- `reservation_policy.deactivated`
+
+Audit metadata intentionally excludes passwords, tokens, cookies, authorization values, raw request
+bodies, email addresses, reservation purpose, cancellation reason text, and private physical
+locators. The validator checks nested dictionaries and lists with case-insensitive key comparison
+and normalizes spaces/hyphens to underscores. Audit events are append-only through normal model,
+queryset, bulk-create, bulk-update, delete, and admin paths. This is application evidence, not a
+tamper-proof ledger against privileged database operators.
+
+## 12. Idempotency record
 
 Suggested fields:
 

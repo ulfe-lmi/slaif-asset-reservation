@@ -60,6 +60,8 @@ def test_openapi_schema_generation_succeeds(tmp_path: Path) -> None:
         "Bearer/API-token authentication is intentionally deferred" in list_operation["description"]
     )
     assert "Staff-session-authenticated" in detail_operation["description"]
+    assert "/api/v1/reservations/" not in parsed_schema["paths"]
+    assert "/api/v1/reservations/{reservation_id}/" not in parsed_schema["paths"]
 
 
 @pytest.mark.django_db
@@ -101,3 +103,13 @@ def test_swagger_ui_uses_local_sidecar_static_assets(settings) -> None:
     assert settings.SPECTACULAR_SETTINGS["REDOC_DIST"] == "SIDECAR"
     assert finders.find("admin/css/base.css")
     assert finders.find("drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js")
+
+
+def test_reservation_mutation_routes_are_not_exposed(client) -> None:
+    root_response = client.get("/api/v1/")
+    assert root_response.status_code == 200
+    assert "reservations" not in root_response.json()["endpoints"]
+
+    assert client.post("/api/v1/reservations/", {}).status_code == 404
+    assert client.post("/api/v1/reservations/not-a-real-id/cancel/", {}).status_code == 404
+    assert client.post("/api/v1/reservations/not-a-real-id/release/", {}).status_code == 404

@@ -37,10 +37,10 @@ Build an authenticated asset reservation authority for shared laboratory compute
 - durations are legacy services and are not migrated as new domain entities;
 - no private clients/appointments are included in repository artifacts.
 
-## Current milestone after Work Order 0001 merge
+## Current milestone after Work Order 0002 merge
 
-Constitution and architecture accepted. Work Order 0001 is merged into `main` and established the
-executable foundation:
+Constitution and architecture accepted. Work Orders 0001 and 0002 are merged into `main`.
+Work Order 0001 established the executable foundation:
 
 - Django project under `src/slaif_reservation/`;
 - custom UUID user model with email identity;
@@ -57,14 +57,20 @@ Verified `main` foundation commit before Work Order 0002:
 ba9b83061e12766d884c54f02e49aa2b063b3f01
 ```
 
+Work Order 0002 added hierarchical assets, sanitized bootstrap import, staff-only inventory
+admin/web/API read paths, and OpenAPI coverage. Verified `main` baseline before Work Order 0003:
+
+```text
+bec3b42d694e837fd1ff78078403ec6fd2beb23c
+```
+
 ## Next recommended task
 
-Work Order 0002 is the current slice: implement hierarchical assets, sanitized bootstrap import,
-staff-only inventory admin/web/API read paths, and OpenAPI coverage without implementing
-reservations or availability.
+Work Order 0003 is the current slice: reservation policy core, PostgreSQL-backed exclusive
+reservation ranges, authoritative create/cancel/release services, and append-only audit evidence.
 
-After Work Order 0002 is reviewed and merged, Work Order 0003 remains the next major slice:
-reservation and policy core with PostgreSQL conflict enforcement.
+After Work Order 0003 is reviewed and merged, Work Order 0004 remains the next major slice: the
+human reservation MVP built on the internal reservation services.
 
 ## Do not do next
 

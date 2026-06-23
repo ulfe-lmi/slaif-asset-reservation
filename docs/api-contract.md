@@ -217,6 +217,9 @@ Availability is advisory. A later create request may still lose a race.
 
 ### `GET /api/v1/reservations`
 
+Deferred/not implemented in Work Order 0003. Reservation policy, reservation, and audit models and
+internal services exist, but no reservation read or mutation HTTP surface is exposed yet.
+
 Ordinary tokens see own reservations unless an explicitly granted read scope/policy permits more.
 
 Filters:
@@ -229,6 +232,8 @@ Filters:
 - `upcoming=true`
 
 ### `POST /api/v1/reservations`
+
+Deferred/not implemented in Work Order 0003.
 
 Requires `reservations:create` and `Idempotency-Key`.
 

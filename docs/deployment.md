@@ -74,6 +74,12 @@ docker compose up --build app
 
 Migrations are a deliberate command. They are not hidden inside the application worker startup.
 
+Work Order 0003 adds PostgreSQL-specific reservation migrations. The migration chain installs the
+`btree_gist` extension with `BtreeGistExtension()` and creates the
+`reservation_no_overlap_per_asset` exclusion constraint. The deployment/migration role must be
+allowed to create this extension, or an operator must preinstall it in the target database before
+running migrations.
+
 ## 4. Configuration
 
 Implemented variables:
@@ -261,7 +267,7 @@ The scaffold is intentionally not production-ready. Remaining gaps include:
 - accepted production host, DNS, TLS, and reverse-proxy configuration;
 - production secret management;
 - token-verifier pepper and API-token lifecycle implementation;
-- reservation, policy, audit, API-token, ordinary member authorization, and availability behavior;
+- API-token, ordinary member authorization, reservation HTTP routes, and availability behavior;
 - administrator verification of imported asset hardware identity and capabilities;
 - backup/restore runbook and restore drill;
 - logging redaction tests beyond the current health/settings scaffold;
