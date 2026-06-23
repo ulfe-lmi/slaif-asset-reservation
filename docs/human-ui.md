@@ -51,17 +51,21 @@ Implemented in Work Order 0004:
 
 ### Asset explorer
 
-Each asset card/row shows:
+Implemented member asset cards/rows show:
 
-- name and parent machine;
-- hardware/capability summary;
-- active/reservable/maintenance status;
-- next available time;
-- tags/location;
+- name;
+- kind;
+- parent machine;
+- reservable state;
+- verification-required state;
 - link to details and availability.
 
 Implemented filters are URL-addressable: kind, parent, tag, reservable, and safe text search. Only
 active assets are visible to member pages; inactive assets remain administrator/admin-only.
+
+Richer public capability/location summaries, maintenance state, and next-available summaries remain
+deferred until those data contracts are implemented. The member UI must not invent verified hardware
+facts from imported display text.
 
 ### Asset detail
 
@@ -169,6 +173,10 @@ does not yet model maintenance blackouts or operating hours. Local-day display w
 through the user's configured IANA timezone. If a requested local-day boundary is nonexistent or
 ambiguous, the request fails closed with a safe bad-request response instead of guessing an offset or
 silently substituting another timezone.
+
+Authenticated member pages display the current "times shown in" timezone in the shared shell.
+Availability sections repeat the interval display timezone, and asset detail pages label the asset's
+own timezone separately.
 
 Automated accessibility checks supplement, not replace, manual keyboard and screen-reader review.
 

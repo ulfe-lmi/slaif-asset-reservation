@@ -8,7 +8,7 @@
   <section aria-labelledby="active-heading">
     <h2 id="active-heading">{% trans "Active reservation" %}</h2>
     {% for reservation in active %}
-      {% timezone request.user.timezone %}
+      {% timezone display_timezone %}
         <p><a href="{% url 'web:reservation-detail' reservation.id %}">{{ reservation.asset.name }}</a>
           <time datetime="{{ reservation.start_at|utc_datetime }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time>
           -
@@ -23,7 +23,7 @@
     <h2 id="upcoming-heading">{% trans "Next upcoming reservations" %}</h2>
     <ul>
       {% for reservation in upcoming %}
-        {% timezone request.user.timezone %}
+        {% timezone display_timezone %}
           <li><a href="{% url 'web:reservation-detail' reservation.id %}">{{ reservation.asset.name }}</a>,
             <time datetime="{{ reservation.start_at|utc_datetime }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time>
           </li>

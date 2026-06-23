@@ -9,8 +9,9 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 **Pre-alpha human MVP. Not production-ready and not yet usable as a complete reservation service.**
 
 The repository contains a minimal Django/PostgreSQL application foundation: custom user model,
-health checks, hierarchical asset inventory, sanitized bootstrap asset import, staff-only inventory
-web/API views, generated OpenAPI support with local Swagger UI assets, CI, and container
+health checks, hierarchical asset inventory, sanitized bootstrap asset import, member-visible
+inventory web pages, staff-session-only inventory API, generated OpenAPI support with local Swagger
+UI assets, CI, and container
 configuration. It now also contains the internal reservation policy, reservation, PostgreSQL
 exclusivity, audit-event core, and a server-rendered human MVP for active administrator-created
 accounts. There is still no reservation API, API-token implementation, project/group authorization,
@@ -127,8 +128,8 @@ curl http://127.0.0.1:8000/health/ready
 
 Human and API paths:
 
-- `http://127.0.0.1:8000/assets/` requires an active human session.
-- `http://127.0.0.1:8000/api/v1/assets/`
+- `http://127.0.0.1:8000/assets/` provides active-asset browsing for active human sessions.
+- `http://127.0.0.1:8000/api/v1/assets/` provides inventory reads for staff sessions only.
 
 The REST asset API remains staff-session-only. Bearer-token agent authentication is not implemented
 yet.

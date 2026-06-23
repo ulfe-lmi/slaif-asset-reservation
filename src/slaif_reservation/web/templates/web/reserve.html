@@ -6,7 +6,7 @@
 {% block content %}
   <p><a href="{% url 'web:asset-detail' asset.id %}">{{ asset.name }}</a></p>
   <h1>{% blocktrans with name=asset.name %}Reserve {{ name }}{% endblocktrans %}</h1>
-  <p>{% blocktrans %}Times are entered in {{ timezone_name }}.{% endblocktrans %}</p>
+  <p>{% blocktrans %}Times are shown and entered in {{ timezone_name }}.{% endblocktrans %}</p>
   <form method="post" novalidate>
     {% csrf_token %}
     {% if form.errors %}

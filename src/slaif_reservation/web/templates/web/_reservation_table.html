@@ -10,7 +10,7 @@
   </thead>
   <tbody>
     {% for reservation in reservations %}
-      {% timezone request.user.timezone %}
+      {% timezone display_timezone %}
         <tr>
           <td><a href="{% url 'web:reservation-detail' reservation.id %}">{{ reservation.asset.name }}</a></td>
           <td><time datetime="{{ reservation.start_at|utc_datetime }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time></td>

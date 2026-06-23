@@ -6,10 +6,10 @@
 1f103c6a9dd07cd13a9a6f17ace6b813f47747eb9cb7e00488cb2073caaf91bb  ./.github/ISSUE_TEMPLATE/config.yml
 93484d6bb52bd24be8ee486a8120cee59425d721df5e182765e94ace14de88e2  ./.github/PULL_REQUEST_TEMPLATE.md
 238e085f0b4c85116bff9dda71b22d9b64d084798eaca13a566f4bb04db7d6da  ./.gitignore
-89a2964c0aaf5963619847f931ff30c8dffc929542f0114b4f89b05ae5f46cb1  ./AGENTS.md
+1e54628d50c2f9ff5b74b62ceeadcfb88707e4278ff1b5bc9b93daf79f4f0ea5  ./AGENTS.md
 bb30b626f5addead89f2aca056c74cd270ea1cfe96d41b56bbc9132888198c56  ./BOOTSTRAP_INSTRUCTIONS.md
 74e31b8e2d8695b186310888129f6f5ac3e93250c18f5127f845b42f37cff7ae  ./CONTRIBUTING.md
-28a46310361a99dde7e7be2a635358281fb5f93748bb71171807174ec3c5811b  ./README.md
+4edda236864f169e3fb0d710d9d75f5c858fbb1576304a29c36f7618ad5923b0  ./README.md
 fdf25060d1f5676bfdb6904908aa41bbfc6ade8b722ac64559fd915626c7ee88  ./SECURITY.md
 2edeb62559f8c88bff36da005097230699ebe173c3238acccd5904ac3b75f751  ./data/bootstrap/README.md
 6d3f6fa01573342e2f9fe20d980d53b063183672f1b54e898f265ed028951fe8  ./data/bootstrap/assets.schema.json
@@ -28,7 +28,7 @@ eb8976ab9062b7f634c21b783aafca483fa2e0c8dfaf218d0b514b862f5eebf6  ./docs/decisio
 929e98eac6fcdcfdc435a5cbc7761a5d01eb8287fd712ef367aee436a64b0444  ./docs/deployment.md
 633049a550b712f54b85bdcedc257cdcc2958d66a7e9ade26cfa17d6edf0227c  ./docs/discovery-brief.md
 4cddabf4d7d5259c4845fe75575a8a1b01f4671287d7264722710d01f92a6175  ./docs/domain-model.md
-3fbb77cb2b3260119c5f787f4d14cc8030f92f1907a4215650c313ff47c37777  ./docs/human-ui.md
+284a3e38755c56865df9d6fc9ebd1b449da0d7c2507690a255593f4084d89396  ./docs/human-ui.md
 b78dc6b078e83d27707fcaaf834f2197ce733ccb6bbd13ea3a5e359dfdb63372  ./docs/migration-from-smartscheduling.md
 eb8863e8ceddee6b829ac0e3b77bbe2cd3974175260ab24174d97a964d86705c  ./docs/oap-workflow.md
 3e276c6a0ce3b9a46a22632af280e65b4991c6acb89c554bcb3725246be36df9  ./docs/project-handoff.md

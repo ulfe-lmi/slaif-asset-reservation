@@ -2,6 +2,7 @@
 <section aria-labelledby="availability-heading">
   <h2 id="availability-heading">{% trans "Availability" %}</h2>
   <p>{{ availability.advisory_notice }}</p>
+  <p>{% blocktrans with timezone_name=availability.timezone %}Visible availability intervals use {{ timezone_name }}.{% endblocktrans %}</p>
   {% if not availability.bookable %}
     <p class="status-warning">{{ availability.reason }}</p>
   {% endif %}

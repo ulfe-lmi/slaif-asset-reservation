@@ -183,6 +183,11 @@ def _csrf_token(client: Client, path: str) -> str:
     return client.cookies["csrftoken"].value
 
 
+def _assert_in_order(content: str, values: list[str]) -> None:
+    positions = [content.index(value) for value in values]
+    assert positions == sorted(positions)
+
+
 @pytest.mark.django_db
 def test_login_success_service_account_denial_and_safe_next(
     client,
@@ -277,6 +282,82 @@ def test_profile_allows_only_display_name_and_timezone(client, member_user: User
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("stored_timezone", ["", "Mars/Base"])
+def test_invalid_stored_timezone_fails_closed_but_profile_can_repair(
+    client,
+    member_user: User,
+    asset: Asset,
+    stored_timezone: str,
+) -> None:
+    User.objects.filter(id=member_user.id).update(timezone=stored_timezone)
+    client.force_login(member_user)
+
+    protected_paths = [
+        "/",
+        "/assets/",
+        reverse("web:asset-detail", args=[asset.id]),
+        reverse("web:reserve", args=[asset.id]),
+        "/reservations/",
+    ]
+    for path in protected_paths:
+        response = client.get(path)
+        assert response.status_code == 302
+        assert response["Location"] == reverse("web:profile")
+
+    response = client.get("/profile/")
+    assert response.status_code == 200
+    assert b"Traceback" not in response.content
+
+    response = client.post("/profile/", {"display_name": "Member User", "timezone": "UTC"})
+    assert response.status_code == 302
+    member_user.refresh_from_db()
+    assert member_user.timezone == "UTC"
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert b"Times shown in UTC" in response.content
+
+
+@pytest.mark.django_db
+def test_valid_non_default_timezone_is_visible_and_distinct_from_asset_timezone(
+    client,
+    member_user: User,
+    asset: Asset,
+    policy: ReservationPolicy,
+) -> None:
+    member_user.timezone = "America/New_York"
+    member_user.save(update_fields=["timezone"])
+    start = (timezone.now() + timedelta(days=1)).replace(hour=15, minute=0, second=0, microsecond=0)
+    end = start + timedelta(hours=1)
+    reservation = _direct_reservation(asset=asset, user=member_user, start=start, end=end)
+    client.force_login(member_user)
+    visible_start = start.astimezone(ZoneInfo(member_user.timezone)).strftime("%Y-%m-%d %H:%M")
+    display_date = start.astimezone(ZoneInfo(member_user.timezone)).date().isoformat()
+
+    response = client.get("/")
+    content = response.content.decode()
+    assert response.status_code == 200
+    assert "Times shown in America/New_York" in content
+    assert visible_start in content
+    assert f'datetime="{start.isoformat().replace("+00:00", "Z")}"' in content
+
+    response = client.get(
+        reverse("web:asset-detail", args=[asset.id]),
+        {"date": display_date},
+    )
+    content = response.content.decode()
+    assert response.status_code == 200
+    assert "Times shown in America/New_York" in content
+    assert "Visible availability intervals use America/New_York" in content
+    assert "Asset timezone" in content
+    assert "Europe/Ljubljana" in content
+    assert (
+        str(reservation.id)
+        in client.get(reverse("web:reservation-detail", args=[reservation.id])).content.decode()
+    )
+
+
+@pytest.mark.django_db
 def test_member_routes_require_active_human_account(
     client,
     member_user: User,
@@ -301,6 +382,57 @@ def test_member_routes_require_active_human_account(
 
     client.force_login(inactive_user)
     assert client.get("/").status_code == 302
+
+
+@pytest.mark.django_db
+def test_upcoming_reservations_are_chronological_and_owner_bounded(
+    client,
+    member_user: User,
+    other_user: User,
+    asset: Asset,
+) -> None:
+    base = (timezone.now() + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+    reservations = [
+        _direct_reservation(
+            asset=asset,
+            user=member_user,
+            start=base + timedelta(days=index),
+            end=base + timedelta(days=index, hours=1),
+        )
+        for index in reversed(range(12))
+    ]
+    reservations.sort(key=lambda reservation: reservation.start_at)
+    other = _direct_reservation(
+        asset=asset,
+        user=other_user,
+        start=base - timedelta(hours=2),
+        end=base - timedelta(hours=1),
+    )
+    client.force_login(member_user)
+
+    dashboard_response = client.get("/")
+    dashboard_content = dashboard_response.content.decode()
+    assert dashboard_response.status_code == 200
+    _assert_in_order(dashboard_content, [str(reservation.id) for reservation in reservations[:5]])
+    assert str(reservations[5].id) not in dashboard_content
+    assert str(other.id) not in dashboard_content
+
+    first_page_response = client.get("/reservations/")
+    first_page_content = first_page_response.content.decode()
+    assert first_page_response.status_code == 200
+    _assert_in_order(first_page_content, [str(reservation.id) for reservation in reservations[:10]])
+    assert str(reservations[10].id) not in first_page_content
+    assert str(other.id) not in first_page_content
+
+    second_page_response = client.get("/reservations/", {"upcoming_page": 2})
+    second_page_content = second_page_response.content.decode()
+    assert second_page_response.status_code == 200
+    _assert_in_order(
+        second_page_content,
+        [str(reservation.id) for reservation in reservations[10:]],
+    )
+    assert str(reservations[0].id) not in second_page_content
+    assert str(other.id) not in second_page_content
 
 
 @pytest.mark.django_db
@@ -821,6 +953,40 @@ def test_own_reservation_routes_hide_other_user_and_do_not_mutate_on_get(
     assert client.get(reverse("web:reservation-cancel", args=[own.id])).status_code == 405
     own.refresh_from_db()
     assert own.status == Reservation.STATUS_CONFIRMED
+
+
+@pytest.mark.django_db
+def test_staff_member_routes_cannot_access_or_mutate_other_user_reservations(
+    client,
+    staff_user: User,
+    other_user: User,
+    asset: Asset,
+) -> None:
+    future_start, future_end = _future_pair(8)
+    future = _direct_reservation(
+        asset=asset,
+        user=other_user,
+        start=future_start,
+        end=future_end,
+    )
+    active = _direct_reservation(
+        asset=asset,
+        user=other_user,
+        start=timezone.now() - timedelta(hours=1),
+        end=timezone.now() + timedelta(hours=1),
+    )
+    client.force_login(staff_user)
+
+    assert client.get(reverse("web:reservation-detail", args=[future.id])).status_code == 404
+    assert client.post(reverse("web:reservation-cancel", args=[future.id])).status_code == 404
+    assert client.post(reverse("web:reservation-release", args=[active.id])).status_code == 404
+
+    future.refresh_from_db()
+    active.refresh_from_db()
+    assert future.status == Reservation.STATUS_CONFIRMED
+    assert active.status == Reservation.STATUS_CONFIRMED
+    assert future.cancelled_at is None
+    assert active.released_at is None
 
 
 @pytest.mark.django_db

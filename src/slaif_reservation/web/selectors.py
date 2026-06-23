@@ -98,6 +98,8 @@ def dashboard_reservations(user: Any) -> dict[str, QuerySet[Reservation]]:
             status=Reservation.STATUS_CONFIRMED,
             start_at__lte=now,
             effective_end_at__gt=now,
-        )[:1],
-        "upcoming": own.filter(status=Reservation.STATUS_CONFIRMED, start_at__gt=now)[:5],
+        ).order_by("-start_at", "-created_at")[:1],
+        "upcoming": own.filter(status=Reservation.STATUS_CONFIRMED, start_at__gt=now).order_by(
+            "start_at", "created_at"
+        )[:5],
     }

@@ -122,7 +122,17 @@ class HumanLogoutView(LogoutView):
 
 @active_human_required
 def dashboard(request: HttpRequest) -> HttpResponse:
-    return render(request, "web/dashboard.html", dashboard_reservations(request.user))
+    timezone_name = _member_timezone_or_profile(request)
+    if isinstance(timezone_name, HttpResponse):
+        return timezone_name
+    return render(
+        request,
+        "web/dashboard.html",
+        {
+            **dashboard_reservations(request.user),
+            "display_timezone": timezone_name,
+        },
+    )
 
 
 @active_human_required
@@ -135,11 +145,21 @@ def profile(request: HttpRequest) -> HttpResponse:
             return redirect("web:profile")
     else:
         form = ProfileForm(instance=request.user)
-    return render(request, "web/profile.html", {"form": form})
+    return render(
+        request,
+        "web/profile.html",
+        {
+            "form": form,
+            "display_timezone": str(getattr(request.user, "timezone", "") or ""),
+        },
+    )
 
 
 @active_human_required
 def asset_list(request: HttpRequest) -> HttpResponse:
+    timezone_name = _member_timezone_or_profile(request)
+    if isinstance(timezone_name, HttpResponse):
+        return timezone_name
     try:
         filters = parse_member_asset_filters(request.GET)
     except AssetFilterError as exc:
@@ -150,33 +170,47 @@ def asset_list(request: HttpRequest) -> HttpResponse:
         {
             "context": member_asset_context(filters),
             "kinds": Asset.KIND_CHOICES,
+            "display_timezone": timezone_name,
         },
     )
 
 
 @active_human_required
 def asset_detail(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
+    timezone_name = _member_timezone_or_profile(request)
+    if isinstance(timezone_name, HttpResponse):
+        return timezone_name
     try:
         asset = get_member_asset(asset_id)
     except ObjectDoesNotExist as exc:
         raise Http404 from exc
-    availability = _availability_from_request(request, asset)
+    availability = _availability_from_request(request, asset, timezone_name=timezone_name)
     if isinstance(availability, HttpResponse):
         return availability
-    return render(request, "web/asset_detail.html", {"asset": asset, "availability": availability})
+    return render(
+        request,
+        "web/asset_detail.html",
+        {
+            "asset": asset,
+            "availability": availability,
+            "display_timezone": timezone_name,
+        },
+    )
 
 
 @active_human_required
 def reserve_asset(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
+    timezone_name = _member_timezone_or_profile(request)
+    if isinstance(timezone_name, HttpResponse):
+        return timezone_name
     try:
         asset = get_member_asset(asset_id)
     except ObjectDoesNotExist as exc:
         raise Http404 from exc
 
-    availability = _availability_from_request(request, asset)
+    availability = _availability_from_request(request, asset, timezone_name=timezone_name)
     if isinstance(availability, HttpResponse):
         return availability
-    timezone_name = _display_timezone(request.user)
     if request.method == "POST":
         form = ReservationForm(request.POST, timezone_name=timezone_name)
         if form.is_valid():
@@ -191,7 +225,9 @@ def reserve_asset(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
                 )
             except ReservationDomainError as exc:
                 form.add_error(None, _domain_message(exc))
-                availability = _availability_from_request(request, asset)
+                availability = _availability_from_request(
+                    request, asset, timezone_name=timezone_name
+                )
                 if isinstance(availability, HttpResponse):
                     return availability
             else:
@@ -213,6 +249,9 @@ def reserve_asset(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
 
 @active_human_required
 def reservation_list(request: HttpRequest) -> HttpResponse:
+    timezone_name = _member_timezone_or_profile(request)
+    if isinstance(timezone_name, HttpResponse):
+        return timezone_name
     now = timezone.now()
     owned = owned_reservations_queryset(request.user)
     return render(
@@ -231,7 +270,9 @@ def reservation_list(request: HttpRequest) -> HttpResponse:
             ),
             "upcoming_page": _page_queryset(
                 request,
-                owned.filter(status=Reservation.STATUS_CONFIRMED, start_at__gt=now),
+                owned.filter(status=Reservation.STATUS_CONFIRMED, start_at__gt=now).order_by(
+                    "start_at", "created_at"
+                ),
                 "upcoming_page",
                 per_page=10,
             ),
@@ -256,12 +297,16 @@ def reservation_list(request: HttpRequest) -> HttpResponse:
                 "released_page",
                 per_page=25,
             ),
+            "display_timezone": timezone_name,
         },
     )
 
 
 @active_human_required
 def reservation_detail(request: HttpRequest, reservation_id: uuid.UUID) -> HttpResponse:
+    timezone_name = _member_timezone_or_profile(request)
+    if isinstance(timezone_name, HttpResponse):
+        return timezone_name
     reservation = _owned_or_404(reservation_id, request.user)
     return render(
         request,
@@ -270,6 +315,7 @@ def reservation_detail(request: HttpRequest, reservation_id: uuid.UUID) -> HttpR
             "reservation": reservation,
             "lifecycle": derive_lifecycle(reservation, at=timezone.now()),
             "cancel_form": CancellationForm(),
+            "display_timezone": timezone_name,
         },
     )
 
@@ -322,12 +368,30 @@ def _owned_or_404(reservation_id: uuid.UUID, user: Any) -> Reservation:
         raise Http404 from exc
 
 
+class InvalidMemberTimezone(ValueError):
+    pass
+
+
 def _display_timezone(user: Any) -> str:
-    return str(getattr(user, "timezone", "") or "Europe/Ljubljana")
+    timezone_name = str(getattr(user, "timezone", "") or "").strip()
+    if not timezone_name:
+        raise InvalidMemberTimezone("Member timezone is not configured.")
+    try:
+        ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise InvalidMemberTimezone("Member timezone is invalid.") from exc
+    return timezone_name
 
 
-def _availability_from_request(request: HttpRequest, asset: Asset) -> Any:
-    timezone_name = _display_timezone(request.user)
+def _member_timezone_or_profile(request: HttpRequest) -> str | HttpResponse:
+    try:
+        return _display_timezone(request.user)
+    except InvalidMemberTimezone:
+        messages.error(request, _("Update your timezone before using reservation pages."))
+        return redirect("web:profile")
+
+
+def _availability_from_request(request: HttpRequest, asset: Asset, *, timezone_name: str) -> Any:
     raw_date = request.GET.get("date")
     raw_days = request.GET.get("days")
     try:

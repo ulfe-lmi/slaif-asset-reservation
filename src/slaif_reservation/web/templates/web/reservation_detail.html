@@ -6,7 +6,7 @@
 {% block content %}
   <p><a href="{% url 'web:reservation-list' %}">{% trans "My reservations" %}</a></p>
   <h1>{% trans "Reservation" %}</h1>
-  {% timezone request.user.timezone %}
+  {% timezone display_timezone %}
     <dl>
       <dt>{% trans "Asset" %}</dt><dd>{{ reservation.asset.name }}</dd>
       <dt>{% trans "Reservation UUID" %}</dt><dd>{{ reservation.id }}</dd>
@@ -14,7 +14,7 @@
       <dt>{% trans "Start" %}</dt><dd><time datetime="{{ reservation.start_at|utc_datetime }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time></dd>
       <dt>{% trans "Original end" %}</dt><dd><time datetime="{{ reservation.end_at|utc_datetime }}">{{ reservation.end_at|date:"Y-m-d H:i" }}</time></dd>
       <dt>{% trans "Effective end" %}</dt><dd><time datetime="{{ reservation.effective_end_at|utc_datetime }}">{{ reservation.effective_end_at|date:"Y-m-d H:i" }}</time></dd>
-      <dt>{% trans "Timezone" %}</dt><dd>{{ request.user.timezone }}</dd>
+      <dt>{% trans "Times shown in" %}</dt><dd>{{ display_timezone }}</dd>
       <dt>{% trans "Purpose" %}</dt><dd>{{ reservation.purpose|default:"None" }}</dd>
       {% if reservation.cancelled_at %}
         <dt>{% trans "Cancelled at" %}</dt><dd><time datetime="{{ reservation.cancelled_at|utc_datetime }}">{{ reservation.cancelled_at|date:"Y-m-d H:i" }}</time></dd>

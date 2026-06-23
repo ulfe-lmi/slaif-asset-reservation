@@ -14,7 +14,7 @@
     <dt>{% trans "Kind" %}</dt><dd>{{ asset.get_kind_display }}</dd>
     <dt>{% trans "Parent" %}</dt><dd>{% if asset.parent %}{{ asset.parent.name }}{% else %}{% trans "None" %}{% endif %}</dd>
     <dt>{% trans "Description" %}</dt><dd>{{ asset.description|default:"None" }}</dd>
-    <dt>{% trans "Timezone" %}</dt><dd>{{ asset.timezone }}</dd>
+    <dt>{% trans "Asset timezone" %}</dt><dd>{{ asset.timezone }}</dd>
     <dt>{% trans "Reservable" %}</dt><dd>{{ asset.reservable|yesno:"yes,no" }}</dd>
     <dt>{% trans "Verification required" %}</dt><dd>{{ asset.verification_required|yesno:"yes,no" }}</dd>
     <dt>{% trans "Tags" %}</dt>

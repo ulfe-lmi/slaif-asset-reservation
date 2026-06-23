@@ -22,6 +22,11 @@
           </form>
         {% endif %}
       </nav>
+      {% if request.user.is_authenticated and display_timezone %}
+        <p class="timezone-banner">
+          {% blocktrans with timezone_name=display_timezone %}Times shown in {{ timezone_name }}.{% endblocktrans %}
+        </p>
+      {% endif %}
     </header>
     <main id="content" class="site-main">
       {% if messages %}
