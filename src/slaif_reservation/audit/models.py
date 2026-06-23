@@ -11,6 +11,12 @@ from slaif_reservation.audit.validators import validate_audit_metadata
 
 
 class AuditEventQuerySet(models.QuerySet["AuditEvent"]):
+    def bulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
+        raise ValidationError("Audit events are append-only.")
+
+    async def abulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
+        raise ValidationError("Audit events are append-only.")
+
     def update(self, **kwargs: Any) -> int:
         raise ValidationError("Audit events are append-only.")
 
@@ -22,6 +28,12 @@ AuditEventManagerBase = models.Manager.from_queryset(AuditEventQuerySet)
 
 
 class AuditEventManager(AuditEventManagerBase["AuditEvent"]):
+    def bulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
+        raise ValidationError("Audit events are append-only.")
+
+    async def abulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
+        raise ValidationError("Audit events are append-only.")
+
     def bulk_update(
         self,
         objs: Any,

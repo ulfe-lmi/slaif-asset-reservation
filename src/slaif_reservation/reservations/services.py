@@ -187,7 +187,7 @@ def _enforce_policy(
     upcoming_count = Reservation.objects.filter(
         requested_by_user=principal,
         status=Reservation.STATUS_CONFIRMED,
-        start_at__gte=now,
+        start_at__gt=now,
     ).count()
     if upcoming_count >= policy.max_upcoming_per_principal:
         _raise(MAX_UPCOMING_EXCEEDED, "Principal has too many upcoming reservations.")

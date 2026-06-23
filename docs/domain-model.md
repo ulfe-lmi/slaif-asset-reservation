@@ -217,8 +217,8 @@ Ambiguous equal-priority policy is a configuration error and fails closed.
 Active policy uniqueness is enforced for a specific asset and for the global policy. Numeric policy
 fields are constrained so durations and limits fail closed before mutation. Policies are intended to
 be deactivated rather than hard-deleted. Policy creation, update, and deactivation are staff-only
-service operations that write audit events; ordinary model updates, queryset updates, and hard
-deletes are blocked at the application/ORM layer.
+service operations that write audit events; ordinary reconstructed-object overwrites, bulk creates,
+model updates, queryset updates, and hard deletes are blocked at the application/ORM layer.
 
 ## 10. Reservation
 
@@ -254,7 +254,8 @@ Do not persist a `completed` status merely because the clock passed; derive it u
 the PostgreSQL exclusion constraint `reservation_no_overlap_per_asset`; cancelled rows do not block.
 After creation, reservation identity/history fields such as asset, requester, source, `start_at`,
 and `end_at` are not ordinary mutable fields. Cancellation and release services update only their
-intended lifecycle fields and write audit evidence in the same transaction.
+intended lifecycle fields and write audit evidence in the same transaction. Reconstructed-object
+overwrites and bulk creates are blocked through ordinary ORM paths.
 
 Reservation creation grants new entitlement and therefore requires an active, reservable,
 exclusive-mode asset plus a locked effective policy. Cancellation is a pre-start lifecycle operation
@@ -282,8 +283,8 @@ Audit metadata intentionally excludes passwords, tokens, cookies, authorization 
 bodies, email addresses, reservation purpose, cancellation reason text, and private physical
 locators. The validator checks nested dictionaries and lists with case-insensitive key comparison
 and normalizes spaces/hyphens to underscores. Audit events are append-only through normal model,
-queryset, bulk-update, delete, and admin paths. This is application evidence, not a tamper-proof
-ledger against privileged database operators.
+queryset, bulk-create, bulk-update, delete, and admin paths. This is application evidence, not a
+tamper-proof ledger against privileged database operators.
 
 ## 12. Idempotency record
 

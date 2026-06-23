@@ -504,6 +504,35 @@ def test_upcoming_limit() -> None:
 
 
 @pytest.mark.django_db
+def test_active_reservation_starting_exactly_now_is_not_counted_as_upcoming() -> None:
+    principal = user()
+    first_gpu = asset()
+    second_gpu = asset("asset-b")
+    policy(max_upcoming_per_principal=1, max_concurrent_per_principal=1)
+    now = timezone.now()
+
+    services.create_reservation(
+        asset=first_gpu,
+        requested_by_user=principal,
+        start_at=now,
+        end_at=now + timedelta(minutes=30),
+        purpose="",
+        now=now,
+    )
+    result = services.create_reservation(
+        asset=second_gpu,
+        requested_by_user=principal,
+        start_at=now + timedelta(hours=1),
+        end_at=now + timedelta(hours=2),
+        purpose="",
+        now=now,
+    )
+
+    assert result.reservation.asset == second_gpu
+    assert Reservation.objects.count() == 2
+
+
+@pytest.mark.django_db
 def test_concurrent_limit() -> None:
     principal = user()
     gpu = asset()

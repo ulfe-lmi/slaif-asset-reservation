@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -90,6 +91,39 @@ def test_policy_and_reservation_use_uuid_identities() -> None:
 
     assert isinstance(policy.id, uuid.UUID)
     assert isinstance(reservation.id, uuid.UUID)
+
+
+@pytest.mark.django_db
+def test_policy_and_reservation_allow_new_explicit_uuid_creation() -> None:
+    user = create_user()
+    asset = create_asset()
+    policy_id = uuid.uuid4()
+    reservation_id = uuid.uuid4()
+    start = timezone.now() + timedelta(hours=1)
+
+    reservation_policy = ReservationPolicy.objects.create(
+        id=policy_id,
+        name="Explicit UUID policy",
+        min_duration_minutes=15,
+        max_duration_minutes=60,
+        booking_horizon_days=1,
+        max_upcoming_per_principal=1,
+        max_concurrent_per_principal=1,
+    )
+    reservation = Reservation.objects.create(
+        id=reservation_id,
+        asset=asset,
+        requested_by_user=user,
+        source=Reservation.SOURCE_WEB,
+        status=Reservation.STATUS_CONFIRMED,
+        start_at=start,
+        end_at=start + timedelta(hours=1),
+        effective_end_at=start + timedelta(hours=1),
+        purpose="test",
+    )
+
+    assert reservation_policy.id == policy_id
+    assert reservation.id == reservation_id
 
 
 @pytest.mark.django_db
@@ -405,6 +439,64 @@ def test_audit_event_blocks_ordinary_overwrite_update_and_delete() -> None:
 
 
 @pytest.mark.django_db
+def test_audit_event_blocks_bulk_create_entry_points_and_keeps_existing_row() -> None:
+    user = create_user(is_staff=True)
+    event = AuditEvent.objects.create(
+        occurred_at=timezone.now(),
+        actor_user=user,
+        action=AuditEvent.ACTION_RESERVATION_CREATED,
+        target_type="reservation",
+        target_id=uuid.uuid4(),
+        correlation_id=uuid.uuid4(),
+        source=AuditEvent.SOURCE_WEB,
+        metadata={"safe": "value"},
+    )
+    replacement = AuditEvent(
+        id=event.id,
+        occurred_at=timezone.now(),
+        actor_user=user,
+        action=AuditEvent.ACTION_RESERVATION_CANCELLED,
+        target_type="reservation",
+        target_id=uuid.uuid4(),
+        correlation_id=uuid.uuid4(),
+        source=AuditEvent.SOURCE_WEB,
+        metadata={"safe": "changed"},
+    )
+    invalid_secret_event = AuditEvent(
+        occurred_at=timezone.now(),
+        actor_user=user,
+        action=AuditEvent.ACTION_RESERVATION_CREATED,
+        target_type="reservation",
+        target_id=uuid.uuid4(),
+        correlation_id=uuid.uuid4(),
+        source=AuditEvent.SOURCE_WEB,
+        metadata={"nested": {"password": "hidden"}},
+    )
+
+    for bulk_target in (AuditEvent.objects, AuditEvent.objects.filter(pk=event.pk)):
+        with pytest.raises(ValidationError, match="append-only"):
+            bulk_target.bulk_create([invalid_secret_event])
+        with pytest.raises(ValidationError, match="append-only"):
+            bulk_target.bulk_create([replacement])
+        with pytest.raises(ValidationError, match="append-only"):
+            bulk_target.bulk_create([replacement], ignore_conflicts=True)
+        with pytest.raises(ValidationError, match="append-only"):
+            bulk_target.bulk_create(
+                [replacement],
+                update_conflicts=True,
+                update_fields=["metadata"],
+                unique_fields=["id"],
+            )
+        with pytest.raises(ValidationError, match="append-only"):
+            asyncio.run(bulk_target.abulk_create([replacement]))
+
+    event.refresh_from_db()
+    assert event.action == AuditEvent.ACTION_RESERVATION_CREATED
+    assert event.metadata == {"safe": "value"}
+    assert AuditEvent.objects.count() == 1
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "metadata",
     [
@@ -464,6 +556,88 @@ def test_reservation_history_and_hard_delete_are_protected() -> None:
 
 
 @pytest.mark.django_db
+def test_reconstructed_reservation_cannot_overwrite_existing_row() -> None:
+    user = create_user()
+    asset = create_asset()
+    start = timezone.now() + timedelta(hours=1)
+    reservation = create_reservation_row(
+        asset=asset, user=user, start_at=start, end_at=start + timedelta(hours=1)
+    )
+    original_values = {
+        "asset_id": reservation.asset_id,
+        "requested_by_user_id": reservation.requested_by_user_id,
+        "source": reservation.source,
+        "status": reservation.status,
+        "start_at": reservation.start_at,
+        "end_at": reservation.end_at,
+        "effective_end_at": reservation.effective_end_at,
+        "purpose": reservation.purpose,
+    }
+    replacement = Reservation(
+        id=reservation.id,
+        asset=asset,
+        requested_by_user=user,
+        source=Reservation.SOURCE_ADMIN,
+        status=Reservation.STATUS_CONFIRMED,
+        start_at=start + timedelta(hours=2),
+        end_at=start + timedelta(hours=3),
+        effective_end_at=start + timedelta(hours=3),
+        purpose="changed",
+    )
+
+    with pytest.raises(ValidationError, match="authoritative services"):
+        replacement.save()
+
+    reservation.refresh_from_db()
+    for field, value in original_values.items():
+        assert getattr(reservation, field) == value
+    assert AuditEvent.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_reservation_blocks_bulk_create_entry_points_and_keeps_existing_row() -> None:
+    user = create_user()
+    asset = create_asset()
+    start = timezone.now() + timedelta(hours=1)
+    reservation = create_reservation_row(
+        asset=asset, user=user, start_at=start, end_at=start + timedelta(hours=1)
+    )
+    replacement = Reservation(
+        id=reservation.id,
+        asset=asset,
+        requested_by_user=user,
+        source=Reservation.SOURCE_ADMIN,
+        status=Reservation.STATUS_CONFIRMED,
+        start_at=start + timedelta(hours=2),
+        end_at=start + timedelta(hours=3),
+        effective_end_at=start + timedelta(hours=3),
+        purpose="changed",
+    )
+
+    for bulk_target in (Reservation.objects, Reservation.objects.filter(pk=reservation.pk)):
+        with pytest.raises(ValidationError, match="created one at a time"):
+            bulk_target.bulk_create([replacement])
+        with pytest.raises(ValidationError, match="created one at a time"):
+            bulk_target.bulk_create([replacement], ignore_conflicts=True)
+        with pytest.raises(ValidationError, match="created one at a time"):
+            bulk_target.bulk_create(
+                [replacement],
+                update_conflicts=True,
+                update_fields=["purpose"],
+                unique_fields=["id"],
+            )
+        with pytest.raises(ValidationError, match="created one at a time"):
+            asyncio.run(bulk_target.abulk_create([replacement]))
+
+    reservation.refresh_from_db()
+    assert reservation.source == Reservation.SOURCE_WEB
+    assert reservation.purpose == "test"
+    assert reservation.start_at == start
+    assert Reservation.objects.count() == 1
+    assert AuditEvent.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_reservation_policy_updates_and_hard_delete_are_protected() -> None:
     reservation_policy = create_policy()
 
@@ -476,6 +650,66 @@ def test_reservation_policy_updates_and_hard_delete_are_protected() -> None:
         ReservationPolicy.objects.filter(pk=reservation_policy.pk).update(name="changed")
     with pytest.raises(ValidationError, match="hard-deleted"):
         ReservationPolicy.objects.filter(pk=reservation_policy.pk).delete()
+
+
+@pytest.mark.django_db
+def test_reconstructed_reservation_policy_cannot_overwrite_existing_row() -> None:
+    reservation_policy = create_policy(name="Original", max_duration_minutes=60)
+    replacement = ReservationPolicy(
+        id=reservation_policy.id,
+        name="Replacement",
+        min_duration_minutes=5,
+        max_duration_minutes=10,
+        booking_horizon_days=1,
+        max_upcoming_per_principal=1,
+        max_concurrent_per_principal=1,
+    )
+
+    with pytest.raises(ValidationError, match="audited services"):
+        replacement.save()
+
+    reservation_policy.refresh_from_db()
+    assert reservation_policy.name == "Original"
+    assert reservation_policy.max_duration_minutes == 60
+    assert AuditEvent.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_reservation_policy_blocks_bulk_create_entry_points_and_keeps_existing_row() -> None:
+    reservation_policy = create_policy(name="Original", max_duration_minutes=60)
+    replacement = ReservationPolicy(
+        id=reservation_policy.id,
+        name="Replacement",
+        min_duration_minutes=5,
+        max_duration_minutes=10,
+        booking_horizon_days=1,
+        max_upcoming_per_principal=1,
+        max_concurrent_per_principal=1,
+    )
+
+    for bulk_target in (
+        ReservationPolicy.objects,
+        ReservationPolicy.objects.filter(pk=reservation_policy.pk),
+    ):
+        with pytest.raises(ValidationError, match="created one at a time"):
+            bulk_target.bulk_create([replacement])
+        with pytest.raises(ValidationError, match="created one at a time"):
+            bulk_target.bulk_create([replacement], ignore_conflicts=True)
+        with pytest.raises(ValidationError, match="created one at a time"):
+            bulk_target.bulk_create(
+                [replacement],
+                update_conflicts=True,
+                update_fields=["name"],
+                unique_fields=["id"],
+            )
+        with pytest.raises(ValidationError, match="created one at a time"):
+            asyncio.run(bulk_target.abulk_create([replacement]))
+
+    reservation_policy.refresh_from_db()
+    assert reservation_policy.name == "Original"
+    assert reservation_policy.max_duration_minutes == 60
+    assert ReservationPolicy.objects.count() == 1
+    assert AuditEvent.objects.count() == 0
 
 
 @pytest.mark.django_db

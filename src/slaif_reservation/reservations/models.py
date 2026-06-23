@@ -18,6 +18,12 @@ SERVICE_UPDATE_ATTR = "_slaif_reservation_service_update"
 
 
 class ProtectedMutationQuerySet(models.QuerySet[Any]):
+    def bulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
+        raise ValidationError("Reservation domain rows must be created one at a time.")
+
+    async def abulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
+        raise ValidationError("Reservation domain rows must be created one at a time.")
+
     def update(self, **kwargs: Any) -> int:
         raise ValidationError("Reservation domain rows must be changed through services.")
 
@@ -29,6 +35,12 @@ ProtectedMutationManagerBase = models.Manager.from_queryset(ProtectedMutationQue
 
 
 class ProtectedMutationManager(ProtectedMutationManagerBase[Any]):
+    def bulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
+        raise ValidationError("Reservation domain rows must be created one at a time.")
+
+    async def abulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
+        raise ValidationError("Reservation domain rows must be created one at a time.")
+
     def bulk_update(
         self,
         objs: Any,
@@ -116,6 +128,8 @@ class ReservationPolicy(models.Model):
         return f"{self.name} (global)"
 
     def save(self, *args: Any, **kwargs: Any) -> None:
+        if self._state.adding and self.pk and type(self)._base_manager.filter(pk=self.pk).exists():
+            raise ValidationError("Reservation policies must be changed through audited services.")
         if not self._state.adding and not getattr(self, SERVICE_UPDATE_ATTR, False):
             raise ValidationError("Reservation policies must be changed through audited services.")
         super().save(*args, **kwargs)
@@ -292,6 +306,8 @@ class Reservation(models.Model):
         return f"{self.asset} {self.start_at.isoformat()}-{self.effective_end_at.isoformat()}"
 
     def save(self, *args: Any, **kwargs: Any) -> None:
+        if self._state.adding and self.pk and type(self)._base_manager.filter(pk=self.pk).exists():
+            raise ValidationError("Reservations must be changed through authoritative services.")
         if not self._state.adding and not getattr(self, SERVICE_UPDATE_ATTR, False):
             raise ValidationError("Reservations must be changed through authoritative services.")
         super().save(*args, **kwargs)
