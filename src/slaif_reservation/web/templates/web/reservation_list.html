@@ -1,0 +1,23 @@
+{% extends "web/base.html" %}
+{% load i18n tz %}
+
+{% block title %}{% trans "My reservations" %}{% endblock %}
+
+{% block content %}
+  <h1>{% trans "My reservations" %}</h1>
+  {% include "web/_reservation_group.html" with heading="Active" reservations=active %}
+  {% include "web/_reservation_group.html" with heading="Upcoming" reservations=upcoming %}
+  {% include "web/_reservation_group.html" with heading="Released" reservations=released %}
+  {% include "web/_reservation_group.html" with heading="Cancelled" reservations=cancelled %}
+  <section>
+    <h2>{% trans "Completed history" %}</h2>
+    {% include "web/_reservation_table.html" with reservations=history_page.object_list %}
+    {% if history_page.has_previous or history_page.has_next %}
+      <nav aria-label="{% trans 'History pages' %}">
+        {% if history_page.has_previous %}<a href="?page={{ history_page.previous_page_number }}">{% trans "Previous" %}</a>{% endif %}
+        <span>{% blocktrans with number=history_page.number total=history_page.paginator.num_pages %}Page {{ number }} of {{ total }}{% endblocktrans %}</span>
+        {% if history_page.has_next %}<a href="?page={{ history_page.next_page_number }}">{% trans "Next" %}</a>{% endif %}
+      </nav>
+    {% endif %}
+  </section>
+{% endblock %}

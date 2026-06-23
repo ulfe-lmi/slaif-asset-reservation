@@ -34,7 +34,10 @@ def imported_assets() -> None:
     ("path_factory", "expected_status"),
     [
         (lambda: "/assets/", 302),
-        (lambda: reverse("assets:detail", args=[Asset.objects.get(slug="neumann-gpu-0").id]), 302),
+        (
+            lambda: reverse("web:asset-detail", args=[Asset.objects.get(slug="neumann-gpu-0").id]),
+            302,
+        ),
         (lambda: "/api/v1/assets/", 403),
         (lambda: f"/api/v1/assets/{Asset.objects.get(slug='neumann-gpu-0').id}/", 403),
     ],
@@ -54,8 +57,11 @@ def test_asset_inventory_denies_anonymous_users(
 @pytest.mark.parametrize(
     ("path_factory", "expected_status"),
     [
-        (lambda: "/assets/", 302),
-        (lambda: reverse("assets:detail", args=[Asset.objects.get(slug="neumann-gpu-0").id]), 302),
+        (lambda: "/assets/", 200),
+        (
+            lambda: reverse("web:asset-detail", args=[Asset.objects.get(slug="neumann-gpu-0").id]),
+            200,
+        ),
         (lambda: "/api/v1/assets/", 403),
         (lambda: f"/api/v1/assets/{Asset.objects.get(slug='neumann-gpu-0').id}/", 403),
     ],
@@ -79,7 +85,7 @@ def test_asset_inventory_denies_non_staff_users(
     "path_factory",
     [
         lambda: "/assets/",
-        lambda: reverse("assets:detail", args=[Asset.objects.get(slug="neumann-gpu-0").id]),
+        lambda: reverse("web:asset-detail", args=[Asset.objects.get(slug="neumann-gpu-0").id]),
         lambda: "/api/v1/assets/",
         lambda: f"/api/v1/assets/{Asset.objects.get(slug='neumann-gpu-0').id}/",
     ],
@@ -115,7 +121,7 @@ def test_staff_web_inventory_list_detail_and_filters(
     assert b"gpx1 GPU" not in list_response.content
 
     detail_response = client.get(
-        reverse("assets:detail", args=[Asset.objects.get(slug="neumann-gpu-0").id])
+        reverse("web:asset-detail", args=[Asset.objects.get(slug="neumann-gpu-0").id])
     )
     assert detail_response.status_code == 200
     assert b"unverified" in detail_response.content

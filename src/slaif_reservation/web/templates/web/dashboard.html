@@ -1,0 +1,38 @@
+{% extends "web/base.html" %}
+{% load i18n tz %}
+
+{% block title %}{% trans "Dashboard" %}{% endblock %}
+
+{% block content %}
+  <h1>{% trans "Dashboard" %}</h1>
+  <section aria-labelledby="active-heading">
+    <h2 id="active-heading">{% trans "Active reservation" %}</h2>
+    {% for reservation in active %}
+      {% timezone request.user.timezone %}
+        <p><a href="{% url 'web:reservation-detail' reservation.id %}">{{ reservation.asset.name }}</a>
+          <time datetime="{{ reservation.start_at|date:'c' }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time>
+          -
+          <time datetime="{{ reservation.effective_end_at|date:'c' }}">{{ reservation.effective_end_at|date:"Y-m-d H:i" }}</time>
+        </p>
+      {% endtimezone %}
+    {% empty %}
+      <p>{% trans "No active reservation." %}</p>
+    {% endfor %}
+  </section>
+  <section aria-labelledby="upcoming-heading">
+    <h2 id="upcoming-heading">{% trans "Next upcoming reservations" %}</h2>
+    <ul>
+      {% for reservation in upcoming %}
+        {% timezone request.user.timezone %}
+          <li><a href="{% url 'web:reservation-detail' reservation.id %}">{{ reservation.asset.name }}</a>,
+            <time datetime="{{ reservation.start_at|date:'c' }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time>
+          </li>
+        {% endtimezone %}
+      {% empty %}
+        <li>{% trans "No upcoming reservations." %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <p><a href="{% url 'web:asset-list' %}">{% trans "Browse assets" %}</a></p>
+  <p><a href="{% url 'web:reservation-list' %}">{% trans "View all my reservations" %}</a></p>
+{% endblock %}

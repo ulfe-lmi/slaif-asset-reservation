@@ -1,0 +1,41 @@
+{% extends "web/base.html" %}
+{% load i18n tz %}
+
+{% block title %}{% trans "Reservation" %} {{ reservation.id }}{% endblock %}
+
+{% block content %}
+  <p><a href="{% url 'web:reservation-list' %}">{% trans "My reservations" %}</a></p>
+  <h1>{% trans "Reservation" %}</h1>
+  {% timezone request.user.timezone %}
+    <dl>
+      <dt>{% trans "Asset" %}</dt><dd>{{ reservation.asset.name }}</dd>
+      <dt>{% trans "Reservation UUID" %}</dt><dd>{{ reservation.id }}</dd>
+      <dt>{% trans "Lifecycle" %}</dt><dd>{{ lifecycle.label }}</dd>
+      <dt>{% trans "Start" %}</dt><dd><time datetime="{{ reservation.start_at|date:'c' }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time></dd>
+      <dt>{% trans "Original end" %}</dt><dd><time datetime="{{ reservation.end_at|date:'c' }}">{{ reservation.end_at|date:"Y-m-d H:i" }}</time></dd>
+      <dt>{% trans "Effective end" %}</dt><dd><time datetime="{{ reservation.effective_end_at|date:'c' }}">{{ reservation.effective_end_at|date:"Y-m-d H:i" }}</time></dd>
+      <dt>{% trans "Timezone" %}</dt><dd>{{ request.user.timezone }}</dd>
+      <dt>{% trans "Purpose" %}</dt><dd>{{ reservation.purpose|default:"None" }}</dd>
+      {% if reservation.cancelled_at %}
+        <dt>{% trans "Cancelled at" %}</dt><dd><time datetime="{{ reservation.cancelled_at|date:'c' }}">{{ reservation.cancelled_at|date:"Y-m-d H:i" }}</time></dd>
+      {% endif %}
+      {% if reservation.released_at %}
+        <dt>{% trans "Released at" %}</dt><dd><time datetime="{{ reservation.released_at|date:'c' }}">{{ reservation.released_at|date:"Y-m-d H:i" }}</time></dd>
+      {% endif %}
+    </dl>
+  {% endtimezone %}
+  {% if lifecycle.value == "upcoming" %}
+    <form method="post" action="{% url 'web:reservation-cancel' reservation.id %}">
+      {% csrf_token %}
+      {{ cancel_form.reason.label_tag }}
+      {{ cancel_form.reason }}
+      <button type="submit">{% trans "Cancel reservation" %}</button>
+    </form>
+  {% endif %}
+  {% if lifecycle.value == "active" %}
+    <form method="post" action="{% url 'web:reservation-release' reservation.id %}">
+      {% csrf_token %}
+      <button type="submit">{% trans "Release reservation" %}</button>
+    </form>
+  {% endif %}
+{% endblock %}

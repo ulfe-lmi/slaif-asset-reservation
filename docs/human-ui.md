@@ -1,6 +1,6 @@
 # Human UI Requirements
 
-**Status:** product/UX baseline; visual system is selected in a later scoped PR
+**Status:** internal pre-alpha human MVP implemented; visual polish remains deferred
 
 ## 1. UX goals
 
@@ -19,10 +19,11 @@ The UI and agent API share domain operations and policy. The browser is not a pr
 
 - Dashboard
 - Assets
-- Calendar / availability
+- Availability list on asset detail/reserve pages
 - My reservations
-- API tokens
 - Profile / timezone
+
+API-token management remains deferred to Work Order 0005.
 
 ### Manager/admin navigation
 
@@ -41,13 +42,12 @@ Django admin remains available to authorized operators but is not the primary me
 
 ### Dashboard
 
-Show:
+Implemented in Work Order 0004:
 
 - active reservation, if any;
 - next upcoming reservations;
-- assets available now, limited to permitted assets;
-- recent conflicts or actionable notices;
-- clear create-reservation action.
+- links to active asset browsing and own reservations;
+- honest empty states.
 
 ### Asset explorer
 
@@ -60,7 +60,8 @@ Each asset card/row shows:
 - tags/location;
 - link to details and availability.
 
-Filters must be URL-addressable where practical so views can be shared/bookmarked.
+Implemented filters are URL-addressable: kind, parent, tag, reservable, and safe text search. Only
+active assets are visible to member pages; inactive assets remain administrator/admin-only.
 
 ### Asset detail
 
@@ -72,7 +73,7 @@ Show:
 - availability calendar/list;
 - upcoming reservations with privacy-safe visibility;
 - reserve action;
-- maintenance notices.
+- advisory textual availability.
 
 Do not expose another user's purpose or identity unless policy explicitly permits it. A busy interval may be shown as unavailable without personal detail.
 
@@ -84,8 +85,7 @@ Inputs:
 - date and start/end or duration;
 - display timezone;
 - purpose;
-- optional project;
-- policy summary before submit.
+- explicit DST fold/occurrence fields where needed.
 
 Behavior:
 
@@ -105,6 +105,9 @@ Separate active, upcoming, and past. Actions:
 - copy stable reservation ID;
 - inspect lifecycle/audit-visible facts;
 - no hard delete.
+
+The implemented member pages show only the current user's reservations. A guessed or other-user UUID
+returns a non-disclosing 404. Staff users on member routes do not get a hidden cross-user bypass.
 
 ### API tokens
 
@@ -157,6 +160,9 @@ Target WCAG 2.2 AA principles:
 - touch targets suitable for mobile;
 - reduced-motion respect;
 - screen-reader-friendly calendar alternatives, such as an availability list.
+
+Work Order 0004 implements the availability list, not a drag-and-drop calendar. It is advisory and
+does not yet model maintenance blackouts or operating hours.
 
 Automated accessibility checks supplement, not replace, manual keyboard and screen-reader review.
 
@@ -211,3 +217,7 @@ Before internal alpha, Playwright tests cover at least:
 - create/revoke token without leaking it after creation;
 - unauthorized page access;
 - keyboard navigation smoke path.
+
+Work Order 0004 adds headless Chromium tests for the implemented login/logout, member browsing,
+profile, reservation creation/conflict, own detail, cancellation, release, other-user denial, and
+keyboard smoke paths.

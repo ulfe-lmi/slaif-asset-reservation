@@ -26,10 +26,10 @@ api_documentation_permission_classes = [ApiDocumentationPermission]
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("assets/", include("slaif_reservation.assets.urls", namespace="assets")),
     path("health/live", health_live, name="health-live"),
     path("health/ready", health_ready, name="health-ready"),
     path("api/v1/", include("slaif_reservation.api.urls", namespace="api-v1")),
+    path("", include("slaif_reservation.web.urls", namespace="web")),
 ]
 
 if settings.API_DOCS_ENABLED:

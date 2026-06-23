@@ -6,15 +6,15 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 
 ## Status
 
-**Pre-alpha reservation-core foundation. Not production-ready and not yet usable as a reservation
-service.**
+**Pre-alpha human MVP. Not production-ready and not yet usable as a complete reservation service.**
 
 The repository contains a minimal Django/PostgreSQL application foundation: custom user model,
 health checks, hierarchical asset inventory, sanitized bootstrap asset import, staff-only inventory
 web/API views, generated OpenAPI support with local Swagger UI assets, CI, and container
 configuration. It now also contains the internal reservation policy, reservation, PostgreSQL
-exclusivity, and audit-event core. There is still no member booking UI, reservation API,
-availability endpoint, API-token implementation, or ordinary member workflow.
+exclusivity, audit-event core, and a server-rendered human MVP for active administrator-created
+accounts. There is still no reservation API, API-token implementation, project/group authorization,
+maintenance calendar, OIDC/password reset, notification system, or production readiness.
 
 Verified starting point for this implementation slice:
 
@@ -77,6 +77,7 @@ Run migrations and local checks:
 uv run --env-file .env python manage.py migrate
 uv run --env-file .env python manage.py check
 uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test --browser chromium tests/browser
 ```
 
 Validate the sanitized bootstrap inventory without writing rows:
@@ -97,6 +98,26 @@ Run the local application:
 uv run --env-file .env python manage.py runserver
 ```
 
+Create a local human account through Django management commands or the admin. Example:
+
+```bash
+uv run --env-file .env python manage.py createsuperuser
+```
+
+Log in at `http://127.0.0.1:8000/login/`. The member UI currently provides:
+
+- `/` dashboard;
+- `/assets/` active member-visible assets;
+- `/assets/<uuid>/` asset detail and privacy-safe advisory availability;
+- `/assets/<uuid>/reserve/` reservation form;
+- `/reservations/` and `/reservations/<uuid>/` own reservation pages;
+- `/profile/` display name and timezone editing.
+
+Accounts are administrator-created only. Service accounts cannot log into the human UI. Until
+project/group authorization is implemented, every active human account may browse active assets and
+request any active, reservable, exclusive asset with an effective policy. This is temporary
+internal-alpha behavior, not a production authorization model.
+
 Health endpoints:
 
 ```bash
@@ -104,18 +125,17 @@ curl http://127.0.0.1:8000/health/live
 curl http://127.0.0.1:8000/health/ready
 ```
 
-Staff-only inventory paths:
+Human and API paths:
 
-- `http://127.0.0.1:8000/assets/`
+- `http://127.0.0.1:8000/assets/` requires an active human session.
 - `http://127.0.0.1:8000/api/v1/assets/`
 
-These paths currently require an active staff Django session. Ordinary member login and bearer-token
-agent authentication are not implemented yet.
+The REST asset API remains staff-session-only. Bearer-token agent authentication is not implemented
+yet.
 
-Reservation mutations currently exist only as internal domain services and Django models. No
-reservation creation, cancellation, release, or availability web/API route is exposed yet. Admin
-inspection is available, but reservation and audit admin screens are read-only and policy admin is
-read-only until a controlled audited adapter is added.
+Reservation creation, cancellation, and release are exposed only through the server-rendered member
+UI and call the authoritative reservation services. No reservation or availability REST API route is
+exposed yet. Admin inspection is available, but reservation and audit admin screens remain read-only.
 
 Generate and validate the current OpenAPI shell:
 
@@ -128,6 +148,7 @@ Run the full scaffold evidence set:
 
 ```bash
 uv sync --locked --all-groups
+uv run playwright install --with-deps chromium
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src

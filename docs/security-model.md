@@ -65,6 +65,12 @@ Production settings must include, as applicable:
 
 Local-auth password reset/email workflows must not reveal whether an account exists.
 
+Work Order 0004 implements local session login for administrator-created accounts only. The login
+form uses email identity, denies inactive users and `is_service_account=true` users with the same
+generic failure, preserves Django CSRF/session protections, and exposes logout only as POST. Login
+rate limiting is not implemented in Django in this slice and must be supplied by a future
+authentication hardening work order or trusted reverse-proxy policy before public deployment.
+
 ## 5. API token design
 
 ### Creation
@@ -109,6 +115,16 @@ Every reservation command evaluates:
 - current time and lifecycle state.
 
 Django admin permission is not automatically equivalent to domain authorization for custom APIs.
+
+The human MVP uses temporary broad authenticated-human access: every active non-service-account
+user may browse active assets and request any active, reservable, exclusive asset with an effective
+policy. This is internal-alpha behavior until project/group authorization exists. Member reservation
+selectors always filter by current owner before retrieval; staff users on member routes cannot view,
+cancel, or release another user's reservation.
+
+Shared availability reveals only busy intervals. Other users' identity, email, display name,
+purpose, cancellation reason, and reservation UUID are not rendered. The current user's own busy
+interval may be labelled and linked to their own detail page.
 
 Work Order 0003 implements the internal reservation command layer and keeps reservation HTTP
 mutations deferred. Successful reservation and policy mutations append `AuditEvent` rows in the same

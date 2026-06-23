@@ -6,7 +6,7 @@
   </head>
   <body>
     <main>
-      <p><a href="{% url 'assets:list' %}">Asset inventory</a></p>
+      <p><a href="{% url 'web:asset-list' %}">Asset inventory</a></p>
       <h1>{{ asset.name }}</h1>
       {% if asset.verification_required %}
         <p>This asset is unverified and requires administrator verification.</p>

@@ -91,8 +91,9 @@ sequenceDiagram
     V-->>C: HTML response or API problem detail
 ```
 
-The Work Order 0003 implementation provides this domain service layer without exposing reservation
-HTTP mutations yet. `create_reservation`, `cancel_reservation`, and `release_reservation` run inside
+The Work Order 0003 implementation provides this domain service layer. Work Order 0004 exposes it
+through server-rendered member pages only; reservation REST/API mutations remain deferred.
+`create_reservation`, `cancel_reservation`, and `release_reservation` run inside
 transactions and append audit evidence in the same transaction. Creation normalizes `now`,
 `start_at`, and `end_at` to UTC before comparison or storage, then locks rows in this order:
 requesting principal, authoritative asset, selected effective policy. Cancellation normalizes the
@@ -106,6 +107,20 @@ The application performs an early overlap query for useful feedback, but Postgre
 final arbiter. Only a PostgreSQL diagnostic constraint name exactly equal to
 `reservation_no_overlap_per_asset` is translated to the stable `reservation_conflict` domain code;
 unrelated integrity errors propagate for operator investigation.
+
+The human-session adapter in `web` validates form shape, local wall time, ownership, and CSRF, then
+calls these services with `source="web"`. It maps stable domain error codes to safe form/messages
+without exposing SQL, constraint names, stack traces, or another user's reservation details.
+
+### 4.1.1 Human availability reads
+
+Work Order 0004 adds reusable availability query logic for the member UI. It takes an asset,
+principal, local start date, 1-7 day window, display timezone, and injectable `now`. It resolves
+asset state and effective policy, queries confirmed/released blocking reservations with
+`[start_at, effective_end_at)` semantics, clips and merges busy intervals, and computes privacy-safe
+free intervals that can satisfy the policy minimum duration, lead time, and horizon. Cancelled
+reservations do not block. Results expose another user's busy time only as `Unavailable`; identity,
+email, purpose, cancellation reason, and reservation UUID remain hidden.
 
 ### 4.2 Agent API authentication
 
@@ -178,7 +193,10 @@ Same key + same request returns the prior result. Same key + different normalize
 
 ### Human authentication
 
-MVP uses the custom Django user model and secure session login. The model is designed for later OIDC association without replacing user primary keys.
+MVP uses the custom Django user model and secure session login. Only active, non-service-account
+users may use member routes. Accounts are administrator-created; self-registration, password reset,
+OIDC, and social authentication are deferred. The model is designed for later OIDC association
+without replacing user primary keys.
 
 Production target is institutional OIDC when provider details are known. OIDC is deferred rather than guessed.
 

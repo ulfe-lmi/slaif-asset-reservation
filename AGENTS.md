@@ -10,7 +10,8 @@ Preserve this promise:
 
 ## Current product stage
 
-The project is in architecture/bootstrap stage. Read these documents before changing behavior:
+The project is in pre-alpha reservation-core stage and is moving into the human reservation MVP.
+Read these documents before changing behavior:
 
 - `docs/discovery-brief.md`
 - `docs/architecture.md`

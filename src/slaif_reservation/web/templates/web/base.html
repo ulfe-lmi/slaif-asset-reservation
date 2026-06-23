@@ -1,0 +1,37 @@
+{% load static i18n %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{% trans "SLAIF Asset Reservation" %}{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'web/site.css' %}">
+  </head>
+  <body>
+    <a class="skip-link" href="#content">{% trans "Skip to main content" %}</a>
+    <header class="site-header">
+      <nav aria-label="{% trans 'Primary navigation' %}">
+        <a href="{% url 'web:dashboard' %}">{% trans "Dashboard" %}</a>
+        <a href="{% url 'web:asset-list' %}">{% trans "Assets" %}</a>
+        <a href="{% url 'web:reservation-list' %}">{% trans "My reservations" %}</a>
+        <a href="{% url 'web:profile' %}">{% trans "Profile" %}</a>
+        {% if request.user.is_authenticated %}
+          <form method="post" action="{% url 'web:logout' %}" class="nav-form">
+            {% csrf_token %}
+            <button type="submit">{% trans "Logout" %}</button>
+          </form>
+        {% endif %}
+      </nav>
+    </header>
+    <main id="content" class="site-main">
+      {% if messages %}
+        <div class="messages" aria-live="polite">
+          {% for message in messages %}
+            <p class="message {{ message.tags }}">{{ message }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

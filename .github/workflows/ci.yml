@@ -50,6 +50,7 @@ jobs:
           version: "0.11.23"
           enable-cache: true
       - run: uv sync --locked --all-groups
+      - run: uv run playwright install --with-deps chromium
       - run: uv run python manage.py migrate --noinput
       - run: uv run python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
       - run: uv run python manage.py makemigrations --check --dry-run

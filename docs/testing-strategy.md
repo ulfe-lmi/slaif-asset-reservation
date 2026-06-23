@@ -160,12 +160,14 @@ The scaffold PR establishes these exact commands:
 
 ```bash
 uv sync --locked --all-groups
+uv run playwright install --with-deps chromium
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
 DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py check
 DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py makemigrations --check --dry-run
 DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation TEST_DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run pytest
+DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation TEST_DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run pytest --browser chromium tests/browser
 ```
 
 Provide `make` aliases only as conveniences; CI should use transparent commands or clearly report aliases.

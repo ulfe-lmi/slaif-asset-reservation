@@ -264,6 +264,20 @@ authorized owner or active staff user even if the asset or policy was later deac
 duration, lifecycle, lead, horizon, cutoff, overlap, and counter calculations use UTC-normalized
 absolute instants.
 
+Work Order 0004 adds server-rendered member pages without changing the core reservation model.
+Temporary internal-alpha access allows any active, non-service-account human user to browse active
+assets and request any active, reservable, exclusive asset with an unambiguous effective policy.
+Project/group authorization remains deferred.
+
+Member selectors always retrieve reservations by both UUID and current owner. A guessed or
+other-user reservation UUID returns a non-disclosing not-found response, including for staff users
+on member routes. Cross-user staff management remains deferred to a purpose-built management UX.
+
+Availability presentation is derived from reservation records, asset state, and effective policy.
+Busy intervals for other users are labelled only as unavailable; identity, email, purpose,
+cancellation reason, audit internals, and reservation UUID are not part of the member availability
+surface. The current user's own busy interval may be labelled and linked to their own reservation.
+
 ## 11. Audit event
 
 Work Order 0003 implements append-only `AuditEvent` records for reservation and policy mutations.
