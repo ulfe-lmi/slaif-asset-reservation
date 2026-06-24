@@ -1,0 +1,28 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+
+{% block title %}{% blocktrans with name=asset.name %}Reserve {{ name }}{% endblocktrans %}{% endblock %}
+
+{% block content %}
+  <p><a href="{% url 'web:asset-detail' asset.id %}">{{ asset.name }}</a></p>
+  <h1>{% blocktrans with name=asset.name %}Reserve {{ name }}{% endblocktrans %}</h1>
+  <p>{% blocktrans %}Times are shown and entered in {{ timezone_name }}.{% endblocktrans %}</p>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.errors %}
+      <div class="error-summary" role="alert">
+        <p>{% trans "Check the highlighted fields." %}</p>
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+    {% for field in form %}
+      <div class="field">
+        {{ field.label_tag }}
+        {{ field }}
+        {{ field.errors }}
+      </div>
+    {% endfor %}
+    <button type="submit">{% trans "Create reservation" %}</button>
+  </form>
+  {% include "web/_availability.html" %}
+{% endblock %}

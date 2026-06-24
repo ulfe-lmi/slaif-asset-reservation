@@ -10,7 +10,9 @@ Preserve this promise:
 
 ## Current product stage
 
-The project is in architecture/bootstrap stage. Read these documents before changing behavior:
+The project is at the internal pre-alpha human-MVP stage. The next roadmap slice is the scoped
+API-token lifecycle for software agents.
+Read these documents before changing behavior:
 
 - `docs/discovery-brief.md`
 - `docs/architecture.md`

@@ -1,0 +1,42 @@
+{% load i18n tz web_time %}
+<section aria-labelledby="availability-heading">
+  <h2 id="availability-heading">{% trans "Availability" %}</h2>
+  <p>{{ availability.advisory_notice }}</p>
+  <p>{% blocktrans with timezone_name=availability.timezone %}Visible availability intervals use {{ timezone_name }}.{% endblocktrans %}</p>
+  {% if not availability.bookable %}
+    <p class="status-warning">{{ availability.reason }}</p>
+  {% endif %}
+  {% timezone availability.timezone %}
+    <h3>{% trans "Busy intervals" %}</h3>
+    <ul>
+      {% for interval in availability.busy %}
+        <li>
+          {% if interval.reservation_id %}
+            <a href="{% url 'web:reservation-detail' interval.reservation_id %}">{{ interval.label }}</a>
+          {% else %}
+            {{ interval.label }}
+          {% endif %}
+          <time datetime="{{ interval.start|utc_datetime }}">{{ interval.start|date:"Y-m-d H:i" }}</time>
+          -
+          <time datetime="{{ interval.end|utc_datetime }}">{{ interval.end|date:"Y-m-d H:i" }}</time>
+        </li>
+      {% empty %}
+        <li>{% trans "No busy intervals in this window." %}</li>
+      {% endfor %}
+    </ul>
+    <h3>{% trans "Free intervals" %}</h3>
+    <ul>
+      {% for interval in availability.free %}
+        <li>
+          <time datetime="{{ interval.start|utc_datetime }}">{{ interval.start|date:"Y-m-d H:i" }}</time>
+          -
+          <time datetime="{{ interval.end|utc_datetime }}">{{ interval.end|date:"Y-m-d H:i" }}</time>
+          ({% trans "latest valid start" %}
+          <time datetime="{{ interval.latest_start|utc_datetime }}">{{ interval.latest_start|date:"Y-m-d H:i" }}</time>)
+        </li>
+      {% empty %}
+        <li>{% trans "No policy-valid free intervals in this window." %}</li>
+      {% endfor %}
+    </ul>
+  {% endtimezone %}
+</section>

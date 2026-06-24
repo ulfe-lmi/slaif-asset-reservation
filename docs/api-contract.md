@@ -185,8 +185,9 @@ Returns one authorized asset. Hidden and unauthorized assets should use a non-di
 
 ### `GET /api/v1/assets/{asset_id}/availability`
 
-Deferred/not implemented in Work Order 0002. This section describes the intended future contract
-for a later availability slice.
+Deferred/not implemented. Work Order 0004 implements privacy-safe advisory availability only for the
+server-rendered human UI. The REST availability endpoint remains a future API-token/idempotency
+slice.
 
 Query:
 
@@ -217,8 +218,9 @@ Availability is advisory. A later create request may still lose a race.
 
 ### `GET /api/v1/reservations`
 
-Deferred/not implemented in Work Order 0003. Reservation policy, reservation, and audit models and
-internal services exist, but no reservation read or mutation HTTP surface is exposed yet.
+Deferred/not implemented. Reservation policy, reservation, audit models, internal services, and
+server-rendered own-reservation pages exist, but no reservation read or mutation REST surface is
+exposed yet.
 
 Ordinary tokens see own reservations unless an explicitly granted read scope/policy permits more.
 
@@ -233,7 +235,7 @@ Filters:
 
 ### `POST /api/v1/reservations`
 
-Deferred/not implemented in Work Order 0003.
+Deferred/not implemented.
 
 Requires `reservations:create` and `Idempotency-Key`.
 

@@ -1,0 +1,25 @@
+{% load i18n tz web_time %}
+<table>
+  <thead>
+    <tr>
+      <th scope="col">{% trans "Asset" %}</th>
+      <th scope="col">{% trans "Start" %}</th>
+      <th scope="col">{% trans "Effective end" %}</th>
+      <th scope="col">{% trans "Status" %}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for reservation in reservations %}
+      {% timezone display_timezone %}
+        <tr>
+          <td><a href="{% url 'web:reservation-detail' reservation.id %}">{{ reservation.asset.name }}</a></td>
+          <td><time datetime="{{ reservation.start_at|utc_datetime }}">{{ reservation.start_at|date:"Y-m-d H:i" }}</time></td>
+          <td><time datetime="{{ reservation.effective_end_at|utc_datetime }}">{{ reservation.effective_end_at|date:"Y-m-d H:i" }}</time></td>
+          <td>{{ reservation.get_status_display }}</td>
+        </tr>
+      {% endtimezone %}
+    {% empty %}
+      <tr><td colspan="4">{% trans "No reservations in this section." %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

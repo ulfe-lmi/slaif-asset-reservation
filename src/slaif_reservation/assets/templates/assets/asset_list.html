@@ -74,7 +74,7 @@
         <tbody>
           {% for asset in assets %}
             <tr>
-              <td><a href="{% url 'assets:detail' asset.id %}">{{ asset.name }}</a></td>
+              <td><a href="{% url 'web:asset-detail' asset.id %}">{{ asset.name }}</a></td>
               <td>{{ asset.get_kind_display }}</td>
               <td>{% if asset.parent %}{{ asset.parent.name }}{% endif %}</td>
               <td>{{ asset.active|yesno:"yes,no" }}</td>

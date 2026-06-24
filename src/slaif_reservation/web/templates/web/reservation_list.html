@@ -1,0 +1,13 @@
+{% extends "web/base.html" %}
+{% load i18n tz %}
+
+{% block title %}{% trans "My reservations" %}{% endblock %}
+
+{% block content %}
+  <h1>{% trans "My reservations" %}</h1>
+  {% include "web/_reservation_group.html" with heading="Active" page=active_page page_param="active_page" %}
+  {% include "web/_reservation_group.html" with heading="Upcoming" page=upcoming_page page_param="upcoming_page" %}
+  {% include "web/_reservation_group.html" with heading="Completed history" page=completed_page page_param="completed_page" %}
+  {% include "web/_reservation_group.html" with heading="Released" page=released_page page_param="released_page" %}
+  {% include "web/_reservation_group.html" with heading="Cancelled" page=cancelled_page page_param="cancelled_page" %}
+{% endblock %}

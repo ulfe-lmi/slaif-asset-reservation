@@ -52,6 +52,11 @@ coverage.xml
 *.py.cover
 .hypothesis/
 .pytest_cache/
+playwright-report/
+test-results/
+traces/
+videos/
+screenshots/
 cover/
 
 # Translations

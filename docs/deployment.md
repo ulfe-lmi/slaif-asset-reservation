@@ -80,6 +80,15 @@ Work Order 0003 adds PostgreSQL-specific reservation migrations. The migration c
 allowed to create this extension, or an operator must preinstall it in the target database before
 running migrations.
 
+Work Order 0004 adds local browser workflow tests. Development and CI install Chromium with:
+
+```bash
+uv run playwright install --with-deps chromium
+```
+
+The installed browser/runtime packages are development/test tooling only and are not production
+application dependencies.
+
 ## 4. Configuration
 
 Implemented variables:
@@ -107,6 +116,7 @@ Deferred variables:
 
 - token-verifier pepper, because API tokens are not implemented yet;
 - canonical external URL, email relay, structured-log destination, OIDC, and backup destination.
+- login throttling/rate-limit configuration, because public local-auth hardening is deferred.
 
 `.env.example` is for host-side local commands run explicitly as `uv run --env-file .env ...`;
 Django does not automatically load it. Its `DATABASE_URL` points at the loopback-published

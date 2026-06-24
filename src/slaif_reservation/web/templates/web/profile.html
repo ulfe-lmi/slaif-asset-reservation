@@ -1,0 +1,29 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Profile" %}{% endblock %}
+
+{% block content %}
+  <h1>{% trans "Profile" %}</h1>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.errors %}
+      <div class="error-summary" role="alert">
+        <p>{% trans "Check the highlighted fields." %}</p>
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+    <div class="field">
+      {{ form.display_name.label_tag }}
+      {{ form.display_name }}
+      {{ form.display_name.errors }}
+    </div>
+    <div class="field">
+      {{ form.timezone.label_tag }}
+      {{ form.timezone }}
+      {{ form.timezone.errors }}
+      <p class="help">{% trans "Use an IANA timezone name such as Europe/Ljubljana." %}</p>
+    </div>
+    <button type="submit">{% trans "Save profile" %}</button>
+  </form>
+{% endblock %}

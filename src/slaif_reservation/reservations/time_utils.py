@@ -4,7 +4,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from django.core.exceptions import ValidationError
 from django.utils import timezone
+
+from slaif_reservation.accounts.validators import validate_timezone_name
 
 
 class LocalTimeError(ValueError):
@@ -41,8 +44,9 @@ def interpret_local_wall_time(
         raise LocalTimeError("Fold must be 0, 1, or omitted.")
 
     try:
+        validate_timezone_name(timezone_name)
         zone = ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError as exc:
+    except (ValidationError, ZoneInfoNotFoundError, ValueError, OSError) as exc:
         raise LocalTimeError("Timezone must resolve through zoneinfo.") from exc
 
     candidates = []

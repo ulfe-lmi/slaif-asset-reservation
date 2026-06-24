@@ -1,0 +1,12 @@
+{% load i18n %}
+<section>
+  <h2>{{ heading }}</h2>
+  {% include "web/_reservation_table.html" with reservations=page.object_list %}
+  {% if page.has_previous or page.has_next %}
+    <nav aria-label="{{ heading }} {% trans 'pages' %}">
+      {% if page.has_previous %}<a href="?{{ page_param }}={{ page.previous_page_number }}">{% trans "Previous" %}</a>{% endif %}
+      <span>{% blocktrans with number=page.number total=page.paginator.num_pages %}Page {{ number }} of {{ total }}{% endblocktrans %}</span>
+      {% if page.has_next %}<a href="?{{ page_param }}={{ page.next_page_number }}">{% trans "Next" %}</a>{% endif %}
+    </nav>
+  {% endif %}
+</section>
