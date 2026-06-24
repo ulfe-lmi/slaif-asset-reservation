@@ -1,0 +1,29 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Create API token" %}{% endblock %}
+
+{% block content %}
+  <p><a href="{% url 'web:token-list' %}">{% trans "API tokens" %}</a></p>
+  <h1>{% trans "Create API token" %}</h1>
+  <p>{% trans "Token plaintext is shown once. It cannot be recovered after you leave the creation response." %}</p>
+  <p>{% trans "Store it in an approved local secret store. Bearer-token API operations are not enabled until Work Order 0006." %}</p>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.errors %}
+      <div class="error-summary" role="alert">
+        <p>{% trans "Check the highlighted fields." %}</p>
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+    {% for field in form %}
+      <div class="field">
+        {{ field.label_tag }}
+        {{ field }}
+        {{ field.help_text }}
+        {{ field.errors }}
+      </div>
+    {% endfor %}
+    <button type="submit">{% trans "Create token" %}</button>
+  </form>
+{% endblock %}

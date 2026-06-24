@@ -77,6 +77,11 @@ Django view/form tests cover server behavior. Playwright covers selected end-to-
 - authorization boundaries;
 - keyboard/accessibility smoke path.
 
+Work Order 0005 adds token lifecycle tests for model constraints, scope validation, one-time
+display, redaction, ORM bypass protection, bearer-authenticator negative paths, owner-only web
+routes, CSRF, and Playwright creation/revocation coverage. The authenticator remains directly
+tested without being enabled on API endpoints.
+
 ### Migration tests
 
 - bootstrap YAML schema validation;

@@ -1,0 +1,65 @@
+{% extends "web/base.html" %}
+{% load i18n tz web_time %}
+
+{% block title %}{% trans "API tokens" %}{% endblock %}
+
+{% block content %}
+  <h1>{% trans "API tokens" %}</h1>
+  <p>{% trans "Bearer-token API operations are not enabled until Work Order 0006." %}</p>
+  <p><a class="button" href="{% url 'web:token-create' %}">{% trans "Create token" %}</a></p>
+  <table>
+    <caption>{% trans "Your API tokens" %}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{% trans "Name" %}</th>
+        <th scope="col">{% trans "Prefix" %}</th>
+        <th scope="col">{% trans "Scopes" %}</th>
+        <th scope="col">{% trans "Created" %}</th>
+        <th scope="col">{% trans "Expires" %}</th>
+        <th scope="col">{% trans "Last used" %}</th>
+        <th scope="col">{% trans "Status" %}</th>
+        <th scope="col">{% trans "Action" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for token in page.object_list %}
+        {% timezone display_timezone %}
+          <tr>
+            <td>{{ token.name }}</td>
+            <td><code>{{ token.display_prefix }}</code></td>
+            <td>{{ token.scopes|join:", " }}</td>
+            <td><time datetime="{{ token.created_at|utc_datetime }}">{{ token.created_at|date:"Y-m-d H:i" }}</time></td>
+            <td><time datetime="{{ token.expires_at|utc_datetime }}">{{ token.expires_at|date:"Y-m-d H:i" }}</time></td>
+            <td>
+              {% if token.last_used_at %}
+                <time datetime="{{ token.last_used_at|utc_datetime }}">{{ token.last_used_at|date:"Y-m-d H:i" }}</time>
+              {% else %}
+                {% trans "Never" %}
+              {% endif %}
+            </td>
+            <td>{{ token.status }}</td>
+            <td>
+              {% if token.status != "revoked" %}
+                <form method="post" action="{% url 'web:token-revoke' token.id %}">
+                  {% csrf_token %}
+                  <button type="submit">{% trans "Revoke" %}</button>
+                </form>
+              {% else %}
+                {% trans "No action" %}
+              {% endif %}
+            </td>
+          </tr>
+        {% endtimezone %}
+      {% empty %}
+        <tr><td colspan="8">{% trans "No API tokens." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if page.has_previous or page.has_next %}
+    <nav aria-label="{% trans 'API token pages' %}">
+      {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">{% trans "Previous" %}</a>{% endif %}
+      <span>{% blocktrans with number=page.number total=page.paginator.num_pages %}Page {{ number }} of {{ total }}{% endblocktrans %}</span>
+      {% if page.has_next %}<a href="?page={{ page.next_page_number }}">{% trans "Next" %}</a>{% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}

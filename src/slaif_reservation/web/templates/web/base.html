@@ -14,6 +14,7 @@
         <a href="{% url 'web:dashboard' %}">{% trans "Dashboard" %}</a>
         <a href="{% url 'web:asset-list' %}">{% trans "Assets" %}</a>
         <a href="{% url 'web:reservation-list' %}">{% trans "My reservations" %}</a>
+        <a href="{% url 'web:token-list' %}">{% trans "API tokens" %}</a>
         <a href="{% url 'web:profile' %}">{% trans "Profile" %}</a>
         {% if request.user.is_authenticated %}
           <form method="post" action="{% url 'web:logout' %}" class="nav-form">

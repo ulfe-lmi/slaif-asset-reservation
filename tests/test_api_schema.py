@@ -38,6 +38,7 @@ def test_openapi_schema_generation_succeeds(tmp_path: Path) -> None:
     parsed_schema = yaml.safe_load(schema)
     assert "/api/v1/assets/" in parsed_schema["paths"]
     assert "/api/v1/assets/{asset_id}/" in parsed_schema["paths"]
+    assert "Bearer" not in parsed_schema.get("components", {}).get("securitySchemes", {})
 
     list_operation = parsed_schema["paths"]["/api/v1/assets/"]["get"]
     detail_operation = parsed_schema["paths"]["/api/v1/assets/{asset_id}/"]["get"]
@@ -62,6 +63,8 @@ def test_openapi_schema_generation_succeeds(tmp_path: Path) -> None:
     assert "Staff-session-authenticated" in detail_operation["description"]
     assert "/api/v1/reservations/" not in parsed_schema["paths"]
     assert "/api/v1/reservations/{reservation_id}/" not in parsed_schema["paths"]
+    assert "/api/v1/tokens/" not in parsed_schema["paths"]
+    assert "/api/v1/me" not in parsed_schema["paths"]
 
 
 @pytest.mark.django_db

@@ -22,8 +22,9 @@ The UI and agent API share domain operations and policy. The browser is not a pr
 - Availability list on asset detail/reserve pages
 - My reservations
 - Profile / timezone
+- API tokens
 
-API-token management remains deferred to Work Order 0005.
+API-token management is implemented in Work Order 0005 for active human owners.
 
 ### Manager/admin navigation
 
@@ -118,14 +119,17 @@ into memory.
 
 ### API tokens
 
-Human user can:
+Implemented in Work Order 0005. Human users can:
 
 - create a named token within allowed scopes;
-- choose expiry and permitted project/resource limits where policy allows;
+- choose expiry up to the configured maximum;
 - see plaintext once with a strong warning;
 - list prefix, scopes, created/expiry/last-used state;
 - revoke immediately;
 - never retrieve token plaintext again.
+
+Project/resource limits, service-account issuance, administrative issuance/revocation, token API
+endpoints, and bearer-enabled domain API operations remain deferred.
 
 ### Administration
 

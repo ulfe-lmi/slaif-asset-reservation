@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from django.core.exceptions import ImproperlyConfigured
 
-from slaif_reservation.config.env import env_bool, env_list, env_non_negative_int, env_required
+from slaif_reservation.accounts.tokens import validate_api_token_pepper
+from slaif_reservation.config.env import (
+    env_bool,
+    env_int_range,
+    env_list,
+    env_non_negative_int,
+    env_required,
+)
 from slaif_reservation.config.settings.base import *  # noqa: F403
 from slaif_reservation.config.settings.base import apply_database_url
 
@@ -39,3 +46,16 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 API_DOCS_ENABLED = env_bool("SLAIF_ENABLE_API_DOCS", default=False)
 API_DOCS_PUBLIC = False
+
+API_TOKEN_PEPPER = env_required("SLAIF_API_TOKEN_PEPPER")
+try:
+    validate_api_token_pepper(API_TOKEN_PEPPER, secret_key=SECRET_KEY)
+except Exception as exc:
+    msg = "SLAIF_API_TOKEN_PEPPER is invalid for production settings"
+    raise ImproperlyConfigured(msg) from exc
+API_TOKEN_MAX_LIFETIME_DAYS = env_int_range(
+    "SLAIF_API_TOKEN_MAX_LIFETIME_DAYS",
+    default=90,
+    minimum=1,
+    maximum=365,
+)

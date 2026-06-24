@@ -78,21 +78,29 @@ routes.
 
 ### Creation
 
-- generate with a cryptographically secure random source;
-- use enough entropy to resist offline guessing;
-- include a non-secret prefix/identifier for lookup and operator display;
-- display plaintext once;
-- write only a verifier, prefix, owner, scopes, restrictions, and lifecycle metadata;
-- audit creation without token plaintext.
+- grammar is `sar_<token_uuid_hex>_<secret>`;
+- generate the secret with a cryptographically secure source providing at least 256 bits of
+  randomness;
+- use the UUID hex as the public locator and display only `sar_<first 12 UUID hex characters>...`
+  outside the one-time response;
+- display plaintext once with `Cache-Control: no-store, private`, `Pragma: no-cache`, and
+  `Referrer-Policy: no-referrer`;
+- write only a verifier, owner, name, scopes, expiry, revocation, last-use, and lifecycle metadata;
+- audit creation without token plaintext, verifier, pepper, Authorization header, raw request body,
+  or token name.
 
 ### Verification
 
 - never log the Authorization value;
-- derive verifier using a dedicated server-side secret/pepper or reviewed password-hash design;
+- derive verifier using `SLAIF_API_TOKEN_PEPPER`, a dedicated server-side secret distinct from
+  Django `SECRET_KEY`;
 - constant-time compare;
-- check expiry, revocation, owner state, scopes, and restrictions;
+- check expiry, revocation, owner state, service-account denial, scopes, and restrictions;
 - fail closed if token configuration is incomplete;
-- update last-use metadata safely and asynchronously only if later infrastructure supports it; authentication must not fail solely because last-use recording fails.
+- update last-use metadata best-effort; authentication must not fail solely because last-use
+  recording fails;
+- return generic authentication failure for malformed, wrong, expired, revoked, inactive-owner, or
+  disallowed-owner credentials.
 
 ### Revocation and rotation
 
@@ -101,6 +109,13 @@ routes.
 - rotate by creating a new token, updating the client, and revoking the old token;
 - no plaintext recovery endpoint;
 - documented incident procedure before beta.
+- replacing the single pepper invalidates all existing tokens until a future key-ring/rotation ADR
+  is accepted.
+
+Work Order 0005 implements owner-only self-service token issue/list/revoke pages for active human
+users. There is no administrative or service-account token issuance in this slice. The bearer
+authenticator primitive exists for direct tests but is not enabled on the asset API, API root,
+schema/docs, or reservation routes.
 
 ## 6. Authorization model
 

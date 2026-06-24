@@ -8,6 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q, QuerySet
 from django.utils import timezone
 
+from slaif_reservation.accounts.models import ApiToken
 from slaif_reservation.assets.models import Asset, AssetTag
 from slaif_reservation.assets.selectors import AssetFilterError, AssetFilters, parse_asset_filters
 from slaif_reservation.reservations.models import Reservation
@@ -78,6 +79,21 @@ def get_member_asset(asset_id: uuid.UUID) -> Asset:
 def get_owned_reservation(reservation_id: uuid.UUID, user: Any) -> Reservation:
     try:
         return owned_reservations_queryset(user).get(id=reservation_id)
+    except ObjectDoesNotExist:
+        raise
+
+
+def owned_api_tokens_queryset(user: Any) -> QuerySet[ApiToken]:
+    return (
+        ApiToken.objects.filter(owner=user)
+        .select_related("revoked_by")
+        .order_by("-created_at", "-id")
+    )
+
+
+def get_owned_api_token(token_id: uuid.UUID, user: Any) -> ApiToken:
+    try:
+        return owned_api_tokens_queryset(user).get(id=token_id)
     except ObjectDoesNotExist:
         raise
 

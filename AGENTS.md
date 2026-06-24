@@ -10,8 +10,8 @@ Preserve this promise:
 
 ## Current product stage
 
-The project is at the internal pre-alpha human-MVP stage. The next roadmap slice is the scoped
-API-token lifecycle for software agents.
+The project is at the internal pre-alpha API-token lifecycle stage. After this token-lifecycle
+slice, the next roadmap slice is API v1 reservation operations and idempotency for software agents.
 Read these documents before changing behavior:
 
 - `docs/discovery-brief.md`

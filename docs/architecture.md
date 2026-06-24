@@ -112,6 +112,14 @@ The human-session adapter in `web` validates form shape, local wall time, owners
 calls these services with `source="web"`. It maps stable domain error codes to safe form/messages
 without exposing SQL, constraint names, stack traces, or another user's reservation details.
 
+### 4.1.2 API token lifecycle
+
+Token issuance and revocation are explicit account services, not view or admin shortcuts. Issuance
+locks the active human owner, validates scope/lifetime/name, generates the bearer secret, stores only
+the verifier and lifecycle metadata, and appends `api_token.created` audit evidence in the same
+transaction. Revocation locks owner then token, is owner-only in this slice, preserves token history,
+and appends `api_token.revoked` once. If audit append fails, the token mutation rolls back.
+
 ### 4.1.1 Human availability reads
 
 Work Order 0004 adds reusable availability query logic for the member UI. It takes an asset,
@@ -124,15 +132,20 @@ email, purpose, cancellation reason, and reservation UUID remain hidden.
 
 ### 4.2 Agent API authentication
 
-1. Parse a token prefix without logging the token.
-2. Locate a small candidate set by prefix or identifier.
-3. derive the verifier using the dedicated server-side token pepper;
-4. compare in constant time;
-5. verify active state, expiry, owner, scopes, and resource restrictions;
-6. attach a principal context to the request;
-7. update `last_used_at` without making authentication depend on that write.
+Work Order 0005 implements the token lifecycle and a DRF bearer-authentication primitive, but does
+not enable bearer access on any API endpoint. Verification:
 
-The implementation design may refine prefix lookup, but plaintext token storage is forbidden.
+1. parses the strict `sar_<token_uuid_hex>_<secret>` grammar without logging the token;
+2. locates the token by public UUID locator;
+3. derives an HMAC-SHA-256 verifier over the complete bearer token using
+   `SLAIF_API_TOKEN_PEPPER`;
+4. compares in constant time;
+5. verifies owner active state, service-account denial, revocation, and exclusive expiry;
+6. returns `(owner_user, api_token)` to future DRF adapters;
+7. updates `last_used_at` best-effort without making authentication depend on that write.
+
+Plaintext token storage is forbidden. Work Order 0006 will bind this authenticator to scoped API
+permissions and idempotent reservation endpoints.
 
 ### 4.3 Early release
 
