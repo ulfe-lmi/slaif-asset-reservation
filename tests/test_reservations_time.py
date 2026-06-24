@@ -52,3 +52,9 @@ def test_aware_local_wall_time_is_rejected() -> None:
 
     with pytest.raises(LocalTimeError, match="must be naive"):
         interpret_local_wall_time(aware, timezone_name="Europe/Ljubljana")
+
+
+@pytest.mark.parametrize("timezone_name", ["/etc/passwd", "../UTC", "a/../UTC", "Mars/Base", ""])
+def test_malformed_timezone_key_is_rejected_cleanly(timezone_name: str) -> None:
+    with pytest.raises(LocalTimeError, match="Timezone must resolve"):
+        interpret_local_wall_time(datetime(2026, 2, 1, 12, 0), timezone_name=timezone_name)

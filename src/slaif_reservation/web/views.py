@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.contrib.auth import SESSION_KEY
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.views import LoginView, LogoutView
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import Page, Paginator
 from django.http import (
     Http404,
@@ -23,6 +23,7 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 
+from slaif_reservation.accounts.validators import validate_timezone_name
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.assets.selectors import AssetFilterError
 from slaif_reservation.reservations.exceptions import (
@@ -145,12 +146,16 @@ def profile(request: HttpRequest) -> HttpResponse:
             return redirect("web:profile")
     else:
         form = ProfileForm(instance=request.user)
+    try:
+        display_timezone = _display_timezone(request.user)
+    except InvalidMemberTimezone:
+        display_timezone = ""
     return render(
         request,
         "web/profile.html",
         {
             "form": form,
-            "display_timezone": str(getattr(request.user, "timezone", "") or ""),
+            "display_timezone": display_timezone,
         },
     )
 
@@ -374,11 +379,9 @@ class InvalidMemberTimezone(ValueError):
 
 def _display_timezone(user: Any) -> str:
     timezone_name = str(getattr(user, "timezone", "") or "").strip()
-    if not timezone_name:
-        raise InvalidMemberTimezone("Member timezone is not configured.")
     try:
-        ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError as exc:
+        validate_timezone_name(timezone_name)
+    except ValidationError as exc:
         raise InvalidMemberTimezone("Member timezone is invalid.") from exc
     return timezone_name
 

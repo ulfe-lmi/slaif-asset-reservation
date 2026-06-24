@@ -11,5 +11,5 @@ def validate_timezone_name(value: str) -> None:
         raise ValidationError(_("Timezone is required."), code="required")
     try:
         ZoneInfo(value)
-    except ZoneInfoNotFoundError as exc:
+    except (ZoneInfoNotFoundError, ValueError) as exc:
         raise ValidationError(_("Enter a valid IANA timezone name."), code="invalid") from exc

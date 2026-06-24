@@ -282,7 +282,36 @@ def test_profile_allows_only_display_name_and_timezone(client, member_user: User
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("stored_timezone", ["", "Mars/Base"])
+@pytest.mark.parametrize(
+    ("timezone_value", "expected_error"),
+    [
+        ("/etc/passwd", b"Enter a valid IANA timezone name"),
+        ("../UTC", b"Enter a valid IANA timezone name"),
+        ("a/../UTC", b"Enter a valid IANA timezone name"),
+        ("Mars/Base", b"Enter a valid IANA timezone name"),
+        ("", b"Timezone is required"),
+    ],
+)
+def test_profile_rejects_malformed_unknown_and_blank_timezone_values(
+    client,
+    member_user: User,
+    timezone_value: str,
+    expected_error: bytes,
+) -> None:
+    client.force_login(member_user)
+
+    response = client.post(
+        "/profile/",
+        {"display_name": "Member User", "timezone": timezone_value},
+    )
+
+    assert response.status_code == 200
+    assert expected_error in response.content
+    assert b"Traceback" not in response.content
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("stored_timezone", ["/etc/passwd", "../UTC", "a/../UTC", "Mars/Base", ""])
 def test_invalid_stored_timezone_fails_closed_but_profile_can_repair(
     client,
     member_user: User,
@@ -290,6 +319,7 @@ def test_invalid_stored_timezone_fails_closed_but_profile_can_repair(
     stored_timezone: str,
 ) -> None:
     User.objects.filter(id=member_user.id).update(timezone=stored_timezone)
+    member_user.refresh_from_db()
     client.force_login(member_user)
 
     protected_paths = [
@@ -300,13 +330,17 @@ def test_invalid_stored_timezone_fails_closed_but_profile_can_repair(
         "/reservations/",
     ]
     for path in protected_paths:
-        response = client.get(path)
-        assert response.status_code == 302
-        assert response["Location"] == reverse("web:profile")
+        response = client.get(path, follow=True)
+        assert response.status_code == 200
+        assert response.redirect_chain[-1] == (reverse("web:profile"), 302)
+        assert b"Traceback" not in response.content
+        assert b"Times shown in Europe/Ljubljana" not in response.content
+        assert b"Times shown in UTC" not in response.content
 
     response = client.get("/profile/")
     assert response.status_code == 200
     assert b"Traceback" not in response.content
+    assert b"Times shown in" not in response.content
 
     response = client.post("/profile/", {"display_name": "Member User", "timezone": "UTC"})
     assert response.status_code == 302

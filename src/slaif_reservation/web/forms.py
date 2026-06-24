@@ -34,12 +34,17 @@ class HumanAuthenticationForm(AuthenticationForm):
 
 
 class ProfileForm(forms.ModelForm):  # type: ignore[type-arg]
+    timezone = forms.CharField(
+        label=_("Timezone"),
+        required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}),
+    )
+
     class Meta:
         model = User
         fields = ["display_name", "timezone"]
         widgets = {
             "display_name": forms.TextInput(attrs={"autocomplete": "name"}),
-            "timezone": forms.TextInput(attrs={"autocomplete": "off"}),
         }
 
     def clean_timezone(self) -> str:
