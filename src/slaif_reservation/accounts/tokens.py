@@ -10,6 +10,7 @@ from typing import Any
 
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.debug import sensitive_variables
 
 TOKEN_PREFIX = "sar"
 TOKEN_SECRET_BYTES = 32
@@ -36,8 +37,6 @@ _SECRET_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 @dataclass(frozen=True)
 class ParsedBearerToken:
     token_id: uuid.UUID
-    bearer_token: str
-    secret: str
 
 
 def validate_api_token_scopes(value: Any) -> None:
@@ -79,6 +78,7 @@ def format_bearer_token(*, token_id: uuid.UUID, secret: str) -> str:
     return f"{TOKEN_PREFIX}_{token_id.hex}_{secret}"
 
 
+@sensitive_variables("value", "secret")
 def parse_bearer_token(value: str) -> ParsedBearerToken:
     if len(value) > MAX_AUTHORIZATION_HEADER_LENGTH:
         raise ValueError("Invalid API token.")
@@ -100,7 +100,7 @@ def parse_bearer_token(value: str) -> ParsedBearerToken:
         token_id = uuid.UUID(hex=raw_uuid)
     except ValueError as exc:
         raise ValueError("Invalid API token.") from exc
-    return ParsedBearerToken(token_id=token_id, bearer_token=value, secret=secret)
+    return ParsedBearerToken(token_id=token_id)
 
 
 def api_token_verifier(*, bearer_token: str, pepper: str) -> str:

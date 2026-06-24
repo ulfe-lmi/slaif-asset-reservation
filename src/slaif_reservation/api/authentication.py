@@ -5,6 +5,7 @@ import logging
 from django.conf import settings
 from django.db import DatabaseError
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_variables
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.request import Request
@@ -24,20 +25,31 @@ logger = logging.getLogger(__name__)
 class ApiTokenAuthentication(BaseAuthentication):  # type: ignore[misc]
     www_authenticate_realm = "api"
 
+    @sensitive_variables("raw_header", "header", "credential", "candidate")
     def authenticate(self, request: Request) -> tuple[object, ApiToken] | None:
         raw_header = get_authorization_header(request)
         if not raw_header:
             return None
+        request.META["HTTP_AUTHORIZATION"] = "Bearer [redacted]"
         if len(raw_header) > MAX_AUTHORIZATION_HEADER_LENGTH:
             raise AuthenticationFailed("Invalid bearer token.")
         try:
             header = raw_header.decode("ascii")
         except UnicodeDecodeError as exc:
             raise AuthenticationFailed("Invalid bearer token.") from exc
-        if not header.startswith("Bearer "):
+        try:
+            scheme, credential = header.split(" ", 1)
+        except ValueError as exc:
+            if header.lower().startswith("bearer"):
+                raise AuthenticationFailed("Invalid bearer token.") from exc
             return None
-        credential = header.removeprefix("Bearer ")
-        if credential.strip() != credential or " " in credential or "\t" in credential:
+        if scheme.lower() != "bearer":
+            return None
+        if (
+            not credential
+            or credential.strip() != credential
+            or any(character.isspace() for character in credential)
+        ):
             raise AuthenticationFailed("Invalid bearer token.")
 
         try:
@@ -51,7 +63,7 @@ class ApiTokenAuthentication(BaseAuthentication):  # type: ignore[misc]
             raise AuthenticationFailed("Invalid bearer token.") from exc
 
         candidate = api_token_verifier(
-            bearer_token=parsed.bearer_token,
+            bearer_token=credential,
             pepper=settings.API_TOKEN_PEPPER,
         )
         if not api_token_verifier_matches(candidate=candidate, expected=token.verifier):

@@ -22,6 +22,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
+from django.views.decorators.debug import sensitive_variables
 
 from slaif_reservation.accounts.exceptions import ApiTokenDomainError
 from slaif_reservation.accounts.services import issue_api_token, revoke_api_token
@@ -186,6 +187,7 @@ def token_list(request: HttpRequest) -> HttpResponse:
 
 
 @active_human_required
+@sensitive_variables("result")
 def token_create(request: HttpRequest) -> HttpResponse:
     timezone_name = _member_timezone_or_profile(request)
     if isinstance(timezone_name, HttpResponse):

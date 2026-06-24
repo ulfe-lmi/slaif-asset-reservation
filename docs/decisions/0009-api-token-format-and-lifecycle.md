@@ -51,8 +51,22 @@ history. `last_used_at` is best-effort metadata and must not make otherwise succ
 authentication fail.
 
 Token plaintext is displayed once in the owner web UI. It is not stored in the session, messages,
-database, logs, audit metadata, URLs, or HTML data attributes. Creation and revocation write audit
-events with only safe metadata: display prefix, canonical scopes, and expiry.
+database, logs, audit metadata, URLs, hidden inputs, cookies, local storage, session storage, or
+HTML data attributes. The one-time response keeps `Cache-Control: no-store, private`, `Pragma:
+no-cache`, and `Referrer-Policy: no-referrer`, and a small local script clears the visible token
+element on `pagehide`/bfcache restoration so browser history cannot recover the plaintext when a
+browser preserves the page. Creation and revocation write audit events with only safe metadata:
+display prefix, canonical scopes, and expiry.
+
+Credential-bearing result and parser objects must not expose bearer tokens or secret segments
+through `repr`, equality comparisons, or Django exception reports. Functions that temporarily hold
+bearer credentials mark those locals sensitive, and authentication redacts the request
+Authorization header before any downstream unexpected exception can render it.
+
+Audit metadata validation rejects token-secret key concepts recursively at every nesting depth,
+including token secret, verifier, pepper, bearer token, API token plaintext, and Authorization
+header variants. It also rejects complete SLAIF bearer-token-shaped string values under otherwise
+innocuous keys while allowing safe display prefixes such as `sar_0123456789ab...`.
 
 The ORM boundary blocks ordinary overwrite, queryset update/delete, bulk create/update, instance
 delete, and reconstructed-object overwrite paths. This is application/ORM protection, not a

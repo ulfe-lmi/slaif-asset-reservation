@@ -85,6 +85,8 @@ routes.
   outside the one-time response;
 - display plaintext once with `Cache-Control: no-store, private`, `Pragma: no-cache`, and
   `Referrer-Policy: no-referrer`;
+- clear the visible one-time token element with a local `pagehide`/bfcache script so browser
+  history cannot recover plaintext when the browser preserves the page;
 - write only a verifier, owner, name, scopes, expiry, revocation, last-use, and lifecycle metadata;
 - audit creation without token plaintext, verifier, pepper, Authorization header, raw request body,
   or token name.
@@ -92,6 +94,10 @@ routes.
 ### Verification
 
 - never log the Authorization value;
+- redact the request Authorization header and mark credential-bearing locals sensitive before
+  unexpected exception reports can render them;
+- keep bearer plaintext and secret segments out of result/parser object representations and
+  comparisons;
 - derive verifier using `SLAIF_API_TOKEN_PEPPER`, a dedicated server-side secret distinct from
   Django `SECRET_KEY`;
 - constant-time compare;
@@ -158,11 +164,14 @@ translated to `reservation_conflict`.
 
 Audit metadata validation rejects forbidden keys recursively through nested dictionaries and lists,
 with case-insensitive key comparison and hyphen/space normalization. Forbidden metadata includes
-passwords, tokens, cookies, authorization values, raw request bodies, email addresses, reservation
-purpose, cancellation reason text, and private physical locators. Audit events are append-only
-through ordinary model, queryset, bulk-update, delete, and admin workflows, but this remains
-application/ORM enforcement, not tamper-proof protection against privileged database operators.
-Retention, database-role separation, and backup hardening remain operational work.
+passwords, tokens, API token plaintext, bearer tokens, token secrets, verifiers, peppers, cookies,
+authorization values and headers, raw request bodies, email addresses, reservation purpose,
+cancellation reason text, and private physical locators. Complete SLAIF bearer-token-shaped string
+values are rejected anywhere in audit metadata; safe non-secret display prefixes remain allowed.
+Audit events are append-only through ordinary model, queryset, bulk-update, delete, and admin
+workflows, but this remains application/ORM enforcement, not tamper-proof protection against
+privileged database operators. Retention, database-role separation, and backup hardening remain
+operational work.
 
 ## 7. Privacy and data minimization
 

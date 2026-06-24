@@ -6,6 +6,7 @@ from typing import Any, cast
 from django import forms
 from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
+from django.core.validators import MaxValueValidator
 from django.utils.translation import gettext_lazy as _
 
 from slaif_reservation.accounts.models import User
@@ -160,7 +161,9 @@ class ApiTokenCreationForm(forms.Form):
         default_lifetime = min(30, maximum)
         lifetime_field = cast(forms.IntegerField, self.fields["lifetime_days"])
         lifetime_field.max_value = maximum
+        lifetime_field.validators.append(MaxValueValidator(maximum))
         lifetime_field.initial = default_lifetime
+        lifetime_field.widget.attrs["max"] = str(maximum)
         lifetime_field.help_text = _("Maximum allowed lifetime is %(days)s days.") % {
             "days": maximum
         }
@@ -169,6 +172,16 @@ class ApiTokenCreationForm(forms.Form):
         value = str(self.cleaned_data["name"]).strip()
         if not value:
             raise forms.ValidationError(_("Token name is required."))
+        return value
+
+    def clean_lifetime_days(self) -> int:
+        value = int(self.cleaned_data["lifetime_days"])
+        maximum = int(settings.API_TOKEN_MAX_LIFETIME_DAYS)
+        if value > maximum:
+            raise forms.ValidationError(
+                _("Ensure this value is less than or equal to %(limit_value)s."),
+                params={"limit_value": maximum},
+            )
         return value
 
 

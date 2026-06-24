@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -10,6 +10,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, transaction
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_variables
 
 from slaif_reservation.accounts.exceptions import (
     TOKEN_LIFETIME_INVALID,
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class ApiTokenIssueResult:
     token: ApiToken
-    bearer_token: str
+    bearer_token: str = field(repr=False, compare=False)
     correlation_id: uuid.UUID
 
 
@@ -88,6 +89,7 @@ def _validate_lifetime_days(lifetime_days: int) -> int:
     return lifetime
 
 
+@sensitive_variables("bearer_token", "secret")
 def issue_api_token(
     *,
     owner: Any,
