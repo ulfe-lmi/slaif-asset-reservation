@@ -23,6 +23,8 @@ from slaif_reservation.reservations.services import create_reservation
 from slaif_reservation.web.availability import AvailabilityInputError, availability_for_asset
 from slaif_reservation.web.forms import ReservationForm
 
+OVERLONG_TIMEZONE = "A" * 1000
+
 
 @pytest.fixture
 def member_user() -> User:
@@ -289,6 +291,8 @@ def test_profile_allows_only_display_name_and_timezone(client, member_user: User
         ("../UTC", b"Enter a valid IANA timezone name"),
         ("a/../UTC", b"Enter a valid IANA timezone name"),
         ("Mars/Base", b"Enter a valid IANA timezone name"),
+        (OVERLONG_TIMEZONE, b"Ensure this value has at most 64 characters"),
+        ("UTC\x00", b"Null characters are not allowed"),
         ("", b"Timezone is required"),
     ],
 )
@@ -308,10 +312,15 @@ def test_profile_rejects_malformed_unknown_and_blank_timezone_values(
     assert response.status_code == 200
     assert expected_error in response.content
     assert b"Traceback" not in response.content
+    member_user.refresh_from_db()
+    assert member_user.timezone == "Europe/Ljubljana"
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("stored_timezone", ["/etc/passwd", "../UTC", "a/../UTC", "Mars/Base", ""])
+@pytest.mark.parametrize(
+    "stored_timezone",
+    ["/etc/passwd", "../UTC", "a/../UTC", "Mars/Base", ""],
+)
 def test_invalid_stored_timezone_fails_closed_but_profile_can_repair(
     client,
     member_user: User,

@@ -5,10 +5,12 @@ from django.core.exceptions import ValidationError
 
 from slaif_reservation.accounts.validators import validate_timezone_name
 
+OVERLONG_TIMEZONE = "A" * 1000
+
 
 @pytest.mark.parametrize(
     "timezone_name",
-    ["/etc/passwd", "../UTC", "a/../UTC", "Mars/Base", ""],
+    ["/etc/passwd", "../UTC", "a/../UTC", "Mars/Base", "", OVERLONG_TIMEZONE, "UTC\x00"],
 )
 def test_validate_timezone_name_rejects_malformed_unknown_and_blank_values(
     timezone_name: str,

@@ -8,7 +8,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.utils.translation import gettext_lazy as _
 
 from slaif_reservation.accounts.models import User
-from slaif_reservation.accounts.validators import validate_timezone_name
+from slaif_reservation.accounts.validators import TIMEZONE_NAME_MAX_LENGTH, validate_timezone_name
 from slaif_reservation.reservations.time_utils import LocalTimeError, interpret_local_wall_time
 
 
@@ -37,6 +37,7 @@ class ProfileForm(forms.ModelForm):  # type: ignore[type-arg]
     timezone = forms.CharField(
         label=_("Timezone"),
         required=False,
+        max_length=TIMEZONE_NAME_MAX_LENGTH,
         widget=forms.TextInput(attrs={"autocomplete": "off"}),
     )
 

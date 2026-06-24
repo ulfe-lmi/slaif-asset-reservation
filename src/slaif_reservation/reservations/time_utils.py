@@ -46,7 +46,7 @@ def interpret_local_wall_time(
     try:
         validate_timezone_name(timezone_name)
         zone = ZoneInfo(timezone_name)
-    except (ValidationError, ZoneInfoNotFoundError, ValueError) as exc:
+    except (ValidationError, ZoneInfoNotFoundError, ValueError, OSError) as exc:
         raise LocalTimeError("Timezone must resolve through zoneinfo.") from exc
 
     candidates = []

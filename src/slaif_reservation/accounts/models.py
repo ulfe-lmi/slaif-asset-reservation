@@ -9,7 +9,7 @@ from django.db.models.functions import Lower
 from django.utils import timezone as django_timezone
 
 from slaif_reservation.accounts.managers import UserManager
-from slaif_reservation.accounts.validators import validate_timezone_name
+from slaif_reservation.accounts.validators import TIMEZONE_NAME_MAX_LENGTH, validate_timezone_name
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -17,7 +17,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     display_name = models.CharField(max_length=255, blank=True)
     timezone = models.CharField(
-        max_length=64,
+        max_length=TIMEZONE_NAME_MAX_LENGTH,
         default="Europe/Ljubljana",
         validators=[validate_timezone_name],
     )
