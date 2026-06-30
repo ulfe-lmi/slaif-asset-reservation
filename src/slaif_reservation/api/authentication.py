@@ -6,6 +6,7 @@ from django.conf import settings
 from django.db import DatabaseError
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.request import Request
@@ -95,3 +96,15 @@ class ApiTokenAuthentication(BaseAuthentication):  # type: ignore[misc]
 
     def authenticate_header(self, request: Request) -> str:
         return "Bearer"
+
+
+class ApiTokenAuthenticationScheme(OpenApiAuthenticationExtension):  # type: ignore[no-untyped-call]
+    target_class = "slaif_reservation.api.authentication.ApiTokenAuthentication"
+    name = "Bearer"
+
+    def get_security_definition(self, auto_schema: object) -> dict[str, str]:
+        return {
+            "type": "http",
+            "scheme": "bearer",
+            "description": "SLAIF API token bearer credential.",
+        }

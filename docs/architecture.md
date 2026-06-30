@@ -132,8 +132,9 @@ email, purpose, cancellation reason, and reservation UUID remain hidden.
 
 ### 4.2 Agent API authentication
 
-Work Order 0005 implements the token lifecycle and a DRF bearer-authentication primitive, but does
-not enable bearer access on any API endpoint. Verification:
+Work Order 0005 implements the token lifecycle and a DRF bearer-authentication primitive. Work Order
+0006 enables that authenticator only on the new bearer-token endpoints; it is still not registered
+globally. Verification:
 
 1. parses the strict `sar_<token_uuid_hex>_<secret>` grammar without logging the token;
 2. locates the token by public UUID locator;
@@ -144,8 +145,23 @@ not enable bearer access on any API endpoint. Verification:
 6. returns `(owner_user, api_token)` to future DRF adapters;
 7. updates `last_used_at` best-effort without making authentication depend on that write.
 
-Plaintext token storage is forbidden. Work Order 0006 will bind this authenticator to scoped API
-permissions and idempotent reservation endpoints.
+Plaintext token storage is forbidden. Work Order 0006 binds this authenticator to scoped `/me`,
+availability, and owner reservation endpoints and records idempotency evidence for mutations.
+
+### 4.2.1 API adapter flow
+
+Bearer-token API views follow this order:
+
+1. authenticate the API token with the dedicated pepper verifier;
+2. check the endpoint's required scope;
+3. validate request serializers and path identifiers;
+4. validate or create an idempotency record for mutations;
+5. call the authoritative reservation or availability service;
+6. store only a safe replay response for idempotent mutation success or mapped domain result;
+7. return problem-details JSON for failures with a correlation ID.
+
+The API adapter does not duplicate policy, overlap, cancellation, or release rules. PostgreSQL and
+the reservation domain service remain authoritative.
 
 ### 4.3 Early release
 

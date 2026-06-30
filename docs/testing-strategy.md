@@ -84,6 +84,11 @@ bearer-authenticator negative paths, exact expiry and last-use behavior, owner-o
 CSRF, and Playwright creation/revocation coverage. The authenticator remains directly tested
 without being enabled on API endpoints.
 
+Work Order 0006 adds API tests for bearer endpoint authentication, scope checks, `/api/v1/me/`,
+availability privacy, owner-only reservation list/detail/create/cancel/release, problem-details
+shape, correlation IDs, idempotency replay/conflict behavior, and PostgreSQL-backed concurrent
+idempotent creates.
+
 ### Migration tests
 
 - bootstrap YAML schema validation;

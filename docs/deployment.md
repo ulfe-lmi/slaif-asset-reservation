@@ -227,7 +227,8 @@ Prometheus/Grafana integration is optional until an operator requirement is conf
 
 Use idempotent management commands for:
 
-- cleanup of expired idempotency records;
+- cleanup of expired idempotency records. Work Order 0006 adds `expires_at` on records but does not
+  add a scheduler or cleanup command; stored rows remain authoritative until cleanup is implemented;
 - notifications/reminders if approved;
 - audit/consistency checks;
 - export and backup verification helpers.

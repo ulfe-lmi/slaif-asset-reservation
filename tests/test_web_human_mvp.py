@@ -1104,12 +1104,13 @@ def test_cancellation_error_rolls_back_and_shows_safe_message(
 
 
 @pytest.mark.django_db
-def test_openapi_still_has_no_reservation_mutation_routes(client) -> None:
+def test_api_root_exposes_reservation_api_without_changing_human_routes(client) -> None:
     response = client.get("/api/v1/")
 
     assert response.status_code == 200
-    assert response.json()["endpoints"] == {"assets": "/api/v1/assets/"}
-    assert "/api/v1/reservations/" not in response.content.decode()
+    assert response.json()["endpoints"]["reservations"] == "/api/v1/reservations/"
+    assert response.json()["endpoints"]["me"] == "/api/v1/me/"
+    assert "tokens" not in response.json()["endpoints"]
 
 
 @pytest.mark.django_db
