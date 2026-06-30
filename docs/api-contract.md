@@ -1,7 +1,8 @@
 # API v1 Design Contract
 
 **Status:** pre-alpha implementation contract; asset read endpoints are implemented with a temporary
-staff-session limitation
+staff-session limitation, and the token lifecycle/authenticator primitive is implemented but not
+enabled on API endpoints
 **Base path:** `/api/v1/`
 
 The implemented OpenAPI document generated from code becomes the mechanical schema source of truth. This document defines intended semantics and must remain aligned with implementation.
@@ -22,10 +23,13 @@ The implemented OpenAPI document generated from code becomes the mechanical sche
 ## 2. Authentication
 
 ```http
-Authorization: Bearer sar_<public-prefix>_<secret>
+Authorization: Bearer sar_<token_uuid_hex>_<secret>
 ```
 
-The exact token grammar may change before beta, but it must include a recognizable non-secret prefix and sufficient entropy. The server stores no plaintext bearer token.
+The UUID locator is public. The secret has at least 256 bits of randomness. The server stores no
+plaintext bearer token, only an HMAC-SHA-256 verifier using a dedicated pepper. Verification exists
+as an internal DRF authenticator primitive but is not registered globally or enabled on any endpoint
+until Work Order 0006.
 
 A token is evaluated for:
 
@@ -105,6 +109,8 @@ Do not expose ORM, SQL, constraint, stack-trace, or secret details.
 ## 6. Endpoints
 
 ### `GET /api/v1/me`
+
+Deferred/not implemented. Planned for Work Order 0006.
 
 Returns the effective principal and safe token context.
 
@@ -215,6 +221,11 @@ Response design:
 ```
 
 Availability is advisory. A later create request may still lose a race.
+
+### Token lifecycle API
+
+Deferred/not implemented. Token creation, listing, and revocation are available only through
+server-rendered owner pages in Work Order 0005. No `/api/v1/tokens/` endpoint is exposed.
 
 ### `GET /api/v1/reservations`
 

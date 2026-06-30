@@ -71,22 +71,27 @@ Django groups may still represent global roles; project membership is domain dat
 
 ## 5. API token
 
-Suggested fields:
+Work Order 0005 implements `ApiToken` for human-owned software-agent credentials:
 
-- `id: UUID`
-- `owner_user_id`
-- optional `project_id`
-- `name`
-- non-secret `prefix`
-- `verifier` containing an HMAC-derived digest or reviewed password-hash representation
-- `scopes` as a validated list or normalized relation
-- optional resource/tag restrictions
-- `expires_at`
-- `revoked_at`, `revoked_by`
-- `last_used_at`
-- `created_at`
+- `id: UUID`, also used as the public token locator in `sar_<token_uuid_hex>_<secret>`;
+- `owner_user_id` protected from deletion;
+- `name`, required after trimming and capped at 100 characters;
+- derived non-secret display prefix `sar_<first 12 UUID hex characters>...`;
+- `verifier`, an HMAC-SHA-256 digest over the complete bearer token using `SLAIF_API_TOKEN_PEPPER`;
+- `scopes`, a canonical sorted JSON list;
+- `expires_at`, mandatory;
+- `revoked_at`, `revoked_by`;
+- `last_used_at`;
+- `created_at`.
 
-Token plaintext is returned once and is never recoverable. The verifier secret/pepper is supplied outside the database and differs from Django `SECRET_KEY`.
+Initial allowed scopes are `assets:read`, `availability:read`, `reservations:read`,
+`reservations:create`, `reservations:cancel`, and `reservations:release`. There are no admin,
+wildcard, cross-user, project, or resource-restriction scopes in this slice.
+
+Derived status is `revoked`, `expired`, or `active`; revoked takes precedence over expiry. Token
+plaintext is returned once and is never recoverable. The verifier pepper is supplied outside the
+database and differs from Django `SECRET_KEY`. Token identity/history fields are immutable through
+ordinary ORM paths; service-authorized writes may only set revocation and last-use metadata.
 
 ## 6. Asset
 

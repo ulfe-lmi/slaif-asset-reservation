@@ -11,6 +11,8 @@ from django.core.exceptions import ImproperlyConfigured
 
 from slaif_reservation.config.env import env_bool, env_non_negative_int, postgres_database_from_url
 
+TEST_PRODUCTION_API_TOKEN_PEPPER = "valid-production-test-api-token-pepper-32-bytes"
+
 
 def clean_subprocess_env() -> dict[str, str]:
     return {
@@ -218,6 +220,7 @@ def test_production_hsts_defaults_are_safe_and_https_controls_remain_enabled() -
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
+        "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
         "SLAIF_PUBLIC_API_DOCS": "true",
     }
 
@@ -256,6 +259,7 @@ def test_production_hsts_explicit_opt_in_is_supported() -> None:
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
+        "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
         "SLAIF_SECURE_HSTS_SECONDS": "31536000",
         "SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS": "true",
         "SLAIF_SECURE_HSTS_PRELOAD": "true",
@@ -293,6 +297,7 @@ def test_production_hsts_rejects_invalid_seconds(value: str) -> None:
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
+        "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
         "SLAIF_SECURE_HSTS_SECONDS": value,
     }
 

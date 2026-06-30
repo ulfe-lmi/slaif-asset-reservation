@@ -6,7 +6,7 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 
 ## Status
 
-**Pre-alpha human MVP. Not production-ready and not yet usable as a complete reservation service.**
+**Pre-alpha token-lifecycle MVP. Not production-ready and not yet usable as a complete reservation service.**
 
 The repository contains a minimal Django/PostgreSQL application foundation: custom user model,
 health checks, hierarchical asset inventory, sanitized bootstrap asset import, member-visible
@@ -14,8 +14,11 @@ inventory web pages, staff-session-only inventory API, generated OpenAPI support
 UI assets, CI, and container
 configuration. It now also contains the internal reservation policy, reservation, PostgreSQL
 exclusivity, audit-event core, and a server-rendered human MVP for active administrator-created
-accounts. There is still no reservation API, API-token implementation, project/group authorization,
-maintenance calendar, OIDC/password reset, notification system, or production readiness.
+accounts. It also contains owner-managed API-token lifecycle primitives and UI. Tokens cannot yet
+call asset, availability, or reservation APIs; Work Order 0006 will bind bearer authentication,
+scopes, and idempotency to API endpoints. There is still no reservation API, project/group
+authorization, maintenance calendar, OIDC/password reset, notification system, or production
+readiness.
 
 Verified starting point for this implementation slice:
 
@@ -112,6 +115,8 @@ Log in at `http://127.0.0.1:8000/login/`. The member UI currently provides:
 - `/assets/<uuid>/` asset detail and privacy-safe advisory availability;
 - `/assets/<uuid>/reserve/` reservation form;
 - `/reservations/` and `/reservations/<uuid>/` own reservation pages;
+- `/tokens/` API-token list and revocation;
+- `/tokens/new/` API-token creation with one-time plaintext display;
 - `/profile/` display name and timezone editing.
 
 Accounts are administrator-created only. Service accounts cannot log into the human UI. Until
@@ -130,9 +135,11 @@ Human and API paths:
 
 - `http://127.0.0.1:8000/assets/` provides active-asset browsing for active human sessions.
 - `http://127.0.0.1:8000/api/v1/assets/` provides inventory reads for staff sessions only.
+- `http://127.0.0.1:8000/tokens/` provides owner-scoped token lifecycle management for active
+  human sessions.
 
-The REST asset API remains staff-session-only. Bearer-token agent authentication is not implemented
-yet.
+The REST asset API remains staff-session-only. Bearer-token verification exists but is not enabled
+on any API endpoint yet. Newly created tokens are shown once and cannot be recovered afterward.
 
 Reservation creation, cancellation, and release are exposed only through the server-rendered member
 UI and call the authoritative reservation services. No reservation or availability REST API route is
@@ -184,6 +191,11 @@ Current environment variables:
   `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`, `SLAIF_SECURE_HSTS_PRELOAD`: production-shaped
   HTTPS controls. HSTS defaults to disabled until HTTPS is verified, then must be enabled
   explicitly.
+- `SLAIF_API_TOKEN_PEPPER`: required by production settings; must be a distinct protected secret
+  of at least 32 UTF-8 bytes and must not equal `SLAIF_DJANGO_SECRET_KEY` or the documented
+  development placeholder.
+- `SLAIF_API_TOKEN_MAX_LIFETIME_DAYS`: maximum owner-selectable token lifetime, 1 through 365;
+  defaults to 90.
 
 ## Production Dependencies
 

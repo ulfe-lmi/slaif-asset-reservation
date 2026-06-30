@@ -7,12 +7,22 @@ from typing import Any
 from django.core.exceptions import ValidationError
 
 MAX_AUDIT_METADATA_BYTES = 4096
+TOKEN_PLAINTEXT_RE = re.compile(r"\bsar_[0-9a-fA-F]{32}_[A-Za-z0-9_-]{32,128}\b")
 
 FORBIDDEN_METADATA_KEYS = {
+    "api_token",
+    "api_token_plaintext",
+    "authorization_header",
+    "bearer_token",
+    "bearer_tokens",
     "password",
     "passwords",
+    "pepper",
+    "secret",
+    "secrets",
     "token",
     "tokens",
+    "verifier",
     "cookie",
     "cookies",
     "authorization",
@@ -46,6 +56,16 @@ def _forbidden_keys(value: Any) -> set[str]:
     return set()
 
 
+def _contains_token_plaintext(value: Any) -> bool:
+    if isinstance(value, str):
+        return bool(TOKEN_PLAINTEXT_RE.search(value))
+    if isinstance(value, dict):
+        return any(_contains_token_plaintext(nested) for nested in value.values())
+    if isinstance(value, list):
+        return any(_contains_token_plaintext(item) for item in value)
+    return False
+
+
 def validate_audit_metadata(value: Any) -> None:
     if not isinstance(value, dict):
         raise ValidationError("Audit metadata must be a JSON object.")
@@ -59,3 +79,5 @@ def validate_audit_metadata(value: Any) -> None:
         raise ValidationError(
             f"Audit metadata contains forbidden key(s): {', '.join(sorted(forbidden))}."
         )
+    if _contains_token_plaintext(value):
+        raise ValidationError("Audit metadata contains API token plaintext.")

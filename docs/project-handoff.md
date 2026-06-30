@@ -37,9 +37,9 @@ Build an authenticated asset reservation authority for shared laboratory compute
 - durations are legacy services and are not migrated as new domain entities;
 - no private clients/appointments are included in repository artifacts.
 
-## Current milestone after Work Order 0003 merge
+## Current milestone after Work Order 0004 merge
 
-Constitution and architecture accepted. Work Orders 0001 through 0003 are merged into `main`.
+Constitution and architecture accepted. Work Orders 0001 through 0004 are merged into `main`.
 Work Order 0001 established the executable foundation:
 
 - Django project under `src/slaif_reservation/`;
@@ -72,14 +72,21 @@ application/ORM-level append-only audit evidence. Verified `main` baseline befor
 463eff9ec219c841e1a4e716dd85da93152eead1
 ```
 
+Work Order 0004 added active-human login/profile, member asset browsing, privacy-safe advisory
+availability, and owner reservation create/list/detail/cancel/release pages. Verified `main`
+baseline before Work Order 0005:
+
+```text
+fbf3a962d767497a2424ceac2244decf2f1eca23
+```
+
 ## Next recommended task
 
-Work Order 0004 is the current slice: authenticated human login/profile, active asset browsing,
-privacy-safe advisory availability, and own reservation create/list/detail/cancel/release pages
-built on the internal reservation services.
+Work Order 0005 is the current slice: scoped API-token lifecycle, one-time plaintext display,
+revocation, verification primitives, and owner-facing management pages.
 
-After Work Order 0004 is reviewed and merged, Work Order 0005 remains the next major slice: scoped
-API-token lifecycle.
+After Work Order 0005 is reviewed and merged, Work Order 0006 remains the next major slice: API v1
+reservation operations and idempotency.
 
 ## Do not do next
 

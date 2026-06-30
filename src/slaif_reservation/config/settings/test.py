@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from slaif_reservation.accounts.tokens import TEST_API_TOKEN_PEPPER
 from slaif_reservation.config.settings.base import *  # noqa: F403
 from slaif_reservation.config.settings.base import apply_database_url
 
@@ -14,6 +15,8 @@ API_DOCS_ENABLED = True
 API_DOCS_PUBLIC = True
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+API_TOKEN_PEPPER = TEST_API_TOKEN_PEPPER
+API_TOKEN_MAX_LIFETIME_DAYS = 90
 WHITENOISE_AUTOREFRESH = True
 STORAGES["staticfiles"] = {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}  # noqa: F405
 

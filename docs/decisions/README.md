@@ -10,5 +10,6 @@ Accepted decisions:
 6. `0006-time-and-idempotency-semantics.md`
 7. `0007-reservation-effective-end-semantics.md`
 8. `0008-human-mvp-access-and-availability.md`
+9. `0009-api-token-format-and-lifecycle.md`
 
 Create a new numbered ADR when a proposal changes architecture, trust boundaries, persistence semantics, authentication, major dependencies, deployment, or release invariants. Do not rewrite accepted history to conceal a changed decision; supersede it explicitly.

@@ -81,6 +81,8 @@ Delivers:
 
 ### Work Order 0005 — scoped API token lifecycle
 
+Status: current implementation slice.
+
 Delivers:
 
 - one-time token generation;
@@ -91,6 +93,8 @@ Delivers:
 - no administrative API tokens yet.
 
 ### Work Order 0006 — API v1 reservation operations
+
+Status: next after Work Order 0005 merge.
 
 Delivers:
 

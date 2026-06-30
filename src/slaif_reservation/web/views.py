@@ -22,7 +22,11 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
+from django.views.decorators.debug import sensitive_variables
 
+from slaif_reservation.accounts.exceptions import ApiTokenDomainError
+from slaif_reservation.accounts.services import issue_api_token, revoke_api_token
+from slaif_reservation.accounts.tokens import OneTimeBearerToken
 from slaif_reservation.accounts.validators import validate_timezone_name
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.assets.selectors import AssetFilterError
@@ -65,6 +69,7 @@ from slaif_reservation.web.availability import (
     availability_for_asset,
 )
 from slaif_reservation.web.forms import (
+    ApiTokenCreationForm,
     CancellationForm,
     HumanAuthenticationForm,
     ProfileForm,
@@ -73,8 +78,10 @@ from slaif_reservation.web.forms import (
 from slaif_reservation.web.selectors import (
     dashboard_reservations,
     get_member_asset,
+    get_owned_api_token,
     get_owned_reservation,
     member_asset_context,
+    owned_api_tokens_queryset,
     owned_reservations_queryset,
     parse_member_asset_filters,
 )
@@ -158,6 +165,84 @@ def profile(request: HttpRequest) -> HttpResponse:
             "display_timezone": display_timezone,
         },
     )
+
+
+@active_human_required
+def token_list(request: HttpRequest) -> HttpResponse:
+    timezone_name = _member_timezone_or_profile(request)
+    if isinstance(timezone_name, HttpResponse):
+        return timezone_name
+    return render(
+        request,
+        "web/token_list.html",
+        {
+            "page": _page_queryset(
+                request,
+                owned_api_tokens_queryset(request.user),
+                "page",
+                per_page=25,
+            ),
+            "display_timezone": timezone_name,
+        },
+    )
+
+
+@active_human_required
+@sensitive_variables("result")
+def token_create(request: HttpRequest) -> HttpResponse:
+    timezone_name = _member_timezone_or_profile(request)
+    if isinstance(timezone_name, HttpResponse):
+        return timezone_name
+    if request.method == "POST":
+        form = ApiTokenCreationForm(request.POST)
+        if form.is_valid():
+            try:
+                result = issue_api_token(
+                    owner=request.user,
+                    name=form.cleaned_data["name"],
+                    scopes=form.cleaned_data["scopes"],
+                    lifetime_days=form.cleaned_data["lifetime_days"],
+                )
+            except (ApiTokenDomainError, ValidationError):
+                form.add_error(None, _("The API token could not be created."))
+            else:
+                response = render(
+                    request,
+                    "web/token_created.html",
+                    {
+                        "token": result.token,
+                        "bearer_token": OneTimeBearerToken(result.bearer_token),
+                        "display_timezone": timezone_name,
+                    },
+                )
+                response["Cache-Control"] = "no-store, private"
+                response["Pragma"] = "no-cache"
+                response["Referrer-Policy"] = "no-referrer"
+                return response
+    else:
+        form = ApiTokenCreationForm()
+    return render(
+        request,
+        "web/token_create.html",
+        {
+            "form": form,
+            "display_timezone": timezone_name,
+        },
+    )
+
+
+@active_human_required
+def revoke_own_token(request: HttpRequest, token_id: uuid.UUID) -> HttpResponse:
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    token = _owned_token_or_404(token_id, request.user)
+    try:
+        revoke_api_token(token=token, owner=request.user)
+    except ApiTokenDomainError:
+        messages.error(request, _("The API token could not be revoked."))
+    else:
+        messages.success(request, _("API token revoked."))
+    return redirect("web:token-list")
 
 
 @active_human_required
@@ -369,6 +454,13 @@ def release_own_reservation(request: HttpRequest, reservation_id: uuid.UUID) -> 
 def _owned_or_404(reservation_id: uuid.UUID, user: Any) -> Reservation:
     try:
         return get_owned_reservation(reservation_id, user)
+    except ObjectDoesNotExist as exc:
+        raise Http404 from exc
+
+
+def _owned_token_or_404(token_id: uuid.UUID, user: Any) -> Any:
+    try:
+        return get_owned_api_token(token_id, user)
     except ObjectDoesNotExist as exc:
         raise Http404 from exc
 

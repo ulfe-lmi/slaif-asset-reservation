@@ -1,0 +1,25 @@
+{% extends "web/base.html" %}
+{% load static %}
+{% load i18n tz web_time %}
+
+{% block title %}{% trans "API token created" %}{% endblock %}
+
+{% block content %}
+  <h1>{% trans "API token created" %}</h1>
+  <p class="status-warning">{% trans "Copy this token now. It is shown once and cannot be recovered." %}</p>
+  <dl>
+    <dt>{% trans "Name" %}</dt><dd>{{ token.name }}</dd>
+    <dt>{% trans "Prefix" %}</dt><dd><code>{{ token.display_prefix }}</code></dd>
+    <dt>{% trans "Scopes" %}</dt><dd>{{ token.scopes|join:", " }}</dd>
+    {% timezone display_timezone %}
+      <dt>{% trans "Expires" %}</dt><dd><time datetime="{{ token.expires_at|utc_datetime }}">{{ token.expires_at|date:"Y-m-d H:i" }}</time></dd>
+    {% endtimezone %}
+    <dt>{% trans "Bearer token" %}</dt><dd><code id="one-time-bearer-token">{{ bearer_token }}</code></dd>
+  </dl>
+  <p>{% trans "Bearer-token API operations are not enabled until Work Order 0006." %}</p>
+  <p><a href="{% url 'web:token-list' %}">{% trans "Back to API tokens" %}</a></p>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'web/token-one-time.js' %}" defer></script>
+{% endblock %}

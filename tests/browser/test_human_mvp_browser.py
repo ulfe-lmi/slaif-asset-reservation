@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.utils import timezone
+from playwright.sync_api import Error as PlaywrightError
 
-from slaif_reservation.accounts.models import User
+from slaif_reservation.accounts.models import ApiToken, User
 from slaif_reservation.assets.models import Asset, AssetTag
 from slaif_reservation.reservations.models import Reservation, ReservationPolicy
 from slaif_reservation.reservations.services import create_reservation
@@ -127,6 +129,11 @@ def _future_pair(hours: int = 2):
     return start, start + timedelta(hours=1)
 
 
+def _assert_secret_absent(needle: str, haystack: str) -> None:
+    if needle and needle in haystack:
+        raise AssertionError("secret value was unexpectedly present")
+
+
 @pytest.mark.django_db(transaction=True)
 def test_browser_login_profile_asset_filter_and_post_logout(
     page,
@@ -147,6 +154,7 @@ def test_browser_login_profile_asset_filter_and_post_logout(
     page.get_by_label("Display name").fill("Browser Member")
     page.get_by_label("Timezone").fill("UTC")
     page.get_by_role("button", name="Save profile").click()
+    page.get_by_text("Profile updated").wait_for()
     assert "Profile updated" in page.content()
 
     page.get_by_role("link", name="Assets").click()
@@ -265,6 +273,74 @@ def test_browser_cancel_release_and_other_user_denial(
     with page.expect_navigation():
         page.get_by_role("button", name="Release reservation").click()
     assert "Reservation released" in page.content()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_browser_api_token_create_once_revoke_and_owner_boundary(
+    page,
+    live_server,
+    member_user: User,
+    other_user: User,
+) -> None:
+    _login(page, live_server, member_user)
+    page.get_by_role("link", name="API tokens").click()
+    page.get_by_role("heading", name="API tokens").wait_for()
+    assert "Bearer-token API operations are not enabled until Work Order 0006" in page.content()
+    page.get_by_role("link", name="Create token").click()
+    page.get_by_label("Token name").fill("Browser token")
+    page.get_by_label("assets:read").check()
+    page.get_by_label("reservations:create").check()
+    page.get_by_label("Lifetime in days").fill("7")
+    page.get_by_role("button", name="Create token").click()
+    page.get_by_role("heading", name="API token created").wait_for()
+
+    content = page.content()
+    match = re.search(r"sar_[0-9a-f]{32}_[A-Za-z0-9_-]+", content)
+    assert match is not None
+    bearer_token = match.group(0)
+    token = ApiToken.objects.get(owner=member_user)
+    assert token.display_prefix in content
+    _assert_secret_absent(token.verifier, content)
+    assert "Copy this token now" in content
+
+    page.get_by_role("link", name="Back to API tokens").click()
+    list_content = page.content()
+    assert "Browser token" in list_content
+    assert token.display_prefix in list_content
+    _assert_secret_absent(bearer_token, list_content)
+    _assert_secret_absent(token.verifier, list_content)
+
+    cache_miss = False
+    try:
+        page.go_back()
+    except PlaywrightError as exc:
+        assert "ERR_CACHE_MISS" in str(exc)
+        cache_miss = True
+    if not cache_miss:
+        restored_content = page.content()
+        _assert_secret_absent(bearer_token, restored_content)
+        _assert_secret_absent(token.verifier, restored_content)
+        assert "No longer available" in restored_content
+    else:
+        page = page.context.new_page()
+
+    page.goto(f"{live_server.url}/tokens/")
+    _assert_secret_absent(bearer_token, page.content())
+
+    page.get_by_role("button", name="Revoke").click()
+    assert "API token revoked" in page.content()
+    token.refresh_from_db()
+    assert token.revoked_at is not None
+    assert "revoked" in page.content()
+
+    page.context.clear_cookies()
+    _login(page, live_server, other_user)
+    response = page.goto(f"{live_server.url}/tokens/{token.id}/revoke/")
+    assert response is not None
+    assert response.status == 405
+    token.refresh_from_db()
+    assert token.owner == member_user
+    assert token.revoked_at is not None
 
 
 @pytest.mark.django_db(transaction=True)

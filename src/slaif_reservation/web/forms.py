@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from django import forms
+from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
+from django.core.validators import MaxValueValidator
 from django.utils.translation import gettext_lazy as _
 
 from slaif_reservation.accounts.models import User
+from slaif_reservation.accounts.tokens import ALLOWED_API_TOKEN_SCOPES
 from slaif_reservation.accounts.validators import TIMEZONE_NAME_MAX_LENGTH, validate_timezone_name
 from slaif_reservation.reservations.time_utils import LocalTimeError, interpret_local_wall_time
 
@@ -141,6 +144,45 @@ class CancellationForm(forms.Form):
         max_length=1000,
         widget=forms.Textarea(attrs={"rows": 3}),
     )
+
+
+class ApiTokenCreationForm(forms.Form):
+    name = forms.CharField(label=_("Token name"), max_length=100)
+    scopes = forms.MultipleChoiceField(
+        label=_("Scopes"),
+        choices=[(scope, scope) for scope in ALLOWED_API_TOKEN_SCOPES],
+        widget=forms.CheckboxSelectMultiple,
+    )
+    lifetime_days = forms.IntegerField(label=_("Lifetime in days"), min_value=1)
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        maximum = int(settings.API_TOKEN_MAX_LIFETIME_DAYS)
+        default_lifetime = min(30, maximum)
+        lifetime_field = cast(forms.IntegerField, self.fields["lifetime_days"])
+        lifetime_field.max_value = maximum
+        lifetime_field.validators.append(MaxValueValidator(maximum))
+        lifetime_field.initial = default_lifetime
+        lifetime_field.widget.attrs["max"] = str(maximum)
+        lifetime_field.help_text = _("Maximum allowed lifetime is %(days)s days.") % {
+            "days": maximum
+        }
+
+    def clean_name(self) -> str:
+        value = str(self.cleaned_data["name"]).strip()
+        if not value:
+            raise forms.ValidationError(_("Token name is required."))
+        return value
+
+    def clean_lifetime_days(self) -> int:
+        value = int(self.cleaned_data["lifetime_days"])
+        maximum = int(settings.API_TOKEN_MAX_LIFETIME_DAYS)
+        if value > maximum:
+            raise forms.ValidationError(
+                _("Ensure this value is less than or equal to %(limit_value)s."),
+                params={"limit_value": maximum},
+            )
+        return value
 
 
 def _parse_datetime_local(value: str) -> datetime:

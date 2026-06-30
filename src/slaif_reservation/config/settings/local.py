@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from slaif_reservation.config.env import env_bool, env_list
+from slaif_reservation.config.env import env_bool, env_int_range, env_list
 from slaif_reservation.config.settings.base import *  # noqa: F403
 from slaif_reservation.config.settings.base import apply_database_url
 
@@ -20,6 +20,13 @@ CSRF_TRUSTED_ORIGINS = env_list(
 )
 API_DOCS_ENABLED = env_bool("SLAIF_ENABLE_API_DOCS", default=True)
 API_DOCS_PUBLIC = env_bool("SLAIF_PUBLIC_API_DOCS", default=True)
+API_TOKEN_PEPPER = os.environ.get("SLAIF_API_TOKEN_PEPPER", API_TOKEN_PEPPER)  # noqa: F405
+API_TOKEN_MAX_LIFETIME_DAYS = env_int_range(
+    "SLAIF_API_TOKEN_MAX_LIFETIME_DAYS",
+    default=90,
+    minimum=1,
+    maximum=365,
+)
 
 if database_url := os.environ.get("DATABASE_URL"):
     apply_database_url(database_url)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from slaif_reservation.accounts.tokens import DEVELOPMENT_API_TOKEN_PEPPER
 from slaif_reservation.config.env import postgres_database_from_url
 
 BASE_DIR = Path(__file__).resolve().parents[4]
@@ -99,6 +100,8 @@ X_FRAME_OPTIONS = "DENY"
 
 API_DOCS_ENABLED = False
 API_DOCS_PUBLIC = False
+API_TOKEN_PEPPER = DEVELOPMENT_API_TOKEN_PEPPER
+API_TOKEN_MAX_LIFETIME_DAYS = 90
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",

@@ -106,15 +106,23 @@ Implemented variables:
 - `SLAIF_SECURE_HSTS_SECONDS`;
 - `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`;
 - `SLAIF_SECURE_HSTS_PRELOAD`.
+- `SLAIF_API_TOKEN_PEPPER`;
+- `SLAIF_API_TOKEN_MAX_LIFETIME_DAYS`.
 
 `SLAIF_SECURE_HSTS_SECONDS`, `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`, and
 `SLAIF_SECURE_HSTS_PRELOAD` default to disabled in production settings. Enable them only after
 the final HTTPS hostname, redirects, and subdomain ownership are verified. `SECURE_SSL_REDIRECT`
 and secure session/CSRF cookies remain enabled by default in production settings.
 
+`SLAIF_API_TOKEN_PEPPER` is required in production. Generate and store it as a protected deployment
+secret outside the repository and image. It must be at least 32 UTF-8 bytes, distinct from
+`SLAIF_DJANGO_SECRET_KEY`, and not the documented development placeholder. Replacing this single
+pepper invalidates all existing API tokens until a future key-ring/rotation design is accepted.
+
+`SLAIF_API_TOKEN_MAX_LIFETIME_DAYS` defaults to 90 and must be from 1 through 365.
+
 Deferred variables:
 
-- token-verifier pepper, because API tokens are not implemented yet;
 - canonical external URL, email relay, structured-log destination, OIDC, and backup destination.
 - login throttling/rate-limit configuration, because public local-auth hardening is deferred.
 
