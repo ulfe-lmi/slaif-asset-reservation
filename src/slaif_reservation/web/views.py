@@ -26,6 +26,7 @@ from django.views.decorators.debug import sensitive_variables
 
 from slaif_reservation.accounts.exceptions import ApiTokenDomainError
 from slaif_reservation.accounts.services import issue_api_token, revoke_api_token
+from slaif_reservation.accounts.tokens import OneTimeBearerToken
 from slaif_reservation.accounts.validators import validate_timezone_name
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.assets.selectors import AssetFilterError
@@ -210,7 +211,7 @@ def token_create(request: HttpRequest) -> HttpResponse:
                     "web/token_created.html",
                     {
                         "token": result.token,
-                        "bearer_token": result.bearer_token,
+                        "bearer_token": OneTimeBearerToken(result.bearer_token),
                         "display_timezone": timezone_name,
                     },
                 )

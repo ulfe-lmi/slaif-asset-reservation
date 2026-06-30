@@ -90,14 +90,17 @@ routes.
 - write only a verifier, owner, name, scopes, expiry, revocation, last-use, and lifecycle metadata;
 - audit creation without token plaintext, verifier, pepper, Authorization header, raw request body,
   or token name.
+- reject every committed development/test pepper placeholder in production settings, including
+  whitespace-padded forms, without echoing the rejected value.
 
 ### Verification
 
 - never log the Authorization value;
-- redact the request Authorization header and mark credential-bearing locals sensitive before
-  unexpected exception reports can render them;
-- keep bearer plaintext and secret segments out of result/parser object representations and
-  comparisons;
+- preserve genuine non-Bearer Authorization schemes for later authenticators;
+- redact the request Authorization header for Bearer attempts and mark all credential-bearing
+  locals sensitive before unexpected exception reports can render them;
+- keep bearer plaintext and secret segments out of result/parser/one-time-display object
+  representations and comparisons;
 - derive verifier using `SLAIF_API_TOKEN_PEPPER`, a dedicated server-side secret distinct from
   Django `SECRET_KEY`;
 - constant-time compare;
@@ -122,6 +125,13 @@ Work Order 0005 implements owner-only self-service token issue/list/revoke pages
 users. There is no administrative or service-account token issuance in this slice. The bearer
 authenticator primitive exists for direct tests but is not enabled on the asset API, API root,
 schema/docs, or reservation routes.
+
+API token ORM protections block ordinary instance overwrite, reconstructed overwrite, queryset
+update/delete, bulk create/update, and instance delete paths, including paths through the base
+manager. Service-authorized lifecycle writes do not bypass immutable-history comparison: UUID,
+owner, name, verifier, scopes, expiry, and creation time are compared with the stored row before a
+write. Only revocation fields together or `last_used_at` may change through service update
+authorization.
 
 ## 6. Authorization model
 

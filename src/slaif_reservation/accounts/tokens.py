@@ -4,7 +4,7 @@ import hmac
 import re
 import secrets
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any
 
@@ -20,6 +20,12 @@ MAX_AUTHORIZATION_HEADER_LENGTH = 512
 API_TOKEN_PEPPER_MIN_BYTES = 32
 DEVELOPMENT_API_TOKEN_PEPPER = "unsafe-development-api-token-pepper-do-not-use-in-production"
 TEST_API_TOKEN_PEPPER = "test-only-api-token-pepper-not-for-production-32-bytes"
+UNSAFE_API_TOKEN_PEPPERS = frozenset(
+    {
+        DEVELOPMENT_API_TOKEN_PEPPER,
+        TEST_API_TOKEN_PEPPER,
+    }
+)
 
 ALLOWED_API_TOKEN_SCOPES = (
     "assets:read",
@@ -37,6 +43,14 @@ _SECRET_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 @dataclass(frozen=True)
 class ParsedBearerToken:
     token_id: uuid.UUID
+
+
+@dataclass(frozen=True)
+class OneTimeBearerToken:
+    value: str = field(repr=False, compare=False)
+
+    def __str__(self) -> str:
+        return self.value
 
 
 def validate_api_token_scopes(value: Any) -> None:
@@ -74,6 +88,7 @@ def generate_api_token_secret() -> str:
     return secrets.token_hex(TOKEN_SECRET_BYTES)
 
 
+@sensitive_variables("secret")
 def format_bearer_token(*, token_id: uuid.UUID, secret: str) -> str:
     return f"{TOKEN_PREFIX}_{token_id.hex}_{secret}"
 
@@ -103,6 +118,7 @@ def parse_bearer_token(value: str) -> ParsedBearerToken:
     return ParsedBearerToken(token_id=token_id)
 
 
+@sensitive_variables("bearer_token", "pepper")
 def api_token_verifier(*, bearer_token: str, pepper: str) -> str:
     return hmac.new(
         pepper.encode("utf-8"),
@@ -115,12 +131,13 @@ def api_token_verifier_matches(*, candidate: str, expected: str) -> bool:
     return hmac.compare_digest(candidate, expected)
 
 
+@sensitive_variables("pepper", "secret_key")
 def validate_api_token_pepper(pepper: str, *, secret_key: str | None = None) -> None:
-    if not pepper:
+    if not pepper or not pepper.strip():
         raise ValidationError(_("API token pepper is required."))
     if len(pepper.encode("utf-8")) < API_TOKEN_PEPPER_MIN_BYTES:
         raise ValidationError(_("API token pepper must be at least 32 UTF-8 bytes."))
     if secret_key is not None and pepper == secret_key:
         raise ValidationError(_("API token pepper must be distinct from SECRET_KEY."))
-    if pepper == DEVELOPMENT_API_TOKEN_PEPPER:
-        raise ValidationError(_("Development API token pepper is forbidden in production."))
+    if pepper.strip() in UNSAFE_API_TOKEN_PEPPERS:
+        raise ValidationError(_("Configured API token pepper is forbidden in production."))

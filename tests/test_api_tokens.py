@@ -10,6 +10,7 @@ import uuid
 from datetime import UTC, timedelta
 
 import pytest
+from django.conf import settings
 from django.contrib.admin.sites import site
 from django.contrib.messages import get_messages
 from django.core.exceptions import ValidationError
@@ -17,6 +18,7 @@ from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.test import Client, override_settings
 from django.utils import timezone
 from django.views.debug import ExceptionReporter
+from django.views.decorators.debug import sensitive_variables
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APIRequestFactory
 
@@ -26,8 +28,14 @@ from slaif_reservation.accounts.exceptions import (
     TOKEN_OWNER_INVALID,
     ApiTokenDomainError,
 )
-from slaif_reservation.accounts.models import API_TOKEN_SERVICE_UPDATE_ATTR, ApiToken, User
+from slaif_reservation.accounts.models import (
+    API_TOKEN_SERVICE_CREATE_ATTR,
+    API_TOKEN_SERVICE_UPDATE_ATTR,
+    ApiToken,
+    User,
+)
 from slaif_reservation.accounts.services import (
+    _service_save,
     issue_api_token,
     record_api_token_use,
     revoke_api_token,
@@ -35,6 +43,9 @@ from slaif_reservation.accounts.services import (
 from slaif_reservation.accounts.tokens import (
     DEVELOPMENT_API_TOKEN_PEPPER,
     MAX_AUTHORIZATION_HEADER_LENGTH,
+    TEST_API_TOKEN_PEPPER,
+    UNSAFE_API_TOKEN_PEPPERS,
+    OneTimeBearerToken,
     api_token_verifier,
     display_prefix_for_token_id,
     format_bearer_token,
@@ -66,23 +77,24 @@ def issue(owner: User, **overrides: object):
 
 def token_row(owner: User, **overrides: object) -> ApiToken:
     token_id = overrides.pop("id", uuid.uuid4())
-    bearer = format_bearer_token(token_id=token_id, secret="A" * 43)
+    secret = str(overrides.pop("secret", "A" * 43))
+    bearer = format_bearer_token(token_id=token_id, secret=secret)
     values = {
         "id": token_id,
         "owner": owner,
         "name": "Existing token",
-        "verifier": api_token_verifier(bearer_token=bearer, pepper="x" * 32),
+        "verifier": api_token_verifier(bearer_token=bearer, pepper=settings.API_TOKEN_PEPPER),
         "scopes": ["assets:read"],
         "expires_at": timezone.now() + timedelta(days=1),
     }
     values.update(overrides)
     token = ApiToken(**values)
-    setattr(token, API_TOKEN_SERVICE_UPDATE_ATTR, True)
+    setattr(token, API_TOKEN_SERVICE_CREATE_ATTR, True)
     try:
         token.save()
     finally:
-        if hasattr(token, API_TOKEN_SERVICE_UPDATE_ATTR):
-            delattr(token, API_TOKEN_SERVICE_UPDATE_ATTR)
+        if hasattr(token, API_TOKEN_SERVICE_CREATE_ATTR):
+            delattr(token, API_TOKEN_SERVICE_CREATE_ATTR)
     return token
 
 
@@ -97,6 +109,21 @@ def connection_cursor():
 def assert_secret_absent(needle: str, haystack: str, message: str = "secret leaked") -> None:
     if needle and needle in haystack:
         raise AssertionError(message)
+
+
+def set_token_timestamps(token: ApiToken, *, created_at, expires_at) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE accounts_apitoken
+               SET created_at = %s,
+                   expires_at = %s
+             WHERE id = %s
+            """,
+            [created_at, expires_at, token.id],
+        )
+    token.created_at = created_at
+    token.expires_at = expires_at
 
 
 def extract_bearer_from_html(content: str) -> str:
@@ -168,9 +195,14 @@ def test_token_issue_result_repr_redacts_plaintext() -> None:
     owner = user()
     result = issue(owner)
     secret = result.bearer_token.rsplit("_", 1)[1]
+    wrapper = OneTimeBearerToken(result.bearer_token)
 
     rendered = repr(result)
 
+    assert str(wrapper) == result.bearer_token
+    assert wrapper == OneTimeBearerToken("different-redacted-value")
+    assert_secret_absent(result.bearer_token, repr(wrapper))
+    assert_secret_absent(secret, repr(wrapper))
     assert result.token.display_prefix in rendered
     assert_secret_absent(result.bearer_token, rendered)
     assert_secret_absent(secret, rendered)
@@ -180,9 +212,11 @@ def test_token_pepper_validation() -> None:
     validate_api_token_pepper("x" * 32, secret_key="different")
     for value, secret in [
         ("", "secret"),
+        ("   ", "secret"),
         ("short", "secret"),
         ("same-secret-" + ("x" * 32), "same-secret-" + ("x" * 32)),
-        (DEVELOPMENT_API_TOKEN_PEPPER, "different"),
+        *[(pepper, "different") for pepper in UNSAFE_API_TOKEN_PEPPERS],
+        *[(f"  {pepper}\n", "different") for pepper in UNSAFE_API_TOKEN_PEPPERS],
     ]:
         with pytest.raises(ValidationError):
             validate_api_token_pepper(value, secret_key=secret)
@@ -335,11 +369,71 @@ def test_api_token_orm_bypass_paths_are_blocked() -> None:
         ApiToken.objects.all().bulk_create([token])
     with pytest.raises(ValidationError):
         ApiToken.objects.bulk_update([token], ["name"])
+    with pytest.raises(ValidationError):
+        ApiToken._base_manager.filter(pk=token.pk).update(name="Changed")
+    with pytest.raises(ValidationError):
+        ApiToken._base_manager.filter(pk=token.pk).delete()
+    with pytest.raises(ValidationError):
+        ApiToken._base_manager.bulk_create([bulk_token])
+    with pytest.raises(ValidationError):
+        ApiToken._base_manager.bulk_update([token], ["name"])
 
     current = ApiToken.objects.get(pk=token.pk)
     assert current.name == original.name
     assert current.verifier == original.verifier
     assert current.scopes == original.scopes
+
+
+@pytest.mark.django_db
+def test_api_token_service_marker_cannot_change_immutable_history() -> None:
+    owner = user()
+    other = user("other-immutable@example.com")
+    token = token_row(owner)
+    original = ApiToken.objects.get(pk=token.pk)
+
+    immutable_mutations = [
+        ("id", uuid.uuid4()),
+        ("owner", other),
+        ("name", "Changed"),
+        ("verifier", "f" * 64),
+        ("scopes", ["reservations:read"]),
+        ("expires_at", original.expires_at + timedelta(days=1)),
+        ("created_at", original.created_at + timedelta(seconds=1)),
+    ]
+
+    for field_name, value in immutable_mutations:
+        candidate = ApiToken.objects.get(pk=original.pk)
+        setattr(candidate, field_name, value)
+        setattr(candidate, API_TOKEN_SERVICE_UPDATE_ATTR, True)
+        with pytest.raises(ValidationError):
+            candidate.save(update_fields=["last_used_at"])
+        current = ApiToken.objects.get(pk=original.pk)
+        assert current.id == original.id
+        assert current.owner_id == original.owner_id
+        assert current.name == original.name
+        assert current.verifier == original.verifier
+        assert current.scopes == original.scopes
+        assert current.expires_at == original.expires_at
+        assert current.created_at == original.created_at
+
+    assert AuditEvent.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_api_token_service_save_rejects_unauthorized_update_fields() -> None:
+    owner = user()
+    token = token_row(owner)
+    token.last_used_at = timezone.now()
+
+    with pytest.raises(ValidationError):
+        _service_save(token, update_fields=["last_used_at", "name"])
+
+    with pytest.raises(ValidationError):
+        _service_save(token)
+
+    current = ApiToken.objects.get(pk=token.pk)
+    assert current.last_used_at is None
+    assert current.name == token.name
 
 
 @pytest.mark.django_db
@@ -496,8 +590,23 @@ def test_authenticator_accepts_bearer_scheme_case_insensitively(scheme: str) -> 
 def test_authenticator_missing_and_non_bearer_are_ignored() -> None:
     auth = ApiTokenAuthentication()
     assert auth.authenticate(APIRequestFactory().get("/")) is None
-    assert auth.authenticate(APIRequestFactory().get("/", HTTP_AUTHORIZATION="Basic abc")) is None
+    request = APIRequestFactory().get("/", HTTP_AUTHORIZATION="Basic abc")
+    assert auth.authenticate(request) is None
+    assert request.META["HTTP_AUTHORIZATION"] == "Basic abc"
     assert auth.authenticate_header(APIRequestFactory().get("/")) == "Bearer"
+
+
+@pytest.mark.django_db
+def test_authenticator_preserves_non_bearer_header_for_downstream_authenticator() -> None:
+    request = APIRequestFactory().get("/", HTTP_AUTHORIZATION="Basic abc123")
+
+    assert ApiTokenAuthentication().authenticate(request) is None
+
+    class DownstreamAuthenticator:
+        def authenticate(self, downstream_request) -> str:
+            return str(downstream_request.META["HTTP_AUTHORIZATION"])
+
+    assert DownstreamAuthenticator().authenticate(request) == "Basic abc123"
 
 
 @pytest.mark.django_db
@@ -523,6 +632,24 @@ def test_authenticator_rejects_malformed_generically(header: str) -> None:
 
 
 @pytest.mark.django_db
+def test_malformed_bearer_exception_report_redacts_authorization() -> None:
+    bearer = format_bearer_token(token_id=uuid.uuid4(), secret="F" * 43)
+    header = f"Bearer {bearer} extra"
+    request = APIRequestFactory().get("/", HTTP_AUTHORIZATION=header)
+    try:
+        ApiTokenAuthentication().authenticate(request)
+    except AuthenticationFailed:
+        report = ExceptionReporter(request, *sys.exc_info()).get_traceback_text()
+    else:  # pragma: no cover - defensive
+        raise AssertionError("malformed bearer authentication did not fail")
+
+    assert request.META["HTTP_AUTHORIZATION"] == "Bearer [redacted]"
+    assert_secret_absent(header, report)
+    assert_secret_absent(bearer, report)
+    assert_secret_absent("F" * 43, report)
+
+
+@pytest.mark.django_db
 def test_authenticator_failure_matrix_is_generic() -> None:
     owner = user()
     result = issue(owner)
@@ -530,13 +657,13 @@ def test_authenticator_failure_matrix_is_generic() -> None:
     unknown_uuid = format_bearer_token(token_id=uuid.uuid4(), secret="C" * 43)
     cases = [wrong_secret, unknown_uuid]
 
-    expired_result = issue(owner, name="Expired")
-    expired = expired_result.token
-    setattr(expired, API_TOKEN_SERVICE_UPDATE_ATTR, True)
-    expired.expires_at = timezone.now()
-    expired.save(update_fields=["expires_at"])
-    delattr(expired, API_TOKEN_SERVICE_UPDATE_ATTR)
-    cases.append(expired_result.bearer_token)
+    expired = token_row(owner, name="Expired", secret="G" * 43)
+    set_token_timestamps(
+        expired,
+        created_at=timezone.now() - timedelta(days=2),
+        expires_at=timezone.now() - timedelta(days=1),
+    )
+    cases.append(format_bearer_token(token_id=expired.id, secret="G" * 43))
 
     revoked = issue(owner, name="Revoked")
     revoke_api_token(token=revoked.token, owner=owner)
@@ -567,10 +694,6 @@ def test_authenticator_exact_expiry_boundary_fails(monkeypatch: pytest.MonkeyPat
     owner = user()
     result = issue(owner)
     token = result.token
-    setattr(token, API_TOKEN_SERVICE_UPDATE_ATTR, True)
-    token.expires_at = timezone.now() + timedelta(minutes=1)
-    token.save(update_fields=["expires_at"])
-    delattr(token, API_TOKEN_SERVICE_UPDATE_ATTR)
     monkeypatch.setattr(
         "slaif_reservation.api.authentication.timezone.now", lambda: token.expires_at
     )
@@ -647,6 +770,93 @@ def test_authentication_exception_report_redacts_credentials(
     assert_secret_absent(result.token.verifier, report)
     assert_secret_absent("test-only-api-token-pepper", report)
     assert_secret_absent(f"Bearer {result.bearer_token}", report)
+
+
+@sensitive_variables("secret")
+def test_format_bearer_token_exception_report_redacts_secret() -> None:
+    secret = "H" * 43
+
+    class BrokenTokenId:
+        @property
+        def hex(self) -> str:
+            raise RuntimeError("synthetic format failure")
+
+    try:
+        format_bearer_token(token_id=BrokenTokenId(), secret=secret)  # type: ignore[arg-type]
+    except RuntimeError:
+        report = ExceptionReporter(None, *sys.exc_info()).get_traceback_text()
+    else:  # pragma: no cover - defensive
+        raise AssertionError("synthetic token formatting failure did not occur")
+
+    assert_secret_absent(secret, report)
+
+
+@sensitive_variables("bearer", "secret", "pepper")
+def test_verifier_exception_report_redacts_credential_and_pepper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bearer = format_bearer_token(token_id=uuid.uuid4(), secret="I" * 43)
+    secret = bearer.rsplit("_", 1)[1]
+    pepper = TEST_API_TOKEN_PEPPER
+
+    def fail_hmac(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("synthetic verifier failure")
+
+    monkeypatch.setattr("slaif_reservation.accounts.tokens.hmac.new", fail_hmac)
+
+    try:
+        api_token_verifier(bearer_token=bearer, pepper=pepper)
+    except RuntimeError:
+        report = ExceptionReporter(None, *sys.exc_info()).get_traceback_text()
+    else:  # pragma: no cover - defensive
+        raise AssertionError("synthetic verifier failure did not occur")
+
+    assert_secret_absent(bearer, report)
+    assert_secret_absent(secret, report)
+    assert_secret_absent(pepper, report)
+
+
+@pytest.mark.django_db
+@sensitive_variables("captured")
+def test_token_created_template_exception_report_redacts_plaintext(
+    client: Client,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = user()
+    client.force_login(owner)
+    captured: dict[str, str] = {}
+    real_issue = issue_api_token
+
+    def capture_issue(**kwargs: object):
+        result = real_issue(**kwargs)
+        captured["bearer"] = result.bearer_token
+        captured["secret"] = result.bearer_token.rsplit("_", 1)[1]
+        return result
+
+    def fail_time_render(*args: object, **kwargs: object) -> str:
+        raise RuntimeError("synthetic template rendering failure")
+
+    monkeypatch.setattr("slaif_reservation.web.views.issue_api_token", capture_issue)
+    monkeypatch.setattr(
+        "slaif_reservation.web.templatetags.web_time.require_aware_utc",
+        fail_time_render,
+    )
+
+    try:
+        client.post(
+            "/tokens/new/",
+            {"name": "Render fail", "scopes": ["assets:read"], "lifetime_days": "30"},
+        )
+    except RuntimeError:
+        report = ExceptionReporter(None, *sys.exc_info()).get_traceback_text()
+    else:  # pragma: no cover - defensive
+        raise AssertionError("synthetic template rendering failure did not occur")
+
+    assert ApiToken.objects.count() == 1
+    assert_secret_absent(captured["bearer"], report)
+    assert_secret_absent(captured["secret"], report)
+    assert_secret_absent(ApiToken.objects.get().verifier, report)
+    assert_secret_absent(TEST_API_TOKEN_PEPPER, report)
 
 
 @pytest.mark.django_db
@@ -844,6 +1054,9 @@ def test_api_token_production_setting_fail_fast() -> None:
         "short",
         base_env["SLAIF_DJANGO_SECRET_KEY"],
         DEVELOPMENT_API_TOKEN_PEPPER,
+        TEST_API_TOKEN_PEPPER,
+        f"  {DEVELOPMENT_API_TOKEN_PEPPER}\n",
+        f"\t{TEST_API_TOKEN_PEPPER}  ",
     ]
     for pepper in invalid_peppers:
         env = dict(base_env)
@@ -861,6 +1074,8 @@ def test_api_token_production_setting_fail_fast() -> None:
             check=False,
         )
         assert result.returncode != 0
+        if pepper is not None:
+            assert_secret_absent(str(pepper).strip(), result.stderr)
 
     env = base_env | {"SLAIF_API_TOKEN_PEPPER": "valid-production-pepper-" + ("x" * 32)}
     result = subprocess.run(

@@ -18,7 +18,14 @@ from slaif_reservation.accounts.exceptions import (
     TOKEN_OWNER_INVALID,
     ApiTokenDomainError,
 )
-from slaif_reservation.accounts.models import API_TOKEN_SERVICE_UPDATE_ATTR, ApiToken, User
+from slaif_reservation.accounts.models import (
+    API_TOKEN_LAST_USE_UPDATE_FIELDS,
+    API_TOKEN_REVOCATION_UPDATE_FIELDS,
+    API_TOKEN_SERVICE_CREATE_ATTR,
+    API_TOKEN_SERVICE_UPDATE_ATTR,
+    ApiToken,
+    User,
+)
 from slaif_reservation.accounts.tokens import (
     api_token_verifier,
     format_bearer_token,
@@ -67,15 +74,27 @@ def _lock_active_human(owner: Any) -> User:
 
 
 def _service_save(token: ApiToken, *, update_fields: list[str] | None = None) -> None:
-    setattr(token, API_TOKEN_SERVICE_UPDATE_ATTR, True)
+    update_field_set = frozenset(update_fields or [])
+    if token._state.adding:
+        if update_fields is not None:
+            raise ValidationError("API token creation cannot use update_fields.")
+        marker = API_TOKEN_SERVICE_CREATE_ATTR
+    else:
+        if update_field_set not in {
+            API_TOKEN_REVOCATION_UPDATE_FIELDS,
+            API_TOKEN_LAST_USE_UPDATE_FIELDS,
+        }:
+            raise ValidationError("API token service update fields are not allowed.")
+        marker = API_TOKEN_SERVICE_UPDATE_ATTR
+    setattr(token, marker, True)
     try:
         if update_fields is None:
             token.save()
         else:
             token.save(update_fields=update_fields)
     finally:
-        if hasattr(token, API_TOKEN_SERVICE_UPDATE_ATTR):
-            delattr(token, API_TOKEN_SERVICE_UPDATE_ATTR)
+        if hasattr(token, marker):
+            delattr(token, marker)
 
 
 def _validate_lifetime_days(lifetime_days: int) -> int:

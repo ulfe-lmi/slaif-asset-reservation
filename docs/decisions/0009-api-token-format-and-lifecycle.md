@@ -27,8 +27,9 @@ HMAC-SHA-256 verifier over the complete bearer token using `SLAIF_API_TOKEN_PEPP
 server-side pepper distinct from Django `SECRET_KEY`. Verification uses constant-time comparison.
 
 Production settings fail closed when the pepper is absent, shorter than 32 UTF-8 bytes, equal to
-`SECRET_KEY`, or equal to the documented development placeholder. Replacing the single pepper
-invalidates all existing tokens until a future key-ring or rotation design is accepted.
+`SECRET_KEY`, or equal to any committed development/test placeholder, including whitespace-padded
+forms. Replacing the single pepper invalidates all existing tokens until a future key-ring or
+rotation design is accepted.
 
 Initial scopes are the immutable allowlist:
 
@@ -58,10 +59,11 @@ element on `pagehide`/bfcache restoration so browser history cannot recover the 
 browser preserves the page. Creation and revocation write audit events with only safe metadata:
 display prefix, canonical scopes, and expiry.
 
-Credential-bearing result and parser objects must not expose bearer tokens or secret segments
-through `repr`, equality comparisons, or Django exception reports. Functions that temporarily hold
-bearer credentials mark those locals sensitive, and authentication redacts the request
-Authorization header before any downstream unexpected exception can render it.
+Credential-bearing result, parser, and one-time display objects must not expose bearer tokens or
+secret segments through `repr`, equality comparisons, or Django exception reports. Functions that
+temporarily hold bearer credentials, token secrets, verifiers, or peppers mark those locals
+sensitive. Authentication redacts the request Authorization header before any downstream
+unexpected exception can render a Bearer attempt.
 
 Audit metadata validation rejects token-secret key concepts recursively at every nesting depth,
 including token secret, verifier, pepper, bearer token, API token plaintext, and Authorization
@@ -69,13 +71,17 @@ header variants. It also rejects complete SLAIF bearer-token-shaped string value
 innocuous keys while allowing safe display prefixes such as `sar_0123456789ab...`.
 
 The ORM boundary blocks ordinary overwrite, queryset update/delete, bulk create/update, instance
-delete, and reconstructed-object overwrite paths. This is application/ORM protection, not a
+delete, and reconstructed-object overwrite paths, including paths through the model base manager.
+Service-authorized lifecycle writes still compare immutable history fields against the stored row
+before saving; only revocation fields together or `last_used_at` may change. Creation authorization
+is distinct from lifecycle-update authorization. This is application/ORM protection, not a
 database-trigger guarantee against privileged database operators.
 
 The custom DRF bearer authenticator is implemented in this slice for direct verification tests, but
 it is not registered globally and is not enabled on the asset API, API root, schema/docs, or any
-reservation route. Work Order 0006 will bind bearer authentication, scope permissions, and
-idempotency records to API endpoints.
+reservation route. It parses the HTTP authentication scheme case-insensitively while preserving
+genuine non-Bearer `Authorization` headers byte-for-byte for later authenticators. Work Order 0006
+will bind bearer authentication, scope permissions, and idempotency records to API endpoints.
 
 ## Consequences
 

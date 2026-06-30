@@ -19,7 +19,20 @@ from slaif_reservation.accounts.tokens import (
 )
 from slaif_reservation.accounts.validators import TIMEZONE_NAME_MAX_LENGTH, validate_timezone_name
 
+API_TOKEN_SERVICE_CREATE_ATTR = "_slaif_api_token_service_create"
 API_TOKEN_SERVICE_UPDATE_ATTR = "_slaif_api_token_service_update"
+API_TOKEN_IMMUTABLE_FIELD_NAMES = (
+    "id",
+    "owner_id",
+    "name",
+    "verifier",
+    "scopes",
+    "expires_at",
+    "created_at",
+)
+API_TOKEN_SERVICE_UPDATE_FIELDS = frozenset({"revoked_at", "revoked_by", "last_used_at"})
+API_TOKEN_REVOCATION_UPDATE_FIELDS = frozenset({"revoked_at", "revoked_by"})
+API_TOKEN_LAST_USE_UPDATE_FIELDS = frozenset({"last_used_at"})
 
 
 class ApiTokenQuerySet(models.QuerySet["ApiToken"]):
@@ -119,6 +132,7 @@ class ApiToken(models.Model):
     objects = ApiTokenManager()
 
     class Meta:
+        base_manager_name = "objects"
         ordering = ["-created_at", "-id"]
         indexes = [
             models.Index(fields=["owner", "-created_at"], name="api_token_owner_created_idx"),
@@ -151,15 +165,23 @@ class ApiToken(models.Model):
         return f"{self.name} ({self.display_prefix})"
 
     def save(self, *args: Any, **kwargs: Any) -> None:
+        update_fields = kwargs.get("update_fields")
         service_update = getattr(self, API_TOKEN_SERVICE_UPDATE_ATTR, False)
-        if self._state.adding and not service_update:
+        service_create = getattr(self, API_TOKEN_SERVICE_CREATE_ATTR, False)
+        if self._state.adding and not service_create:
             raise ValidationError("API tokens must be created through the token service.")
         if self._state.adding and self.pk and type(self)._base_manager.filter(pk=self.pk).exists():
             raise ValidationError("API tokens must be changed through the token service.")
-        if not self._state.adding and not service_update:
-            raise ValidationError("API tokens must be changed through the token service.")
         if self._state.adding:
             self.full_clean()
+            super().save(*args, **kwargs)
+            return
+
+        if not service_update:
+            raise ValidationError("API tokens must be changed through the token service.")
+        self._validate_service_update_fields(update_fields)
+        self._validate_immutable_history()
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def delete(self, *args: object, **kwargs: object) -> tuple[int, dict[str, int]]:
@@ -206,3 +228,21 @@ class ApiToken(models.Model):
 
     def has_scope(self, scope: str) -> bool:
         return scope in self.scopes
+
+    def _validate_service_update_fields(self, update_fields: Any) -> None:
+        if update_fields is None:
+            raise ValidationError("API token service updates must declare update_fields.")
+        fields = frozenset(update_fields)
+        if fields not in {API_TOKEN_REVOCATION_UPDATE_FIELDS, API_TOKEN_LAST_USE_UPDATE_FIELDS}:
+            raise ValidationError("API token service update fields are not allowed.")
+        if not fields <= API_TOKEN_SERVICE_UPDATE_FIELDS:
+            raise ValidationError("API token service update fields are not allowed.")
+
+    def _validate_immutable_history(self) -> None:
+        try:
+            stored = type(self)._base_manager.get(pk=self.pk)
+        except type(self).DoesNotExist as exc:
+            raise ValidationError("API token immutable history cannot be changed.") from exc
+        for field_name in API_TOKEN_IMMUTABLE_FIELD_NAMES:
+            if getattr(self, field_name) != getattr(stored, field_name):
+                raise ValidationError("API token immutable history cannot be changed.")

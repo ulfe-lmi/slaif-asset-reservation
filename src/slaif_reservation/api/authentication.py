@@ -22,6 +22,10 @@ from slaif_reservation.accounts.tokens import (
 logger = logging.getLogger(__name__)
 
 
+def _redact_authorization(request: Request) -> None:
+    request.META["HTTP_AUTHORIZATION"] = "Bearer [redacted]"
+
+
 class ApiTokenAuthentication(BaseAuthentication):  # type: ignore[misc]
     www_authenticate_realm = "api"
 
@@ -30,19 +34,24 @@ class ApiTokenAuthentication(BaseAuthentication):  # type: ignore[misc]
         raw_header = get_authorization_header(request)
         if not raw_header:
             return None
-        request.META["HTTP_AUTHORIZATION"] = "Bearer [redacted]"
-        if len(raw_header) > MAX_AUTHORIZATION_HEADER_LENGTH:
-            raise AuthenticationFailed("Invalid bearer token.")
         try:
             header = raw_header.decode("ascii")
         except UnicodeDecodeError as exc:
-            raise AuthenticationFailed("Invalid bearer token.") from exc
-        try:
-            scheme, credential = header.split(" ", 1)
-        except ValueError as exc:
-            if header.lower().startswith("bearer"):
+            if raw_header.lower().startswith(b"bearer"):
+                _redact_authorization(request)
                 raise AuthenticationFailed("Invalid bearer token.") from exc
             return None
+        scheme_candidate = header.split(None, 1)[0] if header.split(None, 1) else ""
+        if scheme_candidate.lower() != "bearer":
+            return None
+        _redact_authorization(request)
+        if len(raw_header) > MAX_AUTHORIZATION_HEADER_LENGTH:
+            raise AuthenticationFailed("Invalid bearer token.")
+
+        parts = header.split(" ")
+        if len(parts) != 2:
+            raise AuthenticationFailed("Invalid bearer token.")
+        scheme, credential = parts
         if scheme.lower() != "bearer":
             return None
         if (
