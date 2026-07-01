@@ -15,7 +15,7 @@ fdf25060d1f5676bfdb6904908aa41bbfc6ade8b722ac64559fd915626c7ee88  ./SECURITY.md
 6d3f6fa01573342e2f9fe20d980d53b063183672f1b54e898f265ed028951fe8  ./data/bootstrap/assets.schema.json
 47d009b16e15d8452a98f7c0631fee1d13cfe37e15a96fb1ff4fad7554ef421b  ./data/bootstrap/assets.yaml
 562ae9c58570601b6febac2839eeffa0abfff63e974a358789f0ec759b4d360c  ./docs/README.md
-4c27972b578462c19234944347c5e1e948bce990c5e4a979e093d039a9c5a1d3  ./docs/api-contract.md
+855de17a03e764b1d697c1625e7a04ffe797560814a5e5fe3d65261cfa652d75  ./docs/api-contract.md
 4f83114ef90b1986ee9af115ee2b6521b8dcb0c9031d2f1feff0aedc6594369f  ./docs/architecture.md
 f8ee9c6bff05a5f6d83d1059bbebafb6558215bfa3e3535e380b3826a5a91234  ./docs/decisions/0001-django-modular-monolith.md
 5b93c6f99b2cc322d51e6ce72c24439dee26597e9fec46ad4d1fe8e671d7b2d2  ./docs/decisions/0002-postgresql-reservation-integrity.md
@@ -34,7 +34,7 @@ eb8863e8ceddee6b829ac0e3b77bbe2cd3974175260ab24174d97a964d86705c  ./docs/oap-wor
 8481ee06773cb4aa7f5f5da7974c6c08fc2f55d494cde54e8c175ab5b3cdb769  ./docs/project-handoff.md
 9758209070f33a2b6043d839161f8a9ecb89a7a213e8d0f4b32f5e3d7ae7f6bd  ./docs/repository-settings.md
 ed6a3a8d61819e6f9a525d5c1402c8674afe069011b4f9f3e9ee600ce9ab0c83  ./docs/roadmap.md
-46239b44caa5687fca25c526bd8de4b92f4c7f3534da27d83fdeee5a0b36f641  ./docs/security-model.md
+ce0d4183dc41c2781483a96f2f6f5bd3dd31d1cbfc7a032db93cbd9507f4b107  ./docs/security-model.md
 2a942fb1a04e071d4bb3bdbd0781d88c489a2d764e34ef286ee8029a685bb527  ./docs/testing-strategy.md
 4b47e9b0819783d68e7114fa3f0fe15062ac66259a6c728db06f42aaed6c59d1  ./docs/work-orders/0001-application-scaffold.md
 f9cac26799ac424ef3d97090fb1cebe4405945f858cf27627340c923401d05d7  ./docs/work-orders/README.md

@@ -97,6 +97,10 @@ def direct_reservation(
     )
 
 
+def iso(value: timezone.datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
 @pytest.mark.django_db
 def test_bearer_authentication_and_scope_matrix(client) -> None:
     owner = user()
@@ -166,6 +170,128 @@ def test_availability_api_is_privacy_safe(client) -> None:
 
 
 @pytest.mark.django_db
+def test_availability_api_reports_missing_asset_with_endpoint_code(client) -> None:
+    owner = user()
+    token, _row = bearer(owner, ["availability:read"])
+
+    response = client.get(
+        f"/api/v1/assets/{uuid.uuid4()}/availability/",
+        {"date": timezone.localdate().isoformat(), "days": "1", "timezone": "UTC"},
+        **auth_header(token),
+    )
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["code"] == "asset_not_found"
+    body = response.content.decode()
+    assert "Traceback" not in body
+    assert "Asset object" not in body
+
+
+@pytest.mark.django_db
+def test_availability_api_interval_semantics_and_privacy(client) -> None:
+    owner = user()
+    other = user("availability-other@example.com", display_name="Other User")
+    target = asset()
+    policy(target, min_duration_minutes=30)
+    token, _row = bearer(owner, ["availability:read"])
+    window_start = (timezone.now() + timedelta(days=3)).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    window_end = window_start + timedelta(days=1)
+    confirmed_start_clip = direct_reservation(
+        owner=other,
+        target=target,
+        start=window_start - timedelta(hours=1),
+        end=window_start + timedelta(hours=1),
+    )
+    confirmed_adjacent = direct_reservation(
+        owner=other,
+        target=target,
+        start=window_start + timedelta(hours=1),
+        end=window_start + timedelta(hours=2),
+    )
+    released = direct_reservation(
+        owner=other,
+        target=target,
+        start=window_start + timedelta(hours=3),
+        end=window_start + timedelta(hours=6),
+        status=Reservation.STATUS_RELEASED,
+        released_at=window_start + timedelta(hours=4),
+    )
+    cancelled = direct_reservation(
+        owner=other,
+        target=target,
+        start=window_start + timedelta(hours=5),
+        end=window_start + timedelta(hours=6),
+        status=Reservation.STATUS_CANCELLED,
+    )
+    confirmed_end_clip = direct_reservation(
+        owner=other,
+        target=target,
+        start=window_end - timedelta(hours=1),
+        end=window_end + timedelta(hours=1),
+    )
+
+    response = client.get(
+        f"/api/v1/assets/{target.id}/availability/",
+        {"date": window_start.date().isoformat(), "days": "1", "timezone": "UTC"},
+        **auth_header(token),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["busy"] == [
+        {
+            "start": iso(window_start),
+            "end": iso(window_start + timedelta(hours=2)),
+            "label": "Unavailable",
+            "reservation_id": None,
+        },
+        {
+            "start": iso(window_start + timedelta(hours=3)),
+            "end": iso(window_start + timedelta(hours=4)),
+            "label": "Unavailable",
+            "reservation_id": None,
+        },
+        {
+            "start": iso(window_end - timedelta(hours=1)),
+            "end": iso(window_end),
+            "label": "Unavailable",
+            "reservation_id": None,
+        },
+    ]
+    assert payload["free"] == [
+        {
+            "start": iso(window_start + timedelta(hours=2)),
+            "end": iso(window_start + timedelta(hours=3)),
+            "latest_valid_start": iso(window_start + timedelta(hours=2, minutes=30)),
+        },
+        {
+            "start": iso(window_start + timedelta(hours=4)),
+            "end": iso(window_end - timedelta(hours=1)),
+            "latest_valid_start": iso(window_end - timedelta(hours=1, minutes=30)),
+        },
+    ]
+    body = response.content.decode()
+    for private_value in [
+        other.email,
+        other.display_name,
+        "private purpose",
+        "private reason",
+        str(confirmed_start_clip.id),
+        str(confirmed_adjacent.id),
+        str(released.id),
+        str(cancelled.id),
+        str(confirmed_end_clip.id),
+    ]:
+        assert private_value not in body
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "params",
     [
@@ -225,12 +351,62 @@ def test_reservation_create_is_idempotent_and_replays_without_duplicate_audit(cl
     assert first.status_code == 201
     assert second.status_code == 201
     assert second["X-Idempotent-Replay"] == "true"
+    assert first["Location"].endswith(f"/api/v1/reservations/{first.json()['id']}/")
+    assert second["Location"] == first["Location"]
+    assert second["X-Request-ID"] == first.json()["correlation_id"]
+    assert second.json() == first.json()
     assert Reservation.objects.count() == 1
     assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 1
     record = IdempotencyRecord.objects.get(api_token=token_row)
     assert record.response_status == 201
+    assert record.response_headers == {"Location": first["Location"]}
     assert "Authorization" not in str(record.response_body)
+    assert "Authorization" not in str(record.response_headers)
+    assert "Bearer" not in str(record.response_headers)
+    assert "safe API purpose" in str(record.response_body)
     assert record.target_type == "reservation"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("changed_body", [False, True])
+def test_expired_idempotency_record_fails_without_replay_or_mutation(
+    client,
+    changed_body: bool,
+) -> None:
+    owner = user()
+    target = asset()
+    policy(target)
+    token, token_row = bearer(owner, ["reservations:create"])
+    start, end = future_window()
+    body = {
+        "asset_id": str(target.id),
+        "start_at": iso(start),
+        "end_at": iso(end),
+        "purpose": "first",
+    }
+    headers = {**auth_header(token), "HTTP_IDEMPOTENCY_KEY": "expired-key-1"}
+    first = client.post("/api/v1/reservations/", body, content_type="application/json", **headers)
+    assert first.status_code == 201
+    record = IdempotencyRecord.objects.get(api_token=token_row)
+    record.expires_at = timezone.now() - timedelta(seconds=1)
+    record.save(update_fields=["expires_at"])
+    before_reservation_count = Reservation.objects.count()
+    before_audit_count = AuditEvent.objects.count()
+
+    retry_body = {**body, "purpose": "changed"} if changed_body else body
+    retry = client.post(
+        "/api/v1/reservations/",
+        retry_body,
+        content_type="application/json",
+        **headers,
+    )
+
+    assert retry.status_code == 409
+    payload = retry.json()
+    assert payload["code"] == "idempotency_expired"
+    assert "X-Idempotent-Replay" not in retry
+    assert Reservation.objects.count() == before_reservation_count
+    assert AuditEvent.objects.count() == before_audit_count
 
 
 @pytest.mark.django_db
@@ -433,6 +609,7 @@ def test_reservation_list_detail_cancel_and_release_are_owner_scoped(client) -> 
 
     missing = client.get(f"/api/v1/reservations/{other_reservation.id}/", **auth_header(token))
     assert missing.status_code == 404
+    assert missing.json()["code"] == "reservation_not_found"
 
     cancel = client.post(
         f"/api/v1/reservations/{own.id}/cancel/",
@@ -458,6 +635,82 @@ def test_reservation_list_detail_cancel_and_release_are_owner_scoped(client) -> 
     assert release.status_code == 200
     active.refresh_from_db()
     assert active.status == Reservation.STATUS_RELEASED
+
+
+@pytest.mark.django_db
+def test_reservation_not_found_codes_are_endpoint_specific_and_non_disclosing(client) -> None:
+    owner = user()
+    other = user("other-reservation@example.com")
+    target = asset()
+    other_target = asset("other-reservation-gpu")
+    policy(target)
+    policy(other_target)
+    token, _row = bearer(
+        owner,
+        ["reservations:read", "reservations:cancel", "reservations:release"],
+    )
+    start, end = future_window()
+    other_reservation = create_reservation(
+        asset=other_target,
+        requested_by_user=other,
+        start_at=start,
+        end_at=end,
+        purpose="other private purpose",
+        source=Reservation.SOURCE_API,
+    ).reservation
+
+    responses = [
+        client.get(f"/api/v1/reservations/{uuid.uuid4()}/", **auth_header(token)),
+        client.get(f"/api/v1/reservations/{other_reservation.id}/", **auth_header(token)),
+        client.post(
+            f"/api/v1/reservations/{other_reservation.id}/cancel/",
+            {"reason": "owner reason"},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="other-cancel-1",
+            **auth_header(token),
+        ),
+        client.post(
+            f"/api/v1/reservations/{other_reservation.id}/release/",
+            {},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="other-release-1",
+            **auth_header(token),
+        ),
+    ]
+
+    for response in responses:
+        assert response.status_code == 404
+        assert response["Content-Type"].startswith("application/problem+json")
+        payload = response.json()
+        assert payload["code"] == "reservation_not_found"
+        body = response.content.decode()
+        assert str(other_reservation.id) not in body
+        assert other.email not in body
+        assert "other private purpose" not in body
+        assert "Traceback" not in body
+        assert "Reservation object" not in body
+
+
+@pytest.mark.django_db
+def test_reservation_list_rejects_unknown_and_invalid_time_window_filters(client) -> None:
+    owner = user()
+    token, _row = bearer(owner, ["reservations:read"])
+    start, end = future_window()
+
+    unknown = client.get("/api/v1/reservations/", {"unexpected": "1"}, **auth_header(token))
+    assert unknown.status_code == 400
+    assert unknown.json()["code"] == "validation_error"
+
+    inverted = client.get(
+        "/api/v1/reservations/",
+        {"from": iso(end), "to": iso(start)},
+        **auth_header(token),
+    )
+    assert inverted.status_code == 400
+    assert inverted.json()["code"] == "validation_error"
+    body = inverted.content.decode()
+    assert "Traceback" not in body
+    assert "Reservation object" not in body
 
 
 @pytest.mark.django_db

@@ -23,6 +23,7 @@ IDEMPOTENCY_KEY_MIN_LENGTH = 8
 IDEMPOTENCY_KEY_MAX_LENGTH = 128
 IDEMPOTENCY_RECORD_TTL = timedelta(hours=24)
 IDEMPOTENCY_KEY_RE = re.compile(r"^[!-~]{8,128}$")
+SAFE_REPLAY_HEADERS = {"Location"}
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,7 @@ def execute_idempotent_mutation(
         result = callback()
         record.response_status = result.status_code
         record.response_body = result.body
+        record.response_headers = _safe_replay_headers(result.headers or {})
         record.target_type = result.target_type
         record.target_id = result.target_id
         record.correlation_id = uuid.UUID(str(result.body.get("correlation_id", correlation_id)))
@@ -135,6 +137,7 @@ def execute_idempotent_mutation(
             update_fields=[
                 "response_status",
                 "response_body",
+                "response_headers",
                 "target_type",
                 "target_id",
                 "correlation_id",
@@ -167,6 +170,15 @@ def _response_for_existing(
     request_hash: str,
     correlation_id: uuid.UUID,
 ) -> Response:
+    if record.expires_at <= timezone.now():
+        return problem_response(
+            request=request,
+            status_code=status.HTTP_409_CONFLICT,
+            code="idempotency_expired",
+            title="Idempotency key expired",
+            detail="The Idempotency-Key was already used and its replay window has expired.",
+            correlation_id=correlation_id,
+        )
     if record.canonical_request_hash != request_hash:
         return problem_response(
             request=request,
@@ -188,7 +200,22 @@ def _response_for_existing(
     response = Response(record.response_body, status=record.response_status)
     response["X-Request-ID"] = str(record.correlation_id)
     response["X-Idempotent-Replay"] = "true"
+    for key_name, value in _safe_replay_headers(record.response_headers).items():
+        response[key_name] = value
     return response
+
+
+def _safe_replay_headers(headers: dict[str, Any]) -> dict[str, str]:
+    safe: dict[str, str] = {}
+    for key_name, value in headers.items():
+        canonical = str(key_name).strip()
+        if canonical not in SAFE_REPLAY_HEADERS:
+            continue
+        text = str(value).strip()
+        if not text or len(text) > 2048 or "\r" in text or "\n" in text:
+            continue
+        safe[canonical] = text
+    return safe
 
 
 def _json_safe(value: Any) -> Any:

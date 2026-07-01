@@ -138,9 +138,12 @@ owner-scoped reservation endpoints. The staff asset list/detail API remains staf
 Every bearer endpoint checks explicit scopes; authentication alone is not authorization.
 
 Idempotency records store the owner, token, action, key, canonical request hash, safe replay body,
-target reference, and correlation UUID. They never store bearer plaintext, Authorization headers,
-raw request bodies, session cookies, CSRF values, token secrets, verifiers, peppers, passwords, or
-private reservation/audit internals.
+bounded allowlisted replay headers, target reference, and correlation UUID. The current replay-header
+allowlist covers the reservation create `Location` header. Expired matching rows fail explicitly
+with `idempotency_expired`; they are not replayed and do not trigger another mutation while cleanup is
+deferred. Idempotency records never store bearer plaintext, Authorization headers, raw request
+bodies, session cookies, CSRF values, token secrets, verifiers, peppers, passwords, or private
+reservation/audit internals.
 
 Problem-details responses are deliberately terse and include stable codes plus a correlation UUID.
 They do not expose ORM exception text, SQL, constraint names, stack traces, token lookup details, or

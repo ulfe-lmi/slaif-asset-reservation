@@ -78,7 +78,10 @@ For the same owner, token, action, and key:
 - different canonical request returns `409 idempotency_conflict` without mutation.
 
 Different owners or tokens may reuse the same key independently. Records carry a 24-hour retention
-target. Until cleanup exists, stored rows remain authoritative for replay/conflict decisions.
+target. Until cleanup exists, stored rows remain authoritative. A matching expired row returns
+`409 idempotency_expired` without replay, mutation, or another audit event. Replayed successful
+reservation creation preserves the original status, safe body, original correlation ID, replay
+headers, and the original safe `Location` header.
 
 ## Correlation
 
@@ -103,8 +106,9 @@ Problem responses include:
 
 Stable codes include authentication, scope, validation, idempotency, asset, policy, and reservation
 domain errors such as `authentication_required`, `invalid_token`, `insufficient_scope`,
-`idempotency_required`, `invalid_idempotency_key`, `idempotency_conflict`, `validation_error`,
-`asset_not_found`, `policy_not_configured`, `policy_ambiguous`, `reservation_conflict`,
+`idempotency_required`, `invalid_idempotency_key`, `idempotency_conflict`,
+`idempotency_expired`, `validation_error`, `asset_not_found`, `reservation_not_found`,
+`policy_not_configured`, `policy_ambiguous`, `reservation_conflict`,
 `reservation_not_cancellable`, `cancellation_cutoff`, and `reservation_not_releasable`.
 
 Problem responses do not include ORM exception text, SQL, constraint names, stack traces, token
@@ -160,6 +164,7 @@ The response includes an asset summary, display timezone, UTC window start/end, 
 safe policy minimum duration, privacy-safe busy intervals, and free intervals with latest valid
 start. Other users are labelled only as unavailable; their identities, email, purposes,
 cancellation reasons, and reservation UUIDs are not exposed. Availability remains advisory.
+Missing asset UUIDs return `404 asset_not_found`.
 
 ### `GET /api/v1/reservations/`
 
@@ -195,17 +200,19 @@ Success returns `201`, `Location`, reservation representation, and `correlation_
 ### `GET /api/v1/reservations/{reservation_id}/`
 
 Requires bearer authentication and `reservations:read`. Returns only an owned reservation. Other-user
-or guessed UUIDs return non-disclosing not-found.
+or guessed UUIDs return non-disclosing `404 reservation_not_found`.
 
 ### `POST /api/v1/reservations/{reservation_id}/cancel/`
 
 Requires bearer authentication, `reservations:cancel`, owner access, and `Idempotency-Key`. Accepts
 optional `reason` up to 1000 characters. Calls only `cancel_reservation(..., source="api")`.
+Other-user or guessed UUIDs return non-disclosing `404 reservation_not_found`.
 
 ### `POST /api/v1/reservations/{reservation_id}/release/`
 
 Requires bearer authentication, `reservations:release`, owner access, and `Idempotency-Key`. Calls
 only `release_reservation(..., source="api")`.
+Other-user or guessed UUIDs return non-disclosing `404 reservation_not_found`.
 
 ## Deferred
 

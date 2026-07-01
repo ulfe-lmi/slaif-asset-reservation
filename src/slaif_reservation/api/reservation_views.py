@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
-from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -147,7 +146,9 @@ class AvailabilityAPIView(BearerAPIView):
         correlation_id = correlation_id_from_request(request)
         serializer = AvailabilityQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
-        asset = get_object_or_404(Asset.objects.select_related("parent"), pk=asset_id)
+        asset = _asset_or_none(asset_id)
+        if asset is None:
+            return _asset_not_found_response(request, correlation_id)
         display_timezone = serializer.validated_data.get("timezone") or request.user.timezone
         requested_date = serializer.validated_data.get("date") or timezone.localdate(
             timezone=ZoneInfo(display_timezone)
@@ -306,7 +307,9 @@ class ReservationDetailAPIView(BearerAPIView):
     )
     def get(self, request: Request, reservation_id: uuid.UUID) -> Response:
         correlation_id = correlation_id_from_request(request)
-        reservation = _owned_reservation_or_404(reservation_id, request.user)
+        reservation = _owned_reservation_or_none(reservation_id, request.user)
+        if reservation is None:
+            return _reservation_not_found_response(request, correlation_id)
         response = Response(reservation_representation(reservation, correlation_id=correlation_id))
         response["X-Request-ID"] = str(correlation_id)
         return response
@@ -331,7 +334,9 @@ class ReservationCancelAPIView(BearerAPIView):
             return key_problem
         serializer = ReservationCancelSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        reservation = _owned_reservation_or_404(reservation_id, request.user)
+        reservation = _owned_reservation_or_none(reservation_id, request.user)
+        if reservation is None:
+            return _reservation_not_found_response(request, correlation_id)
 
         def mutate() -> MutationResult:
             try:
@@ -384,7 +389,9 @@ class ReservationReleaseAPIView(BearerAPIView):
             return key_problem
         serializer = EmptyMutationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        reservation = _owned_reservation_or_404(reservation_id, request.user)
+        reservation = _owned_reservation_or_none(reservation_id, request.user)
+        if reservation is None:
+            return _reservation_not_found_response(request, correlation_id)
 
         def mutate() -> MutationResult:
             try:
@@ -491,14 +498,37 @@ def _idempotency_header_problem(request: Request, correlation_id: uuid.UUID) -> 
     return None
 
 
-def _owned_reservation_or_404(reservation_id: uuid.UUID, user: Any) -> Reservation:
-    return cast(
-        Reservation,
-        get_object_or_404(
-            Reservation.objects.select_related("asset", "asset__parent", "cancelled_by"),
-            id=reservation_id,
-            requested_by_user=user,
-        ),
+def _asset_or_none(asset_id: uuid.UUID) -> Asset | None:
+    return Asset.objects.select_related("parent").filter(pk=asset_id).first()
+
+
+def _owned_reservation_or_none(reservation_id: uuid.UUID, user: Any) -> Reservation | None:
+    return (
+        Reservation.objects.select_related("asset", "asset__parent", "cancelled_by")
+        .filter(id=reservation_id, requested_by_user=user)
+        .first()
+    )
+
+
+def _asset_not_found_response(request: Request, correlation_id: uuid.UUID) -> Response:
+    return problem_response(
+        request=request,
+        status_code=status.HTTP_404_NOT_FOUND,
+        code="asset_not_found",
+        title="Asset not found",
+        detail="The requested asset was not found.",
+        correlation_id=correlation_id,
+    )
+
+
+def _reservation_not_found_response(request: Request, correlation_id: uuid.UUID) -> Response:
+    return problem_response(
+        request=request,
+        status_code=status.HTTP_404_NOT_FOUND,
+        code="reservation_not_found",
+        title="Reservation not found",
+        detail="The requested reservation was not found.",
+        correlation_id=correlation_id,
     )
 
 

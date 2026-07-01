@@ -25,6 +25,7 @@ class IdempotencyRecord(models.Model):
     request_path = models.CharField(max_length=512)
     response_status = models.PositiveSmallIntegerField(null=True, blank=True)
     response_body = models.JSONField(default=dict, blank=True)
+    response_headers = models.JSONField(default=dict, blank=True)
     target_type = models.CharField(max_length=80, blank=True)
     target_id = models.UUIDField(null=True, blank=True)
     correlation_id = models.UUIDField()

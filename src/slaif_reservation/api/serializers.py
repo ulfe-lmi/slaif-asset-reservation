@@ -112,12 +112,16 @@ class ReservationListQuerySerializer(serializers.Serializer):  # type: ignore[mi
     )
     from_at = AwareIsoDateTimeField(required=False)
     to = AwareIsoDateTimeField(required=False)
+    limit = serializers.IntegerField(required=False, min_value=1, max_value=100)
+    offset = serializers.IntegerField(required=False, min_value=0)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         data = kwargs.get("data")
+        self._original_query_keys = set(data.keys()) if data is not None else set()
         if data is not None and "from" in data:
             copied = data.copy()
-            copied["from_at"] = copied.pop("from")
+            copied["from_at"] = copied.get("from")
+            del copied["from"]
             kwargs["data"] = copied
         super().__init__(*args, **kwargs)
 
@@ -126,6 +130,14 @@ class ReservationListQuerySerializer(serializers.Serializer):  # type: ignore[mi
 
     def validate_to(self, value: datetime) -> datetime:
         return _require_aware(value)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        allowed = {"asset", "status", "lifecycle", "from", "to", "limit", "offset"}
+        if unknown := self._original_query_keys - allowed:
+            raise serializers.ValidationError(f"Unknown query parameter: {sorted(unknown)[0]}.")
+        if (start := attrs.get("from_at")) and (end := attrs.get("to")) and start >= end:
+            raise serializers.ValidationError("The from timestamp must be before the to timestamp.")
+        return attrs
 
 
 def reservation_representation(

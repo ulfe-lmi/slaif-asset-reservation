@@ -37,12 +37,21 @@ Idempotency is scoped to:
 For the same owner, token, action, and key:
 
 - same canonical request returns the stored safe response and does not execute the domain mutation
-  again;
+  again; replay includes the original response status, safe response body, original correlation ID,
+  `X-Request-ID`, `X-Idempotent-Replay: true`, and any explicitly allowlisted safe response header
+  such as the reservation create `Location`;
 - different canonical request returns `409 idempotency_conflict` and does not execute the mutation.
 
 Different owners or tokens may reuse the same key independently. Records carry an `expires_at`
 timestamp with a 24-hour retention target. Until cleanup is implemented, existing records remain
-authoritative for replay/conflict decisions; expired rows are not silently reused.
+authoritative for replay/conflict decisions. If a matching row exists and `expires_at <= now`, the
+API returns `409 idempotency_expired`, does not replay the stored response, does not execute the
+domain mutation, and does not create another audit event.
+
+Only a bounded safe replay-header map is stored. The first allowed header is `Location` for
+successful reservation creation. `Authorization`, cookies, CSRF values, bearer tokens, token
+secrets, verifiers, peppers, raw request bodies, and arbitrary response headers are neither stored
+nor replayed.
 
 Mutation handling runs inside `transaction.atomic()` and locks the idempotency row with
 `select_for_update()`. Concurrent identical requests therefore produce one domain mutation and one
