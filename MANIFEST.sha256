@@ -5,7 +5,7 @@
 23c86666a0c38acda857555fad4cf0ac08ab1e19aeda408167272ce37ed8778c  ./.github/ISSUE_TEMPLATE/codex_work_order.yml
 1f103c6a9dd07cd13a9a6f17ace6b813f47747eb9cb7e00488cb2073caaf91bb  ./.github/ISSUE_TEMPLATE/config.yml
 93484d6bb52bd24be8ee486a8120cee59425d721df5e182765e94ace14de88e2  ./.github/PULL_REQUEST_TEMPLATE.md
-c81c27918a483b8a1d911b38006bcdbd0d923a17ce9a0bd5689cbf48019af8af  ./.gitignore
+4b8457d12f690a9aada342e5ab2310b4c7d07f4d00c11b4f4ea27bb2f5f38481  ./.gitignore
 a6c084f8a915fc6dc503ec6ffbecf8b2f8fd280168eb7dfaeeedca45f109353e  ./AGENTS.md
 bb30b626f5addead89f2aca056c74cd270ea1cfe96d41b56bbc9132888198c56  ./BOOTSTRAP_INSTRUCTIONS.md
 74e31b8e2d8695b186310888129f6f5ac3e93250c18f5127f845b42f37cff7ae  ./CONTRIBUTING.md
@@ -25,7 +25,7 @@ e79670835d89210fe1dac67c7087345d731e583e1ca3b72c94cdafb3f0de556f  ./docs/decisio
 7ee0b79f6a61ad55063263a729633fb84dc53fd71e22016d655473c88e81c028  ./docs/decisions/0006-time-and-idempotency-semantics.md
 21d00c96e9cacbd2993bcd1cac0368b300c2a10b7d4a44a50dd3446b45644ddc  ./docs/decisions/0007-reservation-effective-end-semantics.md
 2682ebeac317b20c989c499871202827297e5aa0e781c386caf3f6d505094d4e  ./docs/decisions/README.md
-60991a242cdde8c3145645f8e4cfdbe692d3e65f5549c625391d8a1e1f57297e  ./docs/deployment.md
+c5c290266f7a87540270a60160e3323dcc56f67339115eec0717a670b6939bcb  ./docs/deployment.md
 633049a550b712f54b85bdcedc257cdcc2958d66a7e9ade26cfa17d6edf0227c  ./docs/discovery-brief.md
 ce61966e791ba46d7cc929cddfa6659c385504b5b122a731bea0c27a07f2a41a  ./docs/domain-model.md
 95eca99eb4b626f7b396018a9b5bce81fd1cb2e3662785cec414309cf775c991  ./docs/human-ui.md
@@ -34,7 +34,7 @@ eb8863e8ceddee6b829ac0e3b77bbe2cd3974175260ab24174d97a964d86705c  ./docs/oap-wor
 40b87fece6b0905e2591b394cd400ade12782388f81c7cf7b74622831f59579f  ./docs/project-handoff.md
 9758209070f33a2b6043d839161f8a9ecb89a7a213e8d0f4b32f5e3d7ae7f6bd  ./docs/repository-settings.md
 c222b9ae27486b25460e4687a620345496dc638fc105b9d2cf8218bfc5ef2f89  ./docs/roadmap.md
-f02fb8a0681f5b27d4359c13fab87e9ab0ce631d31ce8c89a5c365f641ccb7d7  ./docs/security-model.md
+a9dd29006253a457f9fba3f7f2e69b8270b3632f66acf34fddf4b731027ce386  ./docs/security-model.md
 b76acd9cc4f85f34fdce779d225bc209b745cdf87adacdb4f366cea0ed3d362d  ./docs/testing-strategy.md
 4b47e9b0819783d68e7114fa3f0fe15062ac66259a6c728db06f42aaed6c59d1  ./docs/work-orders/0001-application-scaffold.md
 f9cac26799ac424ef3d97090fb1cebe4405945f858cf27627340c923401d05d7  ./docs/work-orders/README.md

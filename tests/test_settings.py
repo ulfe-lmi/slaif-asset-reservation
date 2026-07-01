@@ -9,7 +9,13 @@ import textwrap
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
-from slaif_reservation.config.env import env_bool, env_non_negative_int, postgres_database_from_url
+from slaif_reservation.accounts.tokens import UNSAFE_API_TOKEN_PEPPERS
+from slaif_reservation.config.env import (
+    UNSAFE_SECRET_KEYS,
+    env_bool,
+    env_non_negative_int,
+    postgres_database_from_url,
+)
 
 TEST_PRODUCTION_API_TOKEN_PEPPER = "valid-production-test-api-token-pepper-32-bytes"
 TEST_PRODUCTION_SECRET_KEY = "valid-production-secret-key-for-tests-32-bytes"
@@ -21,6 +27,27 @@ def clean_subprocess_env() -> dict[str, str]:
         for key, value in os.environ.items()
         if not key.startswith("SLAIF_") and key not in {"DATABASE_URL", "DJANGO_SETTINGS_MODULE"}
     } | {"PYTHONPATH": "src"}
+
+
+def production_settings_env() -> dict[str, str]:
+    return clean_subprocess_env() | {
+        "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.production",
+        "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
+        "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
+        "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
+        "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
+        "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
+    }
+
+
+def run_django_setup(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-c", "import django; django.setup()"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 @pytest.mark.parametrize("value", ["false", "False", "0", "no", "off", ""])
@@ -84,26 +111,60 @@ def test_production_settings_fail_fast_without_required_configuration() -> None:
     ],
 )
 def test_production_settings_reject_placeholder_or_short_secret_key(secret_key: str) -> None:
-    env = clean_subprocess_env() | {
-        "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.production",
-        "SLAIF_DJANGO_SECRET_KEY": secret_key,
-        "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
-        "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
-        "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
-        "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
-    }
+    env = production_settings_env() | {"SLAIF_DJANGO_SECRET_KEY": secret_key}
 
-    result = subprocess.run(
-        [sys.executable, "-c", "import django; django.setup()"],
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = run_django_setup(env)
 
     assert result.returncode != 0
     assert "SLAIF_DJANGO_SECRET_KEY is invalid for production settings" in result.stderr
     assert secret_key not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "secret_key",
+    [
+        "REPLACE_WITH_AT_LEAST_32_BYTES_FROM_A_PROTECTED_SECRET_STORE",
+        "  REPLACE_WITH_AT_LEAST_32_BYTES_FROM_A_PROTECTED_SECRET_STORE\n",
+    ],
+)
+def test_production_settings_reject_committed_secret_key_placeholders(secret_key: str) -> None:
+    env = production_settings_env() | {"SLAIF_DJANGO_SECRET_KEY": secret_key}
+
+    result = run_django_setup(env)
+
+    assert result.returncode != 0
+    assert "SLAIF_DJANGO_SECRET_KEY is invalid for production settings" in result.stderr
+    assert secret_key.strip() not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "pepper",
+    [
+        "REPLACE_WITH_DISTINCT_AT_LEAST_32_BYTE_PEPPER",
+        "  REPLACE_WITH_DISTINCT_AT_LEAST_32_BYTE_PEPPER\n",
+    ],
+)
+def test_production_settings_reject_committed_api_token_pepper_placeholders(
+    pepper: str,
+) -> None:
+    env = production_settings_env() | {"SLAIF_API_TOKEN_PEPPER": pepper}
+
+    result = run_django_setup(env)
+
+    assert result.returncode != 0
+    assert "SLAIF_API_TOKEN_PEPPER is invalid for production settings" in result.stderr
+    assert pepper.strip() not in result.stderr
+
+
+def test_production_settings_placeholder_sets_cover_committed_production_examples() -> None:
+    assert "REPLACE_WITH_AT_LEAST_32_BYTES_FROM_A_PROTECTED_SECRET_STORE" in UNSAFE_SECRET_KEYS
+    assert "REPLACE_WITH_DISTINCT_AT_LEAST_32_BYTE_PEPPER" in UNSAFE_API_TOKEN_PEPPERS
+
+
+def test_production_settings_accept_valid_distinct_non_placeholder_secrets() -> None:
+    result = run_django_setup(production_settings_env())
+
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize(

@@ -24,7 +24,7 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - ./deploy/env.production.example
+      - ./deploy/env.production
     ports:
       - "127.0.0.1:8000:8000"
     command: >

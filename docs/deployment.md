@@ -147,8 +147,10 @@ development database. Compose supplies the application service with its own cont
 `DATABASE_URL` that uses hostname `db`. Never provide a production `.env`.
 
 For production-shaped configuration, copy `deploy/env.production.example` on the deployment host and
-replace placeholders from a protected secret store. Production settings reject placeholder or
-too-short `SLAIF_DJANGO_SECRET_KEY` values and reject documented development/test API-token peppers.
+replace every placeholder from a protected secret store into an untracked `deploy/env.production`
+file. Never commit `deploy/env.production`. Production settings reject placeholder or too-short
+`SLAIF_DJANGO_SECRET_KEY` values and reject documented development/test/example API-token peppers,
+including whitespace-padded forms.
 
 ## 5. Containers
 
@@ -158,6 +160,7 @@ The scaffold image:
 - run as a non-root user;
 - install only locked production dependencies;
 - collects Django admin and drf-spectacular-sidecar static assets during image build;
+- includes only the sanitized `data/bootstrap` inventory files needed by `operational_check`;
 - exclude tests, caches, `.git`, local secrets, and development data;
 - does not bake secrets into the image;
 - expose no development server;
@@ -172,6 +175,8 @@ docker build --tag slaif-asset-reservation:local .
 docker image inspect slaif-asset-reservation:local --format '{{.Config.User}}'
 docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/staticfiles/admin/css/base.css
 docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/staticfiles/drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js
+docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/data/bootstrap/assets.yaml
+docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/data/bootstrap/assets.schema.json
 ```
 
 The configured runtime user must be `10001:10001`.
@@ -332,11 +337,13 @@ Do not label the service production-ready until all are evidenced:
 The scaffold is intentionally not production-ready. Remaining gaps include:
 
 - accepted production host, DNS, TLS, and reverse-proxy configuration;
-- production secret management;
-- token-verifier pepper and API-token lifecycle implementation;
-- API-token, ordinary member authorization, reservation HTTP routes, and availability behavior;
+- production secret-management integration and operator-managed secret rotation;
 - administrator verification of imported asset hardware identity and capabilities;
-- backup/restore runbook and restore drill;
-- logging redaction tests beyond the current health/settings scaffold;
+- no real deployment performed and no live TLS/DNS/certificate issuance;
+- no backup scheduler or restore drill against a production copy;
+- no production monitoring stack or alert routing;
+- no OIDC, email, password reset, or notifications;
+- no SmartScheduling migration tooling;
+- no execution gateway integration;
 - reverse-proxy static-asset strategy for production if WhiteNoise is later replaced;
-- operational monitoring and incident runbooks.
+- no projects/resource restrictions or delegated resource-manager roles beyond active staff.

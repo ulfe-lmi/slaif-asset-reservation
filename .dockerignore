@@ -15,6 +15,5 @@ __pycache__
 !.env.example
 backups
 deploy/secrets
-data/bootstrap
 docs
 tests

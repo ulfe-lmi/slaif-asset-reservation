@@ -35,6 +35,11 @@ The repository includes example files only:
 - `deploy/env.production.example`;
 - `deploy/Caddyfile.example`.
 
+The production Compose example reads `deploy/env.production`, which is intentionally ignored by Git.
+Operators copy the committed example file to that path and replace every placeholder from a
+protected secret store. Production settings reject every committed secret/pepper placeholder,
+including whitespace-padded forms, without echoing the rejected value.
+
 Production settings fail closed when required secrets, hosts, origins, database configuration, or
 token pepper are absent or obviously unsafe. HSTS remains explicit opt-in until the final HTTPS host
 and subdomain ownership are verified. Production uses structured JSON logs with an allowlist of
@@ -42,7 +47,9 @@ operational fields and defensive redaction of credential/body concepts.
 
 Operational smoke is provided by `python manage.py operational_check`. It verifies database
 connectivity, applied migrations, required static assets, critical settings, bootstrap inventory
-validation, and the idempotency cleanup command registration.
+validation, and the idempotency cleanup command registration. The runtime image includes the
+sanitized `data/bootstrap/assets.yaml` and `assets.schema.json` files so this check remains runnable
+inside the container without private data.
 
 Database backup and restore use PostgreSQL-native tools through wrappers:
 

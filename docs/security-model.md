@@ -90,8 +90,8 @@ routes.
 - write only a verifier, owner, name, scopes, expiry, revocation, last-use, and lifecycle metadata;
 - audit creation without token plaintext, verifier, pepper, Authorization header, raw request body,
   or token name.
-- reject every committed development/test pepper placeholder in production settings, including
-  whitespace-padded forms, without echoing the rejected value.
+- reject every committed development/test/example pepper placeholder in production settings,
+  including whitespace-padded forms, without echoing the rejected value.
 
 ### Verification
 

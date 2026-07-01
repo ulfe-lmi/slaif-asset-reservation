@@ -18,6 +18,7 @@ UNSAFE_SECRET_KEYS = frozenset(
         "test-only-secret-key",
         "change-me-for-local-development-only",
         "local-compose-only-secret",
+        "REPLACE_WITH_AT_LEAST_32_BYTES_FROM_A_PROTECTED_SECRET_STORE",
     }
 )
 SECRET_KEY_MIN_BYTES = 32

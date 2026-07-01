@@ -14,8 +14,8 @@ production deployment has happened.
 ## Steps
 
 1. Build or pull the reviewed image.
-2. Copy `deploy/env.production.example` to a host-local `deploy/env.production` and replace every
-   placeholder outside Git.
+2. Copy `deploy/env.production.example` to the ignored host-local file `deploy/env.production` and
+   replace every placeholder from a protected secret store. Never commit `deploy/env.production`.
 3. Store the PostgreSQL password in `deploy/secrets/postgres_password` or an equivalent protected
    secret mount.
 4. Review `compose.production.example.yaml`; do not publish PostgreSQL publicly.
