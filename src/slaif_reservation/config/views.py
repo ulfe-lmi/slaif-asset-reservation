@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from django.db import connection
 from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_GET
+
+from slaif_reservation.config.operational import database_is_ready
 
 
 @require_GET
@@ -14,8 +15,6 @@ def health_live(_request: HttpRequest) -> JsonResponse:
 
 @require_GET
 def health_ready(_request: HttpRequest) -> JsonResponse:
-    try:
-        connection.ensure_connection()
-    except Exception:
+    if not database_is_ready():
         return JsonResponse({"status": "unavailable"}, status=503)
     return JsonResponse({"status": "ok"})

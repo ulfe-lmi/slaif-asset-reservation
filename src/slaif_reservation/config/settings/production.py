@@ -11,11 +11,13 @@ from slaif_reservation.config.env import (
     env_list,
     env_non_negative_int,
     env_required,
+    validate_production_secret_key,
 )
 from slaif_reservation.config.settings.base import *  # noqa: F403
 from slaif_reservation.config.settings.base import apply_database_url
 
 SECRET_KEY = env_required("SLAIF_DJANGO_SECRET_KEY")
+validate_production_secret_key(SECRET_KEY)
 DEBUG = env_bool("SLAIF_DEBUG", default=False)
 if DEBUG:
     msg = "SLAIF_DEBUG must not be enabled in production settings"
@@ -59,3 +61,25 @@ API_TOKEN_MAX_LIFETIME_DAYS = env_int_range(
     minimum=1,
     maximum=365,
 )
+
+MIDDLEWARE = [*MIDDLEWARE, "slaif_reservation.config.middleware.SafeRequestLogMiddleware"]  # noqa: F405
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {
+            "()": "slaif_reservation.config.logging.JsonLogFormatter",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "json",
+        },
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        "django.server": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "slaif_reservation": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
+}

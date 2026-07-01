@@ -12,6 +12,15 @@ Env = Mapping[str, str]
 
 TRUE_VALUES = {"1", "true", "t", "yes", "y", "on"}
 FALSE_VALUES = {"0", "false", "f", "no", "n", "off", ""}
+UNSAFE_SECRET_KEYS = frozenset(
+    {
+        "unsafe-local-development-key",
+        "test-only-secret-key",
+        "change-me-for-local-development-only",
+        "local-compose-only-secret",
+    }
+)
+SECRET_KEY_MIN_BYTES = 32
 
 
 def env_bool(name: str, *, default: bool, env: Env | None = None) -> bool:
@@ -44,6 +53,18 @@ def env_required(name: str, *, env: Env | None = None) -> str:
         msg = f"{name} is required"
         raise ImproperlyConfigured(msg)
     return value
+
+
+def validate_production_secret_key(value: str) -> None:
+    if not value or not value.strip():
+        msg = "SLAIF_DJANGO_SECRET_KEY is required"
+        raise ImproperlyConfigured(msg)
+    if len(value.encode("utf-8")) < SECRET_KEY_MIN_BYTES:
+        msg = "SLAIF_DJANGO_SECRET_KEY is invalid for production settings"
+        raise ImproperlyConfigured(msg)
+    if value.strip() in UNSAFE_SECRET_KEYS:
+        msg = "SLAIF_DJANGO_SECRET_KEY is invalid for production settings"
+        raise ImproperlyConfigured(msg)
 
 
 def env_non_negative_int(name: str, *, default: int, env: Env | None = None) -> int:

@@ -10,8 +10,9 @@ Preserve this promise:
 
 ## Current product stage
 
-The project is at the internal pre-alpha management/audit/policy UX stage. After this management
-slice, the next roadmap slice is operational hardening.
+The project is at the internal pre-alpha operational-hardening stage. After this operations
+slice, the next roadmap slice is SmartScheduling migration tooling unless the human lead changes
+roadmap order.
 Read these documents before changing behavior:
 
 - `docs/discovery-brief.md`

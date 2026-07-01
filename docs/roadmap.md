@@ -108,7 +108,7 @@ Delivers:
 
 ### Work Order 0007 — management, audit, and policy UX
 
-Status: current implementation slice.
+Status: merged.
 
 Delivers:
 
@@ -123,6 +123,8 @@ Delivers:
 
 ### Work Order 0008 — operational hardening
 
+Status: current implementation slice.
+
 Delivers:
 
 - production Compose/service configuration;
@@ -135,6 +137,8 @@ Delivers:
 - operator runbooks.
 
 ### Work Order 0009 — SmartScheduling migration tooling
+
+Status: next after Work Order 0008 merge.
 
 Delivers:
 

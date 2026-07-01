@@ -96,6 +96,11 @@ and rollback, blackout reservation/API blocking, blackout availability privacy, 
 reservation management, bounded read-only audit browsing/export with recent-window fallback, admin
 read-only alignment, and regressions for member/API ownership boundaries.
 
+Work Order 0008 adds operational-hardening tests for production settings fail-fast behavior,
+structured logging redaction, request-log field minimization, `/health/ready` migration-state
+readiness, `operational_check`, PostgreSQL backup/restore wrapper refusal and dry-run behavior, and
+expired idempotency-record cleanup dry-run/apply behavior.
+
 ### Migration tests
 
 - bootstrap YAML schema validation;
@@ -116,6 +121,8 @@ read-only alignment, and regressions for member/API ownership boundaries.
 - production settings fail fast when required secrets are absent;
 - backup and restore drill against disposable data;
 - upgrade from previous tagged schema once releases exist.
+- `operational_check` verifies database connectivity, migration state, required static assets,
+  critical settings, sanitized bootstrap inventory validation, and cleanup command registration.
 
 ## 3. Critical test matrix
 

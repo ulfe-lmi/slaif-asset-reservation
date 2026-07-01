@@ -6,7 +6,7 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 
 ## Status
 
-**Pre-alpha management/audit/policy MVP. Not production-ready and not yet usable as a complete reservation service.**
+**Pre-alpha operational-hardening stage. Not production-ready and not yet deployed.**
 
 The repository contains a minimal Django/PostgreSQL application foundation: custom user model,
 health checks, hierarchical asset inventory, sanitized bootstrap asset import, member-visible
@@ -17,9 +17,12 @@ audit-event core, a server-rendered human MVP for active administrator-created a
 API-token lifecycle UI, and initial bearer-token API endpoints for `/api/v1/me/`, advisory
 availability, owner-scoped reservation list/create/detail/cancel/release, and a staff-only
 management area for policies, coarse maintenance blackouts, cross-user reservation inspection and
-lifecycle actions, and audit browsing/export. There is still no project/group authorization, full
-operating-hours calendar, token lifecycle API, management REST API, OIDC/password reset,
-notification system, API throttling, execution gateway, or production readiness.
+lifecycle actions, and audit browsing/export. Operational-hardening artifacts now include
+production-shaped Compose/proxy examples, structured production logging, operational checks,
+idempotency cleanup, backup/restore wrappers, and operator runbooks. There is still no real
+production deployment, project/group authorization, full operating-hours calendar, token lifecycle
+API, management REST API, OIDC/password reset, notification system, API throttling, execution
+gateway, automated scheduler, production monitoring stack, or SmartScheduling migration tooling.
 
 Verified starting point for this implementation slice:
 
@@ -133,6 +136,19 @@ curl http://127.0.0.1:8000/health/live
 curl http://127.0.0.1:8000/health/ready
 ```
 
+Operational smoke and maintenance commands:
+
+```bash
+uv run --env-file .env python manage.py operational_check
+uv run --env-file .env python manage.py purge_expired_idempotency_records
+uv run --env-file .env python manage.py purge_expired_idempotency_records --apply
+uv run --env-file .env python manage.py backup_database --output /tmp/slaif-local.dump
+uv run --env-file .env python manage.py restore_database --input /tmp/slaif-local.dump
+```
+
+The backup/restore commands default to validation-only dry-run. Use `--apply` only against an
+approved target database. Do not commit backup artifacts.
+
 Human and API paths:
 
 - `http://127.0.0.1:8000/assets/` provides active-asset browsing for active human sessions.
@@ -195,6 +211,16 @@ docker compose config
 docker build --tag slaif-asset-reservation:local .
 test "$(docker image inspect slaif-asset-reservation:local --format '{{.Config.User}}')" = "10001:10001"
 ```
+
+Internal-alpha deployment examples and runbooks:
+
+- `compose.production.example.yaml`;
+- `deploy/env.production.example`;
+- `deploy/Caddyfile.example`;
+- `docs/runbooks/`.
+
+These are examples and operator instructions only. They do not configure real DNS, TLS,
+repository secrets, backup storage, monitoring, or a production host.
 
 ## Configuration
 

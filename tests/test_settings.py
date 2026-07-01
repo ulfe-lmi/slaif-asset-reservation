@@ -12,6 +12,7 @@ from django.core.exceptions import ImproperlyConfigured
 from slaif_reservation.config.env import env_bool, env_non_negative_int, postgres_database_from_url
 
 TEST_PRODUCTION_API_TOKEN_PEPPER = "valid-production-test-api-token-pepper-32-bytes"
+TEST_PRODUCTION_SECRET_KEY = "valid-production-secret-key-for-tests-32-bytes"
 
 
 def clean_subprocess_env() -> dict[str, str]:
@@ -72,6 +73,64 @@ def test_production_settings_fail_fast_without_required_configuration() -> None:
 
     assert result.returncode != 0
     assert "SLAIF_DJANGO_SECRET_KEY is required" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "secret_key",
+    [
+        "unsafe-local-development-key",
+        "test-only-secret-key",
+        "too-short",
+    ],
+)
+def test_production_settings_reject_placeholder_or_short_secret_key(secret_key: str) -> None:
+    env = clean_subprocess_env() | {
+        "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.production",
+        "SLAIF_DJANGO_SECRET_KEY": secret_key,
+        "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
+        "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
+        "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
+        "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
+    }
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import django; django.setup()"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "SLAIF_DJANGO_SECRET_KEY is invalid for production settings" in result.stderr
+    assert secret_key not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "missing_name",
+    ["SLAIF_ALLOWED_HOSTS", "SLAIF_CSRF_TRUSTED_ORIGINS"],
+)
+def test_production_settings_require_hosts_and_csrf_origins(missing_name: str) -> None:
+    env = clean_subprocess_env() | {
+        "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.production",
+        "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
+        "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
+        "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
+        "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
+        "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
+    }
+    env.pop(missing_name)
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import django; django.setup()"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert missing_name in result.stderr
 
 
 def test_asgi_defaults_to_production_and_fails_closed_without_required_configuration() -> None:
@@ -216,7 +275,7 @@ def test_local_settings_preserve_safe_defaults_when_environment_absent() -> None
 def test_production_hsts_defaults_are_safe_and_https_controls_remain_enabled() -> None:
     env = clean_subprocess_env() | {
         "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.production",
-        "SLAIF_DJANGO_SECRET_KEY": "test-only-production-secret",
+        "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
@@ -255,7 +314,7 @@ def test_production_hsts_defaults_are_safe_and_https_controls_remain_enabled() -
 def test_production_hsts_explicit_opt_in_is_supported() -> None:
     env = clean_subprocess_env() | {
         "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.production",
-        "SLAIF_DJANGO_SECRET_KEY": "test-only-production-secret",
+        "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
@@ -293,7 +352,7 @@ def test_production_hsts_explicit_opt_in_is_supported() -> None:
 def test_production_hsts_rejects_invalid_seconds(value: str) -> None:
     env = clean_subprocess_env() | {
         "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.production",
-        "SLAIF_DJANGO_SECRET_KEY": "test-only-production-secret",
+        "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",

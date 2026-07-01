@@ -53,6 +53,8 @@ jobs:
       - run: uv run playwright install --with-deps chromium
       - run: uv run python manage.py migrate --noinput
       - run: uv run python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
+      - run: uv run python manage.py operational_check
+      - run: uv run python manage.py purge_expired_idempotency_records
       - run: uv run python manage.py makemigrations --check --dry-run
       - run: uv run python manage.py check
       - run: mkdir -p build/openapi
