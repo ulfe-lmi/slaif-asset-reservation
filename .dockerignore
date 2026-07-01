@@ -13,6 +13,7 @@ __pycache__
 .env
 .env.*
 !.env.example
-data/bootstrap
+backups
+deploy/secrets
 docs
 tests

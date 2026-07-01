@@ -40,6 +40,7 @@ flowchart TB
       Static[Static assets]
       DB[(PostgreSQL 17)]
       Timer[systemd timer or cron\nmanagement commands]
+      Backups[PostgreSQL backup artifacts\noperator-managed]
     end
 
     Browser --> Proxy
@@ -48,6 +49,7 @@ flowchart TB
     Proxy --> Static
     Web --> DB
     Timer --> Web
+    DB --> Backups
 ```
 
 Initial deployment is one application service plus PostgreSQL. The reverse proxy terminates TLS and applies conservative request limits. Static assets may be served by the proxy or WhiteNoise, chosen and tested in the scaffold PR.
@@ -164,6 +166,24 @@ Active maintenance blackouts are checked inside reservation creation after asset
 and before insertion. They also feed the shared availability service as privacy-safe unavailable
 intervals. The PostgreSQL reservation exclusion constraint remains unchanged and continues to govern
 reservation-vs-reservation conflicts.
+
+### 4.2.3 Operational adapter flow
+
+Work Order 0008 adds production-shaped operational commands without adding a new service tier:
+
+1. reverse proxy terminates HTTPS and forwards to Gunicorn with validated proxy headers;
+2. production settings fail closed for required secrets, hosts, origins, database URL, token pepper,
+   secure cookies, proxy SSL header, and HSTS validation;
+3. production JSON request logging emits safe operational fields only;
+4. `operational_check` verifies database connectivity, applied migrations, required static assets,
+   critical settings, bootstrap inventory validation, and cleanup command registration;
+5. `backup_database` and `restore_database` wrap PostgreSQL-native tools and default to dry-run
+   validation;
+6. `purge_expired_idempotency_records` deletes expired idempotency rows only when invoked with
+   `--apply`.
+
+Scheduling for cleanup/backups uses host cron or systemd timers. No Redis, Celery, Kubernetes,
+Terraform, monitoring stack, or production deployment target is added in this slice.
 
 ### 4.2.2 API adapter flow
 

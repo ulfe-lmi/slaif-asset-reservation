@@ -1,6 +1,7 @@
 # Deployment and Operations
 
-**Status:** development foundation implemented; later implementation slices harden production
+**Status:** internal pre-alpha operational hardening implemented; no real production deployment has
+been performed
 
 ## 1. Target
 
@@ -84,6 +85,16 @@ Work Order 0007 adds maintenance-blackout tables and audit action constraints. N
 or notification scheduler is introduced; blackout creation/deactivation is synchronous through the
 staff management UI.
 
+Work Order 0008 adds example-only production deployment artifacts:
+
+- `compose.production.example.yaml`;
+- `deploy/env.production.example`;
+- `deploy/Caddyfile.example`;
+- operator runbooks under `docs/runbooks/`.
+
+These files describe the supported first internal-alpha shape but are not a real deployment. The
+development Compose file remains unchanged and loopback-only.
+
 Work Order 0004 adds local browser workflow tests. Development and CI install Chromium with:
 
 ```bash
@@ -135,6 +146,12 @@ Django does not automatically load it. Its `DATABASE_URL` points at the loopback
 development database. Compose supplies the application service with its own container-internal
 `DATABASE_URL` that uses hostname `db`. Never provide a production `.env`.
 
+For production-shaped configuration, copy `deploy/env.production.example` on the deployment host and
+replace every placeholder from a protected secret store into an untracked `deploy/env.production`
+file. Never commit `deploy/env.production`. Production settings reject placeholder or too-short
+`SLAIF_DJANGO_SECRET_KEY` values and reject documented development/test/example API-token peppers,
+including whitespace-padded forms.
+
 ## 5. Containers
 
 The scaffold image:
@@ -143,6 +160,7 @@ The scaffold image:
 - run as a non-root user;
 - install only locked production dependencies;
 - collects Django admin and drf-spectacular-sidecar static assets during image build;
+- includes only the sanitized `data/bootstrap` inventory files needed by `operational_check`;
 - exclude tests, caches, `.git`, local secrets, and development data;
 - does not bake secrets into the image;
 - expose no development server;
@@ -157,6 +175,8 @@ docker build --tag slaif-asset-reservation:local .
 docker image inspect slaif-asset-reservation:local --format '{{.Config.User}}'
 docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/staticfiles/admin/css/base.css
 docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/staticfiles/drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js
+docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/data/bootstrap/assets.yaml
+docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/data/bootstrap/assets.schema.json
 ```
 
 The configured runtime user must be `10001:10001`.
@@ -164,8 +184,7 @@ The configured runtime user must be `10001:10001`.
 ## 6. Health endpoints
 
 - `/health/live`: application process responds; no expensive dependencies.
-- `/health/ready`: database reachable. Later production hardening may add required migration-state
-  checks once domain migrations exist.
+- `/health/ready`: database reachable and migration state is current.
 
 Health responses contain no secrets, build environment, database host, or dependency versions beyond an approved release identifier.
 
@@ -175,6 +194,16 @@ Local smoke:
 curl http://127.0.0.1:8000/health/live
 curl http://127.0.0.1:8000/health/ready
 ```
+
+Deployment smoke command:
+
+```bash
+python manage.py operational_check
+```
+
+It verifies database connectivity, applied migrations, required static assets, critical settings,
+sanitized bootstrap inventory validation, and idempotency cleanup command registration. It does not
+require production secrets when run under local/test settings.
 
 ## 7. Database lifecycle
 
@@ -188,17 +217,20 @@ curl http://127.0.0.1:8000/health/ready
 
 ### Backup
 
-Before beta:
+Work Order 0008 adds PostgreSQL-native wrappers:
 
-- automated daily logical or physical backup;
-- protected/encrypted storage;
-- retention policy;
-- failure alert;
-- documented restore command;
-- successful restore drill into an isolated database;
-- reconciliation of key record counts after restore.
+```bash
+python manage.py backup_database --output /backups/slaif-YYYYMMDD.dump
+python manage.py backup_database --output /backups/slaif-YYYYMMDD.dump --apply
+python manage.py restore_database --input /backups/slaif-YYYYMMDD.dump
+python manage.py restore_database --input /backups/slaif-YYYYMMDD.dump --apply
+```
 
-A backup without a restore test is not release evidence.
+The default mode validates only. Apply mode uses `pg_dump` or `pg_restore`, requires
+`DATABASE_URL`, writes or reads an explicit path, and avoids printing database passwords. Retention,
+encryption, off-host copy, restore-drill cadence, and failure alerts remain operator policy.
+
+A backup without a restore test into an isolated database is not release evidence.
 
 ## 8. Reverse proxy and TLS
 
@@ -211,13 +243,24 @@ A backup without a restore test is not release evidence.
 - API access logs redacted according to the security model;
 - optional network restriction for `/admin/`.
 
-Caddy is a reasonable small-deployment default; Nginx is equally acceptable if already operated institutionally. Select in the deployment PR based on the actual host environment.
+Caddy is the documented first internal-alpha example in `deploy/Caddyfile.example`; Nginx remains
+acceptable if already operated institutionally. The reverse proxy must terminate HTTPS, forward
+`X-Forwarded-Proto`, enforce request-size/timeouts, preserve the configured host, and coordinate
+with `SLAIF_ALLOWED_HOSTS`, `SLAIF_CSRF_TRUSTED_ORIGINS`, `SECURE_PROXY_SSL_HEADER`, secure cookies,
+and HSTS. HSTS remains disabled until the final HTTPS host and subdomain ownership are verified.
 
 ## 9. Logging and monitoring
 
-Minimum:
+Minimum implemented application-side posture:
 
-- structured application logs;
+- production JSON logs to stdout/stderr with timestamp, level, logger, message, request path,
+  method, status, duration, and request ID where available;
+- defensive redaction of Authorization, bearer-token-shaped values, token secrets, verifiers,
+  peppers, cookies, CSRF values, passwords, raw request bodies, reservation purposes, and
+  cancellation reasons.
+
+Remaining operator monitoring minimum:
+
 - reverse-proxy logs with secrets/queries reviewed;
 - health probe;
 - service restart monitoring;
@@ -231,8 +274,14 @@ Prometheus/Grafana integration is optional until an operator requirement is conf
 
 Use idempotent management commands for:
 
-- cleanup of expired idempotency records. Work Order 0006 adds `expires_at` on records but does not
-  add a scheduler or cleanup command; stored rows remain authoritative until cleanup is implemented;
+- cleanup of expired idempotency records:
+
+  ```bash
+  python manage.py purge_expired_idempotency_records
+  python manage.py purge_expired_idempotency_records --apply
+  ```
+
+  The default mode is dry-run. Scheduling remains operator responsibility;
 - notifications/reminders if approved;
 - audit/consistency checks;
 - export and backup verification helpers.
@@ -288,11 +337,13 @@ Do not label the service production-ready until all are evidenced:
 The scaffold is intentionally not production-ready. Remaining gaps include:
 
 - accepted production host, DNS, TLS, and reverse-proxy configuration;
-- production secret management;
-- token-verifier pepper and API-token lifecycle implementation;
-- API-token, ordinary member authorization, reservation HTTP routes, and availability behavior;
+- production secret-management integration and operator-managed secret rotation;
 - administrator verification of imported asset hardware identity and capabilities;
-- backup/restore runbook and restore drill;
-- logging redaction tests beyond the current health/settings scaffold;
+- no real deployment performed and no live TLS/DNS/certificate issuance;
+- no backup scheduler or restore drill against a production copy;
+- no production monitoring stack or alert routing;
+- no OIDC, email, password reset, or notifications;
+- no SmartScheduling migration tooling;
+- no execution gateway integration;
 - reverse-proxy static-asset strategy for production if WhiteNoise is later replaced;
-- operational monitoring and incident runbooks.
+- no projects/resource restrictions or delegated resource-manager roles beyond active staff.

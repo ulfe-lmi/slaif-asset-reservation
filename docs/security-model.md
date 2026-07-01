@@ -90,8 +90,8 @@ routes.
 - write only a verifier, owner, name, scopes, expiry, revocation, last-use, and lifecycle metadata;
 - audit creation without token plaintext, verifier, pepper, Authorization header, raw request body,
   or token name.
-- reject every committed development/test pepper placeholder in production settings, including
-  whitespace-padded forms, without echoing the rejected value.
+- reject every committed development/test/example pepper placeholder in production settings,
+  including whitespace-padded forms, without echoing the rejected value.
 
 ### Verification
 
@@ -160,9 +160,25 @@ deferred. Idempotency records never store bearer plaintext, Authorization header
 bodies, session cookies, CSRF values, token secrets, verifiers, peppers, passwords, or private
 reservation/audit internals.
 
+Work Order 0008 adds explicit expired-row cleanup through
+`purge_expired_idempotency_records`. The command defaults to dry-run, requires `--apply` for
+deletion, deletes only expired rows, and remains operator-scheduled. No queue or background worker is
+introduced.
+
 Problem-details responses are deliberately terse and include stable codes plus a correlation UUID.
 They do not expose ORM exception text, SQL, constraint names, stack traces, token lookup details, or
 secret material.
+
+Production-shaped logging uses JSON lines with allowlisted operational fields. Request logging
+records method, path, status, duration, and a validated request ID where available; it does not log
+headers, cookies, request bodies, reservation purposes, cancellation reasons, bearer tokens,
+verifiers, peppers, passwords, or CSRF values. The formatter also redacts known secret field names
+and complete SLAIF bearer-token-shaped values defensively.
+
+Backup/restore wrappers use PostgreSQL-native tools and avoid printing database passwords. Backup
+artifacts and backup destinations are operator-controlled sensitive storage and must not be
+committed. The repository provides runbooks but no automated backup scheduler, encryption layer,
+off-host copy, or monitoring stack in this slice.
 
 ## 6. Authorization model
 
