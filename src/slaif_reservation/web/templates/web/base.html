@@ -15,6 +15,9 @@
         <a href="{% url 'web:asset-list' %}">{% trans "Assets" %}</a>
         <a href="{% url 'web:reservation-list' %}">{% trans "My reservations" %}</a>
         <a href="{% url 'web:token-list' %}">{% trans "API tokens" %}</a>
+        {% if request.user.is_authenticated and request.user.is_staff and not request.user.is_service_account %}
+          <a href="{% url 'management-ui:dashboard' %}">{% trans "Management" %}</a>
+        {% endif %}
         <a href="{% url 'web:profile' %}">{% trans "Profile" %}</a>
         {% if request.user.is_authenticated %}
           <form method="post" action="{% url 'web:logout' %}" class="nav-form">

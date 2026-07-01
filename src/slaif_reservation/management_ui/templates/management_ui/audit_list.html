@@ -1,0 +1,31 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Audit log" %}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{% trans "Audit log" %}</h1>
+  <form method="get">
+    {{ filter_form.non_field_errors }}
+    {% for field in filter_form %}
+      <label>{{ field.label }} {{ field }}</label>
+      {{ field.errors }}
+    {% endfor %}
+    <button type="submit">{% trans "Filter" %}</button>
+    <a href="{% url 'management-ui:audit-export' %}?{{ request.GET.urlencode }}">{% trans "Export CSV" %}</a>
+  </form>
+  <table>
+    <thead><tr><th>{% trans "Occurred" %}</th><th>{% trans "Action" %}</th><th>{% trans "Target" %}</th><th>{% trans "Actor" %}</th></tr></thead>
+    <tbody>
+      {% for event in page.object_list %}
+        <tr>
+          <td><a href="{% url 'management-ui:audit-detail' event.id %}">{{ event.occurred_at }}</a></td>
+          <td>{{ event.action }}</td>
+          <td>{{ event.target_type }} {{ event.target_id }}</td>
+          <td>{{ event.actor_user_id }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4">{% trans "No audit events." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

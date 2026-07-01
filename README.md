@@ -6,7 +6,7 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 
 ## Status
 
-**Pre-alpha API reservation MVP. Not production-ready and not yet usable as a complete reservation service.**
+**Pre-alpha management/audit/policy MVP. Not production-ready and not yet usable as a complete reservation service.**
 
 The repository contains a minimal Django/PostgreSQL application foundation: custom user model,
 health checks, hierarchical asset inventory, sanitized bootstrap asset import, member-visible
@@ -15,9 +15,11 @@ UI assets, CI, and container
 configuration. It now also contains reservation policy, reservation, PostgreSQL exclusivity,
 audit-event core, a server-rendered human MVP for active administrator-created accounts, owner-managed
 API-token lifecycle UI, and initial bearer-token API endpoints for `/api/v1/me/`, advisory
-availability, and owner-scoped reservation list/create/detail/cancel/release. There is still no
-project/group authorization, maintenance calendar, token lifecycle API, OIDC/password reset,
-notification system, API throttling, or production readiness.
+availability, owner-scoped reservation list/create/detail/cancel/release, and a staff-only
+management area for policies, coarse maintenance blackouts, cross-user reservation inspection and
+lifecycle actions, and audit browsing/export. There is still no project/group authorization, full
+operating-hours calendar, token lifecycle API, management REST API, OIDC/password reset,
+notification system, API throttling, execution gateway, or production readiness.
 
 Verified starting point for this implementation slice:
 
@@ -116,6 +118,7 @@ Log in at `http://127.0.0.1:8000/login/`. The member UI currently provides:
 - `/reservations/` and `/reservations/<uuid>/` own reservation pages;
 - `/tokens/` API-token list and revocation;
 - `/tokens/new/` API-token creation with one-time plaintext display;
+- `/manage/` staff-only management for policies, blackouts, reservations, and audit review/export;
 - `/profile/` display name and timezone editing.
 
 Accounts are administrator-created only. Service accounts cannot log into the human UI. Until
@@ -141,6 +144,7 @@ Human and API paths:
   operations with `reservations:read` or `reservations:create`.
 - `http://127.0.0.1:8000/tokens/` provides owner-scoped token lifecycle management for active
   human sessions.
+- `http://127.0.0.1:8000/manage/` provides active-staff-only management pages.
 
 The REST asset list/detail API remains staff-session-only. Bearer-token asset list/detail access,
 token lifecycle APIs, reservation administration APIs, project/resource restrictions, and
@@ -162,8 +166,11 @@ curl -X POST \
 ```
 
 Reservation creation, cancellation, and release are exposed through both the server-rendered member
-UI and bearer-token API endpoints. Both paths call the same authoritative reservation services.
-Admin inspection is available, but reservation and audit admin screens remain read-only.
+UI and bearer-token API endpoints. Staff management cancellation/release calls the same
+authoritative reservation services. Maintenance blackouts are coarse operational unavailability:
+they block new overlapping reservations and appear in availability, but do not automatically cancel
+existing reservations. Admin inspection is available, but reservation, policy, blackout, and audit
+admin screens remain read-only where direct editing would bypass audited services.
 
 Generate and validate the current OpenAPI shell:
 

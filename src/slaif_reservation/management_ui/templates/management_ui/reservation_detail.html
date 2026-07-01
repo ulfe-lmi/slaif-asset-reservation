@@ -1,0 +1,27 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Managed reservation" %}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{% trans "Managed reservation" %}</h1>
+  <dl>
+    <dt>{% trans "Reservation" %}</dt><dd>{{ reservation.id }}</dd>
+    <dt>{% trans "Owner" %}</dt><dd>{{ reservation.requested_by_user.display_name }} ({{ reservation.requested_by_user.email }})</dd>
+    <dt>{% trans "Asset" %}</dt><dd>{{ reservation.asset.slug }}</dd>
+    <dt>{% trans "Lifecycle" %}</dt><dd>{{ lifecycle }}</dd>
+    <dt>{% trans "Status" %}</dt><dd>{{ reservation.status }}</dd>
+    <dt>{% trans "Start" %}</dt><dd>{{ reservation.start_at }}</dd>
+    <dt>{% trans "End" %}</dt><dd>{{ reservation.end_at }}</dd>
+    <dt>{% trans "Effective end" %}</dt><dd>{{ reservation.effective_end_at }}</dd>
+    <dt>{% trans "Purpose" %}</dt><dd>{{ reservation.purpose }}</dd>
+  </dl>
+  <form method="post" action="{% url 'management-ui:reservation-cancel' reservation.id %}">
+    {% csrf_token %}
+    {{ cancel_form.as_p }}
+    <button type="submit">{% trans "Cancel reservation" %}</button>
+  </form>
+  <form method="post" action="{% url 'management-ui:reservation-release' reservation.id %}">
+    {% csrf_token %}
+    <button type="submit">{% trans "Release reservation" %}</button>
+  </form>
+{% endblock %}

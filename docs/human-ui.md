@@ -28,16 +28,16 @@ API-token management is implemented in Work Order 0005 for active human owners.
 
 ### Manager/admin navigation
 
-- All reservations
-- Machines and assets
-- Availability and maintenance
+- Management dashboard
 - Policies
-- Users, projects, and memberships
-- API tokens/service accounts
-- Audit log
-- System status
+- Maintenance blackouts
+- Cross-user reservations
+- Audit log and safe export
+- Machines/assets through Django admin in this slice
 
-Django admin remains available to authorized operators but is not the primary member UX.
+Work Order 0007 implements the `/manage/` staff-only management area for the listed policy,
+blackout, reservation, and audit workflows. Django admin remains available to authorized operators
+but is conservative/read-only where direct editing would bypass audited services.
 
 ## 3. Core screens
 
@@ -174,8 +174,9 @@ Target WCAG 2.2 AA principles:
 - reduced-motion respect;
 - screen-reader-friendly calendar alternatives, such as an availability list.
 
-Work Order 0004 implements the availability list, not a drag-and-drop calendar. It is advisory and
-does not yet model maintenance blackouts or operating hours. Local-day display windows are interpreted
+Work Order 0004 implements the availability list, not a drag-and-drop calendar. It is advisory.
+Work Order 0007 adds maintenance blackouts as unavailable intervals, but operating hours and full
+maintenance calendars remain deferred. Local-day display windows are interpreted
 through the user's configured IANA timezone. If a requested local-day boundary is nonexistent or
 ambiguous, the request fails closed with a safe bad-request response instead of guessing an offset or
 silently substituting another timezone.

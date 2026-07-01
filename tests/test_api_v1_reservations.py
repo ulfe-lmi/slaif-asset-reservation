@@ -15,7 +15,7 @@ from slaif_reservation.api.models import IdempotencyRecord
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
 from slaif_reservation.reservations.models import Reservation, ReservationPolicy
-from slaif_reservation.reservations.services import create_reservation
+from slaif_reservation.reservations.services import create_blackout, create_reservation
 
 
 def user(email: str = "api-member@example.com", **overrides: object) -> User:
@@ -289,6 +289,53 @@ def test_availability_api_interval_semantics_and_privacy(client) -> None:
         str(confirmed_end_clip.id),
     ]:
         assert private_value not in body
+
+
+@pytest.mark.django_db
+def test_availability_api_includes_blackouts_without_reason_or_identity(client) -> None:
+    owner = user()
+    staff = user("availability-staff@example.com", is_staff=True)
+    other = user("availability-blackout-other@example.com", display_name="Other Person")
+    target = asset()
+    policy(target, min_duration_minutes=30)
+    token, _row = bearer(owner, ["availability:read"])
+    window_start = (timezone.now() + timedelta(days=4)).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    create_blackout(
+        asset=target,
+        actor_user=staff,
+        reason="private blackout reason",
+        start_at=window_start + timedelta(hours=2),
+        end_at=window_start + timedelta(hours=4),
+        confirmed_overlap=True,
+    )
+    direct_reservation(
+        owner=other,
+        target=target,
+        start=window_start + timedelta(hours=4),
+        end=window_start + timedelta(hours=5),
+    )
+
+    response = client.get(
+        f"/api/v1/assets/{target.id}/availability/",
+        {"date": window_start.date().isoformat(), "days": "1", "timezone": "UTC"},
+        **auth_header(token),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["busy"][0]["label"] == "Unavailable"
+    assert payload["busy"][0]["start"] == iso(window_start + timedelta(hours=2))
+    assert payload["busy"][0]["end"] == iso(window_start + timedelta(hours=5))
+    body = response.content.decode()
+    assert "private blackout reason" not in body
+    assert other.email not in body
+    assert other.display_name not in body
+    assert "private purpose" not in body
 
 
 @pytest.mark.django_db

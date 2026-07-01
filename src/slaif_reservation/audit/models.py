@@ -50,6 +50,8 @@ class AuditEvent(models.Model):
     ACTION_POLICY_CREATED = "reservation_policy.created"
     ACTION_POLICY_UPDATED = "reservation_policy.updated"
     ACTION_POLICY_DEACTIVATED = "reservation_policy.deactivated"
+    ACTION_BLACKOUT_CREATED = "maintenance_blackout.created"
+    ACTION_BLACKOUT_DEACTIVATED = "maintenance_blackout.deactivated"
     ACTION_API_TOKEN_CREATED = "api_token.created"
     ACTION_API_TOKEN_REVOKED = "api_token.revoked"
     ACTION_CHOICES = [
@@ -59,6 +61,8 @@ class AuditEvent(models.Model):
         (ACTION_POLICY_CREATED, "Reservation policy created"),
         (ACTION_POLICY_UPDATED, "Reservation policy updated"),
         (ACTION_POLICY_DEACTIVATED, "Reservation policy deactivated"),
+        (ACTION_BLACKOUT_CREATED, "Maintenance blackout created"),
+        (ACTION_BLACKOUT_DEACTIVATED, "Maintenance blackout deactivated"),
         (ACTION_API_TOKEN_CREATED, "API token created"),
         (ACTION_API_TOKEN_REVOKED, "API token revoked"),
     ]
@@ -109,6 +113,8 @@ class AuditEvent(models.Model):
                         "reservation_policy.created",
                         "reservation_policy.updated",
                         "reservation_policy.deactivated",
+                        "maintenance_blackout.created",
+                        "maintenance_blackout.deactivated",
                         "api_token.created",
                         "api_token.revoked",
                     ]

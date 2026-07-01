@@ -29,6 +29,7 @@ urlpatterns = [
     path("health/live", health_live, name="health-live"),
     path("health/ready", health_ready, name="health-ready"),
     path("api/v1/", include("slaif_reservation.api.urls", namespace="api-v1")),
+    path("manage/", include("slaif_reservation.management_ui.urls", namespace="management-ui")),
     path("", include("slaif_reservation.web.urls", namespace="web")),
 ]
 

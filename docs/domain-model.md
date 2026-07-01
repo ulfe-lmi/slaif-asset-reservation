@@ -194,21 +194,29 @@ Suggested fields:
 
 Avoid a generic recurrence engine in v1. Exceptions use `Blackout`.
 
-## 8. Blackout
+## 8. Maintenance blackout
 
-Represents maintenance or administrative unavailability.
+Work Order 0007 implements `MaintenanceBlackout` for coarse operational unavailability. It is not a
+general operating-hours or recurrence model.
 
-Fields:
+Implemented fields:
 
-- `id: UUID`
-- `asset_id`
-- `start_at`, `end_at`
-- reason and safe public description
-- `created_by`
-- optional affected-reservation resolution state
-- `created_at`
+- `id: UUID`;
+- `asset_id` protected from deletion;
+- `created_by`;
+- bounded required `reason`, visible to staff management only;
+- aware `start_at` and `end_at`;
+- `active`;
+- `deactivated_at` and `deactivated_by`;
+- `created_at` and `updated_at`.
 
-Blackouts use the same half-open time semantics. Creating a blackout does not silently delete conflicting reservations.
+Blackouts use half-open time semantics. Active blackouts block new overlapping reservation creation
+with domain code `blackout_conflict` and appear as privacy-safe unavailable intervals in human and
+API availability. Inactive/deactivated blackouts do not block or appear in member/API availability.
+Creating a blackout with overlapping confirmed or released reservations requires explicit staff
+confirmation and does not automatically cancel or release those reservations. Blackout create and
+deactivate actions are audited as `maintenance_blackout.created` and
+`maintenance_blackout.deactivated`.
 
 ## 9. Reservation policy
 

@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.reservations.exceptions import ReservationDomainError
-from slaif_reservation.reservations.models import Reservation
+from slaif_reservation.reservations.models import MaintenanceBlackout, Reservation
 from slaif_reservation.reservations.services import resolve_effective_policy
 from slaif_reservation.reservations.time_utils import (
     LocalTimeError,
@@ -49,9 +49,7 @@ class AvailabilityResult:
     bookable: bool
     reason: str
     min_duration_minutes: int | None = None
-    advisory_notice: str = (
-        "Availability is advisory and does not yet model maintenance blackouts or operating hours."
-    )
+    advisory_notice: str = "Availability is advisory and does not yet model operating hours."
 
 
 def availability_for_asset(
@@ -175,6 +173,19 @@ def _busy_intervals(
                 reservation_id=reservation.id if is_own else None,
             )
         )
+    blackouts = MaintenanceBlackout.objects.filter(
+        asset=asset,
+        active=True,
+        start_at__lt=window_end,
+        end_at__gt=window_start,
+    ).order_by("start_at", "end_at")
+    for blackout in blackouts:
+        start = max(require_aware_utc(blackout.start_at), window_start)
+        end = min(require_aware_utc(blackout.end_at), window_end)
+        if end <= start:
+            continue
+        intervals.append(AvailabilityBusyInterval(start=start, end=end, label="Unavailable"))
+    intervals.sort(key=lambda interval: (interval.start, interval.end))
     return _merge_busy(intervals)
 
 

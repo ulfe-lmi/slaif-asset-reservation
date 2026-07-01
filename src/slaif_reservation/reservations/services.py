@@ -16,6 +16,7 @@ from slaif_reservation.audit.services import append_audit_event
 from slaif_reservation.reservations.exceptions import (
     ASSET_INACTIVE,
     ASSET_NOT_RESERVABLE,
+    BLACKOUT_CONFLICT,
     BOOKING_HORIZON_VIOLATION,
     CANCELLATION_CUTOFF,
     DURATION_TOO_LONG,
@@ -40,6 +41,7 @@ from slaif_reservation.reservations.exceptions import (
 )
 from slaif_reservation.reservations.models import (
     SERVICE_UPDATE_ATTR,
+    MaintenanceBlackout,
     Reservation,
     ReservationPolicy,
 )
@@ -57,6 +59,12 @@ class ReservationMutationResult:
 @dataclass(frozen=True)
 class PolicyMutationResult:
     policy: ReservationPolicy
+    correlation_id: uuid.UUID
+
+
+@dataclass(frozen=True)
+class BlackoutMutationResult:
+    blackout: MaintenanceBlackout
     correlation_id: uuid.UUID
 
 
@@ -94,7 +102,7 @@ def _lock_principal(principal: Any) -> Any:
 
 def _lock_staff_actor(actor_user: Any) -> Any:
     actor = _lock_principal(actor_user)
-    if not actor.is_staff:
+    if not actor.is_staff or getattr(actor, "is_service_account", False):
         _raise(POLICY_MUTATION_NOT_AUTHORIZED, "Policy mutation requires an active staff user.")
     return actor
 
@@ -212,6 +220,16 @@ def _raise_if_asset_overlap(asset: Asset, start_at: Any, end_at: Any) -> None:
         _raise(RESERVATION_CONFLICT, "Reservation conflicts with an existing reservation.")
 
 
+def _raise_if_blackout_overlap(asset: Asset, start_at: Any, end_at: Any) -> None:
+    if MaintenanceBlackout.objects.filter(
+        asset=asset,
+        active=True,
+        start_at__lt=end_at,
+        end_at__gt=start_at,
+    ).exists():
+        _raise(BLACKOUT_CONFLICT, "Reservation conflicts with a maintenance blackout.")
+
+
 def _is_named_reservation_constraint(exc: IntegrityError) -> bool:
     cause = getattr(exc, "__cause__", None)
     constraint_name = getattr(getattr(cause, "diag", None), "constraint_name", None)
@@ -248,6 +266,7 @@ def create_reservation(
             purpose=purpose,
             now=now_utc,
         )
+        _raise_if_blackout_overlap(locked_asset, start_utc, end_utc)
         _raise_if_asset_overlap(locked_asset, start_utc, end_utc)
 
         reservation = Reservation(
@@ -490,3 +509,108 @@ def deactivate_policy(
             metadata={"asset_id": str(locked.asset_id) if locked.asset_id else None},
         )
         return PolicyMutationResult(policy=locked, correlation_id=correlation)
+
+
+def overlapping_blocking_reservations(
+    *,
+    asset: Asset,
+    start_at: datetime,
+    end_at: datetime,
+) -> list[Reservation]:
+    start_utc = _instant(start_at, field_name="start_at")
+    end_utc = _instant(end_at, field_name="end_at")
+    return list(
+        Reservation.objects.filter(
+            asset=asset,
+            status__in=[Reservation.STATUS_CONFIRMED, Reservation.STATUS_RELEASED],
+            start_at__lt=end_utc,
+            effective_end_at__gt=start_utc,
+        )
+        .select_related("requested_by_user", "asset")
+        .order_by("start_at", "id")
+    )
+
+
+def create_blackout(
+    *,
+    asset: Asset,
+    actor_user: Any,
+    reason: str,
+    start_at: datetime,
+    end_at: datetime,
+    confirmed_overlap: bool = False,
+    source: str = AuditEvent.SOURCE_ADMIN,
+    correlation_id: uuid.UUID | None = None,
+) -> BlackoutMutationResult:
+    correlation = _correlation(correlation_id)
+    start_utc = _instant(start_at, field_name="start_at")
+    end_utc = _instant(end_at, field_name="end_at")
+    if end_utc <= start_utc:
+        _raise(INVALID_TIME_RANGE, "Blackout end must be after start.")
+
+    with transaction.atomic():
+        actor = _lock_staff_actor(actor_user)
+        locked_asset = _lock_asset(asset)
+        overlaps = overlapping_blocking_reservations(
+            asset=locked_asset,
+            start_at=start_utc,
+            end_at=end_utc,
+        )
+        if overlaps and not confirmed_overlap:
+            _raise(BLACKOUT_CONFLICT, "Blackout overlaps existing reservations.")
+        blackout = MaintenanceBlackout(
+            asset=locked_asset,
+            created_by=actor,
+            reason=reason.strip(),
+            start_at=start_utc,
+            end_at=end_utc,
+            active=True,
+        )
+        blackout.full_clean()
+        blackout.save()
+        append_audit_event(
+            action=AuditEvent.ACTION_BLACKOUT_CREATED,
+            target_type="maintenance_blackout",
+            target_id=blackout.id,
+            correlation_id=correlation,
+            source=source,
+            actor_user=actor,
+            metadata={
+                "asset_id": str(locked_asset.id),
+                "asset_slug": locked_asset.slug,
+                "start_at": start_utc.isoformat(),
+                "end_at": end_utc.isoformat(),
+                "overlapping_reservations": len(overlaps),
+            },
+        )
+        return BlackoutMutationResult(blackout=blackout, correlation_id=correlation)
+
+
+def deactivate_blackout(
+    *,
+    blackout: MaintenanceBlackout,
+    actor_user: Any,
+    source: str = AuditEvent.SOURCE_ADMIN,
+    correlation_id: uuid.UUID | None = None,
+) -> BlackoutMutationResult:
+    correlation = _correlation(correlation_id)
+    with transaction.atomic():
+        actor = _lock_staff_actor(actor_user)
+        locked = MaintenanceBlackout.objects.select_for_update().get(pk=blackout.pk)
+        locked.asset = Asset.objects.get(pk=locked.asset_id)
+        if locked.active:
+            locked.active = False
+            locked.deactivated_at = timezone.now()
+            locked.deactivated_by = actor
+            locked.full_clean()
+            _service_save(locked)
+            append_audit_event(
+                action=AuditEvent.ACTION_BLACKOUT_DEACTIVATED,
+                target_type="maintenance_blackout",
+                target_id=locked.id,
+                correlation_id=correlation,
+                source=source,
+                actor_user=actor,
+                metadata={"asset_id": str(locked.asset_id), "asset_slug": locked.asset.slug},
+            )
+        return BlackoutMutationResult(blackout=locked, correlation_id=correlation)

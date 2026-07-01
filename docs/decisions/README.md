@@ -12,5 +12,6 @@ Accepted decisions:
 8. `0008-human-mvp-access-and-availability.md`
 9. `0009-api-token-format-and-lifecycle.md`
 10. `0010-api-idempotency-and-problem-details.md`
+11. `0011-management-blackouts-and-audit-ux.md`
 
 Create a new numbered ADR when a proposal changes architecture, trust boundaries, persistence semantics, authentication, major dependencies, deployment, or release invariants. Do not rewrite accepted history to conceal a changed decision; supersede it explicitly.

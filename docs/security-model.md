@@ -137,6 +137,21 @@ Work Order 0006 enables bearer authentication only on `/api/v1/me/`, advisory av
 owner-scoped reservation endpoints. The staff asset list/detail API remains staff-session-only.
 Every bearer endpoint checks explicit scopes; authentication alone is not authorization.
 
+Work Order 0007 adds a separate staff management UI under `/manage/`. Management routes require an
+authenticated active staff user and reject service accounts. This does not grant staff any hidden
+bypass on ordinary member routes; member selectors remain owner-scoped. Management mutations use
+POST plus CSRF and call audited/domain services rather than direct model mutation.
+
+Maintenance-blackout reasons are staff-visible operational text. Ordinary member pages and API
+availability show blackout time only as unavailable, without the reason, creator, affected user
+identity, purpose, cancellation reason, or audit internals. Active blackouts block new overlapping
+reservations through the authoritative creation service.
+
+Audit browsing/export is staff-only, read-only, bounded, and privacy-minimized. CSV export uses
+fixed safe columns and existing safe metadata; it must not include bearer tokens, Authorization
+headers, cookies, CSRF values, verifiers, peppers, raw request bodies, private physical locators,
+reservation purpose, or cancellation reason text. It is not a complete forensic dump.
+
 Idempotency records store the owner, token, action, key, canonical request hash, safe replay body,
 bounded allowlisted replay headers, target reference, and correlation UUID. The current replay-header
 allowlist covers the reservation create `Location` header. Expired matching rows fail explicitly

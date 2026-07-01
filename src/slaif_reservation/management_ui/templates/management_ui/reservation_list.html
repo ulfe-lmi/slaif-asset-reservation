@@ -1,0 +1,31 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Managed reservations" %}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{% trans "Managed reservations" %}</h1>
+  <form method="get">
+    {{ filter_form.non_field_errors }}
+    {% for field in filter_form %}
+      <label>{{ field.label }} {{ field }}</label>
+      {{ field.errors }}
+    {% endfor %}
+    <button type="submit">{% trans "Filter" %}</button>
+  </form>
+  <table>
+    <thead><tr><th>{% trans "Reservation" %}</th><th>{% trans "Owner" %}</th><th>{% trans "Asset" %}</th><th>{% trans "Status" %}</th><th>{% trans "Start" %}</th></tr></thead>
+    <tbody>
+      {% for reservation in page.object_list %}
+        <tr>
+          <td><a href="{% url 'management-ui:reservation-detail' reservation.id %}">{{ reservation.id }}</a></td>
+          <td>{{ reservation.requested_by_user.display_name }} ({{ reservation.requested_by_user.email }})</td>
+          <td>{{ reservation.asset.slug }}</td>
+          <td>{{ reservation.status }}</td>
+          <td>{{ reservation.start_at }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">{% trans "No reservations." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

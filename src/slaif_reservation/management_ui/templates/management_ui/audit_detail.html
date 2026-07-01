@@ -1,0 +1,16 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Audit event" %}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{% trans "Audit event" %}</h1>
+  <dl>
+    <dt>{% trans "Occurred" %}</dt><dd>{{ event.occurred_at }}</dd>
+    <dt>{% trans "Action" %}</dt><dd>{{ event.action }}</dd>
+    <dt>{% trans "Target" %}</dt><dd>{{ event.target_type }} {{ event.target_id }}</dd>
+    <dt>{% trans "Actor" %}</dt><dd>{{ event.actor_user_id }}</dd>
+    <dt>{% trans "Source" %}</dt><dd>{{ event.source }}</dd>
+    <dt>{% trans "Correlation" %}</dt><dd>{{ event.correlation_id }}</dd>
+    <dt>{% trans "Metadata" %}</dt><dd><pre>{{ event.metadata }}</pre></dd>
+  </dl>
+{% endblock %}

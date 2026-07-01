@@ -148,7 +148,24 @@ globally. Verification:
 Plaintext token storage is forbidden. Work Order 0006 binds this authenticator to scoped `/me`,
 availability, and owner reservation endpoints and records idempotency evidence for mutations.
 
-### 4.2.1 API adapter flow
+### 4.2.1 Staff management adapter
+
+Work Order 0007 adds server-rendered `/manage/` routes for active staff users, excluding service
+accounts. Management routes are separate from ordinary member routes; staff users on member pages
+remain owner-scoped. Management mutations use POST plus CSRF and call audited/domain services:
+
+1. validate active staff access;
+2. validate form input, including explicit local wall-time parsing for blackouts;
+3. call the policy, blackout, cancellation, or release service inside its transaction boundary;
+4. append audit evidence in the same transaction where practical;
+5. show safe form or message feedback without exposing SQL, constraint names, or hidden user data.
+
+Active maintenance blackouts are checked inside reservation creation after asset/policy validation
+and before insertion. They also feed the shared availability service as privacy-safe unavailable
+intervals. The PostgreSQL reservation exclusion constraint remains unchanged and continues to govern
+reservation-vs-reservation conflicts.
+
+### 4.2.2 API adapter flow
 
 Bearer-token API views follow this order:
 

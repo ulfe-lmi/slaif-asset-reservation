@@ -80,6 +80,10 @@ Work Order 0003 adds PostgreSQL-specific reservation migrations. The migration c
 allowed to create this extension, or an operator must preinstall it in the target database before
 running migrations.
 
+Work Order 0007 adds maintenance-blackout tables and audit action constraints. No background cleanup
+or notification scheduler is introduced; blackout creation/deactivation is synchronous through the
+staff management UI.
+
 Work Order 0004 adds local browser workflow tests. Development and CI install Chromium with:
 
 ```bash

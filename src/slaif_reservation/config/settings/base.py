@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "slaif_reservation.audit",
     "slaif_reservation.assets",
     "slaif_reservation.api",
+    "slaif_reservation.management_ui",
     "slaif_reservation.reservations",
     "slaif_reservation.web",
 ]
