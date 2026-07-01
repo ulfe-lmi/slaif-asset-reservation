@@ -6,7 +6,11 @@ from django.contrib import admin
 from django.db.models import QuerySet
 from django.http import HttpRequest
 
-from slaif_reservation.reservations.models import Reservation, ReservationPolicy
+from slaif_reservation.reservations.models import (
+    MaintenanceBlackout,
+    Reservation,
+    ReservationPolicy,
+)
 
 
 class NoDeleteAdminMixin:
@@ -100,3 +104,26 @@ class ReservationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):  # type: ignore[ty
             .get_queryset(request)
             .select_related("asset", "requested_by_user", "cancelled_by")
         )
+
+
+@admin.register(MaintenanceBlackout)
+class MaintenanceBlackoutAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):  # type: ignore[type-arg]
+    list_display = ["asset", "start_at", "end_at", "active", "created_by", "deactivated_by"]
+    list_filter = ["active", "asset"]
+    search_fields = ["asset__slug", "asset__name", "reason"]
+    readonly_fields = [
+        "id",
+        "asset",
+        "created_by",
+        "reason",
+        "start_at",
+        "end_at",
+        "active",
+        "deactivated_at",
+        "deactivated_by",
+        "created_at",
+        "updated_at",
+    ]
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[MaintenanceBlackout]:
+        return super().get_queryset(request).select_related("asset", "created_by", "deactivated_by")

@@ -89,6 +89,12 @@ availability privacy, owner-only reservation list/detail/create/cancel/release, 
 shape, correlation IDs, idempotency replay/conflict behavior, and PostgreSQL-backed concurrent
 idempotent creates.
 
+Work Order 0007 adds management tests for active-staff access, service-account denial, CSRF and
+GET-no-mutation boundaries, audited policy create/update/deactivate, maintenance blackout
+create/deactivate and rollback, blackout reservation/API blocking, blackout availability privacy,
+cross-user reservation management, read-only audit browsing/export, admin read-only alignment, and
+regressions for member/API ownership boundaries.
+
 ### Migration tests
 
 - bootstrap YAML schema validation;

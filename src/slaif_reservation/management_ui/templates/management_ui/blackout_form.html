@@ -1,0 +1,20 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Create blackout" %}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{% trans "Create maintenance blackout" %}</h1>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">{% trans "Create blackout" %}</button>
+  </form>
+  {% if affected_reservations %}
+    <h2>{% trans "Overlapping reservations" %}</h2>
+    <ul>
+      {% for reservation in affected_reservations %}
+        <li>{{ reservation.id }} - {{ reservation.requested_by_user.display_name }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

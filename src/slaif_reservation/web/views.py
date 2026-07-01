@@ -33,6 +33,7 @@ from slaif_reservation.assets.selectors import AssetFilterError
 from slaif_reservation.reservations.exceptions import (
     ASSET_INACTIVE,
     ASSET_NOT_RESERVABLE,
+    BLACKOUT_CONFLICT,
     BOOKING_HORIZON_VIOLATION,
     CANCELLATION_CUTOFF,
     DURATION_TOO_LONG,
@@ -103,6 +104,7 @@ DOMAIN_ERROR_MESSAGES = {
     MAX_UPCOMING_EXCEEDED: _("You have reached the upcoming reservation limit."),
     MAX_CONCURRENT_EXCEEDED: _("You have reached the concurrent reservation limit."),
     RESERVATION_CONFLICT: _("That time is no longer available."),
+    BLACKOUT_CONFLICT: _("That time is unavailable for maintenance."),
     RESERVATION_NOT_OWNED: _("That reservation was not found."),
     RESERVATION_NOT_CANCELLABLE: _("This reservation cannot be cancelled."),
     CANCELLATION_CUTOFF: _("This reservation is past the cancellation cutoff."),

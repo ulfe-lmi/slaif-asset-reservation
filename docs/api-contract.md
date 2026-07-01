@@ -110,6 +110,8 @@ domain errors such as `authentication_required`, `invalid_token`, `insufficient_
 `idempotency_expired`, `validation_error`, `asset_not_found`, `reservation_not_found`,
 `policy_not_configured`, `policy_ambiguous`, `reservation_conflict`,
 `reservation_not_cancellable`, `cancellation_cutoff`, and `reservation_not_releasable`.
+Work Order 0007 adds `blackout_conflict` for reservation creation attempts that overlap an active
+maintenance blackout.
 
 Problem responses do not include ORM exception text, SQL, constraint names, stack traces, token
 lookup details, or secret material.
@@ -162,8 +164,9 @@ Query parameters:
 
 The response includes an asset summary, display timezone, UTC window start/end, advisory notice,
 safe policy minimum duration, privacy-safe busy intervals, and free intervals with latest valid
-start. Other users are labelled only as unavailable; their identities, email, purposes,
-cancellation reasons, and reservation UUIDs are not exposed. Availability remains advisory.
+start. Other users and active maintenance blackouts are labelled only as unavailable; their
+identities, email, purposes, cancellation reasons, reservation UUIDs, and blackout reasons are not
+exposed. Availability remains advisory.
 Missing asset UUIDs return `404 asset_not_found`.
 
 ### `GET /api/v1/reservations/`
@@ -221,6 +224,7 @@ Other-user or guessed UUIDs return non-disclosing `404 reservation_not_found`.
 - administrative reservation APIs;
 - projects, memberships, group/resource authorization;
 - availability rules, blackouts, maintenance calendar API;
+- management APIs;
 - service-account/admin token issuance;
 - API throttling;
 - execution gateway integration.

@@ -164,6 +164,104 @@ class ReservationPolicy(models.Model):
             raise ValidationError(errors)
 
 
+class MaintenanceBlackout(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name="maintenance_blackouts")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_maintenance_blackouts",
+    )
+    reason = models.TextField(max_length=1000)
+    start_at = models.DateTimeField()
+    end_at = models.DateTimeField()
+    active = models.BooleanField(default=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    deactivated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="deactivated_maintenance_blackouts",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ProtectedMutationManager()
+
+    class Meta:
+        ordering = ["-start_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["asset", "start_at", "end_at"], name="blackout_asset_time_idx"),
+            models.Index(fields=["active", "start_at", "end_at"], name="blackout_active_time_idx"),
+            models.Index(
+                fields=["created_by", "created_at"],
+                name="blackout_creator_time_idx",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(end_at__gt=F("start_at")),
+                name="blackout_end_gt_start",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(active=True, deactivated_at__isnull=True, deactivated_by__isnull=True)
+                    | Q(active=False, deactivated_at__isnull=False, deactivated_by__isnull=False)
+                ),
+                name="blackout_active_deactivation_consistent",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.asset} blackout {self.start_at.isoformat()}-{self.end_at.isoformat()}"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if self._state.adding and self.pk and type(self)._base_manager.filter(pk=self.pk).exists():
+            raise ValidationError("Maintenance blackouts must be changed through audited services.")
+        if not self._state.adding and not getattr(self, SERVICE_UPDATE_ATTR, False):
+            raise ValidationError("Maintenance blackouts must be changed through audited services.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args: object, **kwargs: object) -> tuple[int, dict[str, int]]:
+        raise ValidationError("Maintenance blackouts cannot be hard-deleted.")
+
+    def clean(self) -> None:
+        super().clean()
+        errors: dict[str, list[str]] = {}
+        start_at = None
+        end_at = None
+        for field in ("start_at", "end_at", "deactivated_at"):
+            value = getattr(self, field)
+            if value is None:
+                continue
+            try:
+                normalized = require_aware_utc(value, field_name=field)
+            except InstantError as exc:
+                errors.setdefault(field, []).append(str(exc))
+            else:
+                if field == "start_at":
+                    start_at = normalized
+                elif field == "end_at":
+                    end_at = normalized
+        if start_at is not None and end_at is not None and end_at <= start_at:
+            errors.setdefault("end_at", []).append("End must be after start.")
+        if not str(self.reason or "").strip():
+            errors.setdefault("reason", []).append("Reason is required.")
+        if len(str(self.reason or "")) > 1000:
+            errors.setdefault("reason", []).append("Reason must be 1000 characters or fewer.")
+        if self.active and (self.deactivated_at or self.deactivated_by_id):
+            errors.setdefault("active", []).append(
+                "Active blackouts cannot have deactivation data."
+            )
+        if not self.active and (not self.deactivated_at or not self.deactivated_by_id):
+            errors.setdefault("deactivated_at", []).append(
+                "Inactive blackouts require deactivated_at and deactivated_by."
+            )
+        if errors:
+            raise ValidationError(errors)
+
+
 class Reservation(models.Model):
     SOURCE_WEB = "web"
     SOURCE_API = "api"

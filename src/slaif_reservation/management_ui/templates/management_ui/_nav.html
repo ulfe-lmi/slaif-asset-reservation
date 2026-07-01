@@ -1,0 +1,8 @@
+{% load i18n %}
+<nav aria-label="{% trans 'Management navigation' %}" class="subnav">
+  <a href="{% url 'management-ui:dashboard' %}">{% trans "Management" %}</a>
+  <a href="{% url 'management-ui:policy-list' %}">{% trans "Policies" %}</a>
+  <a href="{% url 'management-ui:blackout-list' %}">{% trans "Blackouts" %}</a>
+  <a href="{% url 'management-ui:reservation-list' %}">{% trans "Reservations" %}</a>
+  <a href="{% url 'management-ui:audit-list' %}">{% trans "Audit" %}</a>
+</nav>

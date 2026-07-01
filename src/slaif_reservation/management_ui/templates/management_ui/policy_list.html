@@ -1,0 +1,43 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Policies" %}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{% trans "Reservation policies" %}</h1>
+  <p><a href="{% url 'management-ui:policy-create' %}">{% trans "Create policy" %}</a></p>
+  <form method="get">
+    <label for="asset">{% trans "Show effective policy for asset" %}</label>
+    <select id="asset" name="asset">
+      <option value="">{% trans "Select asset" %}</option>
+      {% for asset in assets %}
+        <option value="{{ asset.id }}">{{ asset.slug }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">{% trans "Resolve" %}</button>
+  </form>
+  {% if asset_context %}
+    <p>
+      {% trans "Resolution" %}:
+      {% if asset_context.policy %}
+        {{ asset_context.state }} - <a href="{% url 'management-ui:policy-detail' asset_context.policy.id %}">{{ asset_context.policy.name }}</a>
+      {% else %}
+        {{ asset_context.state }}
+      {% endif %}
+    </p>
+  {% endif %}
+  <table>
+    <thead><tr><th>{% trans "Name" %}</th><th>{% trans "Asset" %}</th><th>{% trans "Active" %}</th><th>{% trans "Bounds" %}</th></tr></thead>
+    <tbody>
+      {% for policy in page.object_list %}
+        <tr>
+          <td><a href="{% url 'management-ui:policy-detail' policy.id %}">{{ policy.name }}</a></td>
+          <td>{% if policy.asset %}{{ policy.asset.slug }}{% else %}{% trans "Global" %}{% endif %}</td>
+          <td>{{ policy.active }}</td>
+          <td>{{ policy.min_duration_minutes }}-{{ policy.max_duration_minutes }} {% trans "minutes" %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4">{% trans "No policies." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{{ verb }} {% trans "policy" %}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{{ verb }} {% trans "policy" %}</h1>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">{{ verb }}</button>
+  </form>
+{% endblock %}

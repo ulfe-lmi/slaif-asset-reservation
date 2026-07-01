@@ -41,6 +41,7 @@ from slaif_reservation.assets.models import Asset
 from slaif_reservation.reservations.exceptions import (
     ASSET_INACTIVE,
     ASSET_NOT_RESERVABLE,
+    BLACKOUT_CONFLICT,
     BOOKING_HORIZON_VIOLATION,
     CANCELLATION_CUTOFF,
     DURATION_TOO_LONG,
@@ -232,7 +233,10 @@ class ReservationListCreateAPIView(BearerAPIView):
             OpenApiParameter("Idempotency-Key", str, OpenApiParameter.HEADER, required=True),
             OpenApiParameter("X-Request-ID", str, OpenApiParameter.HEADER),
         ],
-        description="Create a reservation through the authoritative domain service.",
+        description=(
+            "Create a reservation through the authoritative domain service. "
+            "Active maintenance overlap is reported as blackout_conflict."
+        ),
     )
     def post(self, request: Request) -> Response:
         correlation_id = correlation_id_from_request(request)
@@ -441,6 +445,7 @@ DOMAIN_STATUS = {
     MAX_UPCOMING_EXCEEDED: status.HTTP_409_CONFLICT,
     MAX_CONCURRENT_EXCEEDED: status.HTTP_409_CONFLICT,
     RESERVATION_CONFLICT: status.HTTP_409_CONFLICT,
+    BLACKOUT_CONFLICT: status.HTTP_409_CONFLICT,
     RESERVATION_NOT_OWNED: status.HTTP_404_NOT_FOUND,
     RESERVATION_NOT_CANCELLABLE: status.HTTP_409_CONFLICT,
     CANCELLATION_CUTOFF: status.HTTP_409_CONFLICT,
@@ -578,6 +583,8 @@ def _title_for_code(code: str) -> str:
 def _detail_for_code(code: str) -> str:
     if code == RESERVATION_CONFLICT:
         return "The requested time is no longer available."
+    if code == BLACKOUT_CONFLICT:
+        return "The requested time is unavailable."
     if code == RESERVATION_NOT_OWNED:
         return "The requested reservation was not found."
     return "The reservation request could not be completed."

@@ -1,0 +1,24 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{{ policy.name }}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{{ policy.name }}</h1>
+  <dl>
+    <dt>{% trans "Target" %}</dt><dd>{% if policy.asset %}{{ policy.asset.slug }}{% else %}{% trans "Global" %}{% endif %}</dd>
+    <dt>{% trans "Active" %}</dt><dd>{{ policy.active }}</dd>
+    <dt>{% trans "Duration" %}</dt><dd>{{ policy.min_duration_minutes }}-{{ policy.max_duration_minutes }} {% trans "minutes" %}</dd>
+    <dt>{% trans "Horizon" %}</dt><dd>{{ policy.booking_horizon_days }} {% trans "days" %}</dd>
+    <dt>{% trans "Lead" %}</dt><dd>{{ policy.min_lead_minutes }} {% trans "minutes" %}</dd>
+    <dt>{% trans "Cancellation cutoff" %}</dt><dd>{{ policy.cancellation_cutoff_minutes }} {% trans "minutes" %}</dd>
+    <dt>{% trans "Limits" %}</dt><dd>{{ policy.max_upcoming_per_principal }} / {{ policy.max_concurrent_per_principal }}</dd>
+    <dt>{% trans "Purpose required" %}</dt><dd>{{ policy.purpose_required }}</dd>
+  </dl>
+  <p><a href="{% url 'management-ui:policy-update' policy.id %}">{% trans "Edit policy" %}</a></p>
+  {% if policy.active %}
+    <form method="post" action="{% url 'management-ui:policy-deactivate' policy.id %}">
+      {% csrf_token %}
+      <button type="submit">{% trans "Deactivate policy" %}</button>
+    </form>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Maintenance blackout" %}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{% trans "Maintenance blackout" %}</h1>
+  <dl>
+    <dt>{% trans "Asset" %}</dt><dd>{{ blackout.asset.slug }}</dd>
+    <dt>{% trans "Start" %}</dt><dd>{{ blackout.start_at }}</dd>
+    <dt>{% trans "End" %}</dt><dd>{{ blackout.end_at }}</dd>
+    <dt>{% trans "Active" %}</dt><dd>{{ blackout.active }}</dd>
+    <dt>{% trans "Reason" %}</dt><dd>{{ blackout.reason }}</dd>
+  </dl>
+  <h2>{% trans "Affected reservations" %}</h2>
+  <ul>
+    {% for reservation in affected_reservations %}
+      <li><a href="{% url 'management-ui:reservation-detail' reservation.id %}">{{ reservation.id }}</a> {{ reservation.requested_by_user.display_name }}</li>
+    {% empty %}
+      <li>{% trans "No overlapping confirmed or released reservations." %}</li>
+    {% endfor %}
+  </ul>
+  {% if blackout.active %}
+    <form method="post" action="{% url 'management-ui:blackout-deactivate' blackout.id %}">
+      {% csrf_token %}
+      <button type="submit">{% trans "Deactivate blackout" %}</button>
+    </form>
+  {% endif %}
+{% endblock %}

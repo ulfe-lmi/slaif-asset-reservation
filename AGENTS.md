@@ -10,8 +10,8 @@ Preserve this promise:
 
 ## Current product stage
 
-The project is at the internal pre-alpha API v1 reservation/idempotency stage. After this API slice,
-the next roadmap slice is management, audit, and policy UX.
+The project is at the internal pre-alpha management/audit/policy UX stage. After this management
+slice, the next roadmap slice is operational hardening.
 Read these documents before changing behavior:
 
 - `docs/discovery-brief.md`

@@ -1,0 +1,23 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Maintenance blackouts" %}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{% trans "Maintenance blackouts" %}</h1>
+  <p><a href="{% url 'management-ui:blackout-create' %}">{% trans "Create blackout" %}</a></p>
+  <table>
+    <thead><tr><th>{% trans "Asset" %}</th><th>{% trans "Start" %}</th><th>{% trans "End" %}</th><th>{% trans "Active" %}</th></tr></thead>
+    <tbody>
+      {% for blackout in page.object_list %}
+        <tr>
+          <td><a href="{% url 'management-ui:blackout-detail' blackout.id %}">{{ blackout.asset.slug }}</a></td>
+          <td>{{ blackout.start_at }}</td>
+          <td>{{ blackout.end_at }}</td>
+          <td>{{ blackout.active }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4">{% trans "No blackouts." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

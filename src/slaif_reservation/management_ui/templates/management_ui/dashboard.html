@@ -1,0 +1,12 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Management" %}{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{% trans "Management" %}</h1>
+  <dl>
+    <dt>{% trans "Policies" %}</dt><dd>{{ policy_count }}</dd>
+    <dt>{% trans "Active blackouts" %}</dt><dd>{{ active_blackout_count }}</dd>
+    <dt>{% trans "Reservations" %}</dt><dd>{{ reservation_count }}</dd>
+  </dl>
+{% endblock %}
