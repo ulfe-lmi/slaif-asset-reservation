@@ -20,6 +20,9 @@ def test_api_v1_namespace_exists(client) -> None:
         "version": "v1",
         "endpoints": {
             "assets": "/api/v1/assets/",
+            "availability": "/api/v1/assets/{asset_id}/availability/",
+            "me": "/api/v1/me/",
+            "reservations": "/api/v1/reservations/",
         },
     }
 
@@ -34,11 +37,17 @@ def test_openapi_schema_generation_succeeds(tmp_path: Path) -> None:
     assert "/api/v1/" in schema
     assert "/api/v1/assets/" in schema
     assert "/api/v1/assets/{asset_id}/" in schema
+    assert "/api/v1/me/" in schema
+    assert "/api/v1/assets/{asset_id}/availability/" in schema
+    assert "/api/v1/reservations/" in schema
+    assert "/api/v1/reservations/{reservation_id}/" in schema
+    assert "/api/v1/reservations/{reservation_id}/cancel/" in schema
+    assert "/api/v1/reservations/{reservation_id}/release/" in schema
 
     parsed_schema = yaml.safe_load(schema)
     assert "/api/v1/assets/" in parsed_schema["paths"]
     assert "/api/v1/assets/{asset_id}/" in parsed_schema["paths"]
-    assert "Bearer" not in parsed_schema.get("components", {}).get("securitySchemes", {})
+    assert "Bearer" in parsed_schema.get("components", {}).get("securitySchemes", {})
 
     list_operation = parsed_schema["paths"]["/api/v1/assets/"]["get"]
     detail_operation = parsed_schema["paths"]["/api/v1/assets/{asset_id}/"]["get"]
@@ -61,10 +70,15 @@ def test_openapi_schema_generation_succeeds(tmp_path: Path) -> None:
         "Bearer/API-token authentication is intentionally deferred" in list_operation["description"]
     )
     assert "Staff-session-authenticated" in detail_operation["description"]
-    assert "/api/v1/reservations/" not in parsed_schema["paths"]
-    assert "/api/v1/reservations/{reservation_id}/" not in parsed_schema["paths"]
+    assert "/api/v1/me/" in parsed_schema["paths"]
+    assert "/api/v1/reservations/" in parsed_schema["paths"]
+    create_parameters = {
+        parameter["name"]
+        for parameter in parsed_schema["paths"]["/api/v1/reservations/"]["post"]["parameters"]
+    }
+    assert {"Idempotency-Key", "X-Request-ID"} <= create_parameters
     assert "/api/v1/tokens/" not in parsed_schema["paths"]
-    assert "/api/v1/me" not in parsed_schema["paths"]
+    assert "/api/v1/reservations/{reservation_id}/cancel/" in parsed_schema["paths"]
 
 
 @pytest.mark.django_db
@@ -108,11 +122,10 @@ def test_swagger_ui_uses_local_sidecar_static_assets(settings) -> None:
     assert finders.find("drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js")
 
 
-def test_reservation_mutation_routes_are_not_exposed(client) -> None:
+def test_token_lifecycle_routes_are_not_exposed_as_api(client) -> None:
     root_response = client.get("/api/v1/")
     assert root_response.status_code == 200
-    assert "reservations" not in root_response.json()["endpoints"]
+    assert "reservations" in root_response.json()["endpoints"]
 
-    assert client.post("/api/v1/reservations/", {}).status_code == 404
-    assert client.post("/api/v1/reservations/not-a-real-id/cancel/", {}).status_code == 404
-    assert client.post("/api/v1/reservations/not-a-real-id/release/", {}).status_code == 404
+    assert client.post("/api/v1/tokens/", {}).status_code == 404
+    assert client.get("/api/v1/me/").status_code == 401

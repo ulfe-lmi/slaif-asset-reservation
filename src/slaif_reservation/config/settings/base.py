@@ -116,8 +116,9 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "SLAIF Asset Reservation API",
     "DESCRIPTION": (
-        "Pre-alpha API. The asset inventory API is staff-session-only; reservation "
-        "mutation and availability API endpoints are intentionally deferred."
+        "Pre-alpha API. Asset inventory list/detail remain staff-session-only. "
+        "Bearer-token endpoints provide /me, advisory availability, and owner-scoped "
+        "reservation operations with idempotent mutations."
     ),
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,

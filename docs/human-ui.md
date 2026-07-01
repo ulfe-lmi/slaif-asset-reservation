@@ -129,7 +129,9 @@ Implemented in Work Order 0005. Human users can:
 - never retrieve token plaintext again.
 
 Project/resource limits, service-account issuance, administrative issuance/revocation, token API
-endpoints, and bearer-enabled domain API operations remain deferred.
+endpoints remain deferred. Bearer-enabled `/me`, advisory availability, and owner reservation
+operations are implemented in Work Order 0006, but they do not change the server-rendered human UI
+paths.
 
 ### Administration
 

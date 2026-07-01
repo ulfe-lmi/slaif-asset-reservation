@@ -1,45 +1,37 @@
 # API v1 Design Contract
 
-**Status:** pre-alpha implementation contract; asset read endpoints are implemented with a temporary
-staff-session limitation, and the token lifecycle/authenticator primitive is implemented but not
-enabled on API endpoints
+**Status:** pre-alpha implementation contract. Staff asset list/detail endpoints, bearer `/me`,
+bearer advisory availability, and bearer owner reservation endpoints are implemented. Token
+lifecycle APIs, administrative APIs, projects, memberships, resource restrictions, and API
+throttling remain deferred.
+
 **Base path:** `/api/v1/`
 
-The implemented OpenAPI document generated from code becomes the mechanical schema source of truth. This document defines intended semantics and must remain aligned with implementation.
+The generated OpenAPI document is the mechanical schema source of truth. This document records the
+intended semantics that must stay aligned with implementation.
 
-## 1. Principles
+## Principles
 
-- same domain services as the human UI;
-- bearer-token authentication for agents;
-- HTTPS only outside local development;
-- stable opaque UUIDs;
-- ISO 8601 aware timestamps;
-- idempotent mutations;
-- problem-details-style errors;
-- predictable pagination and filtering;
-- no HTML scraping or browser-session requirement;
-- no secret values in responses after token creation.
+- Human UI and API clients use the same reservation domain services.
+- Bearer-token authentication is enabled only on the implemented token-authenticated endpoints.
+- Existing staff-session asset list/detail endpoints remain staff-session-only.
+- IDs are opaque UUIDs.
+- API timestamps are aware ISO-8601 instants and are serialized as UTC.
+- Mutation endpoints require idempotency.
+- Errors use privacy-safe problem-details JSON.
+- Responses never expose bearer tokens, verifiers, peppers, physical locators, raw provenance, audit
+  internals, or another user's identity/purpose.
 
-## 2. Authentication
+## Authentication and Scopes
 
 ```http
 Authorization: Bearer sar_<token_uuid_hex>_<secret>
 ```
 
-The UUID locator is public. The secret has at least 256 bits of randomness. The server stores no
-plaintext bearer token, only an HMAC-SHA-256 verifier using a dedicated pepper. Verification exists
-as an internal DRF authenticator primitive but is not registered globally or enabled on any endpoint
-until Work Order 0006.
+The server stores only an HMAC-SHA-256 verifier using the dedicated API-token pepper. The bearer
+authenticator is not registered globally.
 
-A token is evaluated for:
-
-- active owner/service account;
-- revocation;
-- expiry;
-- scope;
-- optional project and resource restrictions.
-
-Initial scopes:
+Implemented bearer scopes:
 
 ```text
 assets:read
@@ -50,328 +42,185 @@ reservations:cancel
 reservations:release
 ```
 
-## 3. Idempotency
+Work Order 0006 uses:
 
-Agent mutation requests must send:
+- `availability:read` for asset availability;
+- `reservations:read` for reservation list/detail;
+- `reservations:create` for reservation creation;
+- `reservations:cancel` for cancellation;
+- `reservations:release` for early release.
+
+The existing `/api/v1/assets/` and `/api/v1/assets/{asset_id}/` endpoints still require a staff
+session. Bearer `assets:read` does not grant those endpoints in this slice.
+
+## Idempotency
+
+Mutation endpoints require:
 
 ```http
 Idempotency-Key: <client-generated opaque value>
 ```
 
-Rules:
+Key rules:
 
-- key is scoped to authenticated principal and action;
-- same key and same canonical request returns the original result;
-- same key and different request returns `409 idempotency_conflict`;
-- keys have a documented retention period;
-- token or request bodies are never stored as idempotency evidence.
+- 8 through 128 printable ASCII characters;
+- no whitespace or control characters;
+- not a secret.
 
-## 4. Correlation
+Records are scoped by owner, API token, action, and key. The server stores a SHA-256 hash of a
+canonical JSON request containing action, method, path, and parsed body. It does not store bearer
+tokens, Authorization headers, raw request bodies, cookies, CSRF values, token secrets, verifiers,
+peppers, or passwords.
 
-Clients may send `X-Request-ID`; the server validates format or creates one. Every response returns a correlation identifier. Audit events reference it.
+For the same owner, token, action, and key:
 
-## 5. Errors
+- same canonical request returns the stored safe response without another mutation or audit event;
+- different canonical request returns `409 idempotency_conflict` without mutation.
 
-Example:
+Different owners or tokens may reuse the same key independently. Records carry a 24-hour retention
+target. Until cleanup exists, stored rows remain authoritative. A matching expired row returns
+`409 idempotency_expired` without replay, mutation, or another audit event. Replayed successful
+reservation creation preserves the original status, safe body, original correlation ID, replay
+headers, and the original safe `Location` header.
+
+## Correlation
+
+Clients may send `X-Request-ID` as a UUID. Invalid values are ignored and replaced. Bearer API
+responses include a correlation UUID, and successful reservation mutations pass that UUID into the
+domain service and audit event.
+
+## Problem Details
+
+Problem responses include:
 
 ```json
 {
-  "type": "https://reservation.example/problems/reservation-conflict",
-  "title": "Reservation conflicts with an existing reservation",
+  "type": "https://slaif.local/problems/reservation_conflict",
+  "title": "Reservation Conflict",
   "status": 409,
-  "detail": "The requested asset is not available for the complete time range.",
   "code": "reservation_conflict",
-  "instance": "/api/v1/reservations",
-  "correlation_id": "0197..."
+  "detail": "The requested time is no longer available.",
+  "correlation_id": "00000000-0000-0000-0000-000000000000"
 }
 ```
 
-Stable initial codes include:
+Stable codes include authentication, scope, validation, idempotency, asset, policy, and reservation
+domain errors such as `authentication_required`, `invalid_token`, `insufficient_scope`,
+`idempotency_required`, `invalid_idempotency_key`, `idempotency_conflict`,
+`idempotency_expired`, `validation_error`, `asset_not_found`, `reservation_not_found`,
+`policy_not_configured`, `policy_ambiguous`, `reservation_conflict`,
+`reservation_not_cancellable`, `cancellation_cutoff`, and `reservation_not_releasable`.
 
-- `authentication_required`
-- `invalid_token`
-- `token_expired`
-- `insufficient_scope`
-- `permission_denied`
-- `asset_not_found`
-- `asset_inactive`
-- `asset_not_reservable`
-- `invalid_time_range`
-- `policy_denied`
-- `reservation_conflict`
-- `reservation_not_found`
-- `invalid_reservation_state`
-- `idempotency_conflict`
-- `rate_limited`
+Problem responses do not include ORM exception text, SQL, constraint names, stack traces, token
+lookup details, or secret material.
 
-Do not expose ORM, SQL, constraint, stack-trace, or secret details.
+## Endpoints
 
-## 6. Endpoints
+### `GET /api/v1/`
 
-### `GET /api/v1/me`
+Anonymous root describing implemented endpoint families.
 
-Deferred/not implemented. Planned for Work Order 0006.
+### `GET /api/v1/me/`
 
-Returns the effective principal and safe token context.
+Requires bearer authentication. Returns safe principal and token context:
 
 ```json
 {
-  "principal": {
-    "id": "uuid",
-    "type": "user",
-    "display_name": "Example User"
-  },
+  "principal": {"id": "uuid", "display_name": "Example User"},
   "token": {
     "id": "uuid",
-    "name": "local-codex",
-    "scopes": ["assets:read", "reservations:create"],
-    "expires_at": "2026-07-01T00:00:00Z"
-  }
+    "display_prefix": "sar_0123456789ab...",
+    "scopes": ["reservations:read"],
+    "expires_at": "2026-07-01T00:00:00Z",
+    "last_used_at": "2026-06-30T12:00:00Z"
+  },
+  "correlation_id": "uuid"
 }
 ```
 
-Never return the bearer token or verifier.
+Email, staff flags, bearer plaintext, verifier, and pepper are never returned.
 
 ### `GET /api/v1/assets/`
 
-Implemented in Work Order 0002 as a read-only staff-session endpoint. This is a temporary
-pre-alpha limitation: `SessionAuthentication` plus staff permission is required until scoped bearer
-tokens are implemented. Anonymous and ordinary non-staff users cannot read inventory data.
-
-Implemented filters:
-
-- `kind`
-- `parent` UUID
-- `tag`
-- `active`
-- `reservable`
-- `q` text search over safe display fields
-
-Example item:
-
-```json
-{
-  "id": "uuid",
-  "slug": "neumann-gpu-2",
-  "name": "Neumann GPU 2",
-  "kind": "gpu",
-  "parent": {
-    "id": "uuid",
-    "slug": "neumann",
-    "name": "Neumann"
-  },
-  "active": true,
-  "reservable": true,
-  "timezone": "Europe/Ljubljana",
-  "capabilities": {
-    "vendor": "NVIDIA",
-    "model": "A100-SXM4-80GB",
-    "memory_gib": 80
-  }
-}
-```
-
-Capabilities are administrator-verified before clients may rely on normalized values.
-
-Implemented response fields are limited to:
-
-- `id`, `slug`, `name`, `kind`, `parent`, `description`, `timezone`, `active`, `reservable`,
-  `verification_required`, `tags`, and normalized `capabilities`.
-
-The API never serializes `physical_locator`, legacy IDs, raw legacy metadata, or internal notes.
-Invalid filter values return HTTP 400 without ORM/SQL/stack details. Pagination uses DRF
-limit/offset pagination with a default limit of 50 and maximum limit of 100.
+Staff-session-only inventory list. Implemented filters are `kind`, `parent`, `tag`, `active`,
+`reservable`, and `q`. Pagination is DRF limit/offset with default 50 and maximum 100. Safe fields
+exclude physical locators, legacy IDs, raw provenance, and internal notes.
 
 ### `GET /api/v1/assets/{asset_id}/`
 
-Implemented in Work Order 0002 with the same temporary staff-session limitation and safe field set.
-The detail identifier is the opaque asset UUID.
+Staff-session-only inventory detail using the opaque asset UUID.
 
-Returns one authorized asset. Hidden and unauthorized assets should use a non-disclosing not-found response where appropriate.
+### `GET /api/v1/assets/{asset_id}/availability/`
 
-### `GET /api/v1/assets/{asset_id}/availability`
+Requires bearer authentication and `availability:read`.
 
-Deferred/not implemented. Work Order 0004 implements privacy-safe advisory availability only for the
-server-rendered human UI. The REST availability endpoint remains a future API-token/idempotency
-slice.
+Query parameters:
 
-Query:
+- `date`: ISO local date, optional;
+- `days`: integer 1 through 7, optional;
+- `timezone`: IANA timezone, optional; defaults to owner timezone.
 
-```text
-from=<timestamp>
-to=<timestamp>
-duration_minutes=<positive integer, optional>
-```
+The response includes an asset summary, display timezone, UTC window start/end, advisory notice,
+safe policy minimum duration, privacy-safe busy intervals, and free intervals with latest valid
+start. Other users are labelled only as unavailable; their identities, email, purposes,
+cancellation reasons, and reservation UUIDs are not exposed. Availability remains advisory.
+Missing asset UUIDs return `404 asset_not_found`.
 
-Response design:
+### `GET /api/v1/reservations/`
 
-```json
-{
-  "asset_id": "uuid",
-  "from": "2026-06-20T08:00:00Z",
-  "to": "2026-06-20T18:00:00Z",
-  "timezone": "Europe/Ljubljana",
-  "intervals": [
-    {
-      "start_at": "2026-06-20T08:00:00Z",
-      "end_at": "2026-06-20T10:30:00Z"
-    }
-  ]
-}
-```
-
-Availability is advisory. A later create request may still lose a race.
-
-### Token lifecycle API
-
-Deferred/not implemented. Token creation, listing, and revocation are available only through
-server-rendered owner pages in Work Order 0005. No `/api/v1/tokens/` endpoint is exposed.
-
-### `GET /api/v1/reservations`
-
-Deferred/not implemented. Reservation policy, reservation, audit models, internal services, and
-server-rendered own-reservation pages exist, but no reservation read or mutation REST surface is
-exposed yet.
-
-Ordinary tokens see own reservations unless an explicitly granted read scope/policy permits more.
-
+Requires bearer authentication and `reservations:read`. Returns only the token owner's reservations.
 Filters:
 
-- `asset`
-- `status`
-- `from`
-- `to`
-- `project`
-- `upcoming=true`
+- `asset` UUID;
+- `status`;
+- `lifecycle`;
+- `from`;
+- `to`;
+- `limit`;
+- `offset`.
 
-### `POST /api/v1/reservations`
+### `POST /api/v1/reservations/`
 
-Deferred/not implemented.
-
-Requires `reservations:create` and `Idempotency-Key`.
+Requires bearer authentication, `reservations:create`, and `Idempotency-Key`. Request:
 
 ```json
 {
   "asset_id": "uuid",
-  "start_at": "2026-06-20T10:00:00+02:00",
-  "end_at": "2026-06-20T10:30:00+02:00",
-  "purpose": "Vision-model inference test",
-  "project_id": null
+  "start_at": "2026-07-01T08:00:00Z",
+  "end_at": "2026-07-01T09:00:00Z",
+  "purpose": "API job"
 }
 ```
 
-Success: `201 Created` with location and reservation.
+`start_at` and `end_at` must include an explicit UTC offset. Local wall time and DST fold fields are
+not accepted by the API. The view calls only `create_reservation(..., source="api")`.
 
-```json
-{
-  "id": "uuid",
-  "asset": {
-    "id": "uuid",
-    "slug": "neumann-gpu-2",
-    "name": "Neumann GPU 2"
-  },
-  "status": "confirmed",
-  "start_at": "2026-06-20T08:00:00Z",
-  "end_at": "2026-06-20T08:30:00Z",
-  "effective_end_at": "2026-06-20T08:30:00Z",
-  "purpose": "Vision-model inference test",
-  "source": "api",
-  "created_at": "2026-06-19T12:00:00Z"
-}
-```
+Success returns `201`, `Location`, reservation representation, and `correlation_id`.
 
-Conflict: `409 reservation_conflict`. Policy rejection: `403` or `422` according to the accepted implementation convention; choose one consistently and document it.
+### `GET /api/v1/reservations/{reservation_id}/`
 
-### `GET /api/v1/reservations/{reservation_id}`
+Requires bearer authentication and `reservations:read`. Returns only an owned reservation. Other-user
+or guessed UUIDs return non-disclosing `404 reservation_not_found`.
 
-Returns an authorized reservation and lifecycle timestamps.
+### `POST /api/v1/reservations/{reservation_id}/cancel/`
 
-### `POST /api/v1/reservations/{reservation_id}/cancel`
+Requires bearer authentication, `reservations:cancel`, owner access, and `Idempotency-Key`. Accepts
+optional `reason` up to 1000 characters. Calls only `cancel_reservation(..., source="api")`.
+Other-user or guessed UUIDs return non-disclosing `404 reservation_not_found`.
 
-Cancels a future reservation. Requires idempotency.
+### `POST /api/v1/reservations/{reservation_id}/release/`
 
-```json
-{
-  "reason": "Job no longer needed"
-}
-```
+Requires bearer authentication, `reservations:release`, owner access, and `Idempotency-Key`. Calls
+only `release_reservation(..., source="api")`.
+Other-user or guessed UUIDs return non-disclosing `404 reservation_not_found`.
 
-Repeated cancellation with the same key returns the prior result. An already started reservation cannot be cancelled through this action; use release.
+## Deferred
 
-### `POST /api/v1/reservations/{reservation_id}/release`
-
-Releases an active reservation early. Requires idempotency.
-
-```json
-{
-  "reason": "Work completed"
-}
-```
-
-The response shows `released_at` and the original/effective end semantics. Releasing another principal's reservation is forbidden unless an explicit administrative interface permits it.
-
-## 7. Planned post-MVP endpoints
-
-### Atomic allocation
-
-```http
-POST /api/v1/allocations
-```
-
-Conceptual request:
-
-```json
-{
-  "filter": {
-    "parent_slug": "neumann",
-    "kind": "gpu",
-    "capabilities": {"memory_gib__gte": 80}
-  },
-  "duration_minutes": 30,
-  "earliest_start": "2026-06-20T08:00:00Z",
-  "latest_end": "2026-06-20T10:00:00Z",
-  "purpose": "Automated inference"
-}
-```
-
-The server selects and reserves one matching asset atomically. Do not implement this until exact reservation correctness is proven.
-
-### Reservation verification for gateways
-
-A private service-to-service endpoint may return a minimal allow/deny decision. It requires separate audience-bound authentication and is not the ordinary user API.
-
-### Extension
-
-Reservation extension is deferred because it must be atomic, policy-aware, and conflict-safe.
-
-## 8. Pagination
-
-Use one consistent style for collection endpoints. The scaffold/API PR must choose either DRF limit/offset or cursor pagination and document maximum page size. Cursor pagination is preferred for audit/event feeds; simple limit/offset is acceptable for small inventory collections.
-
-## 9. Rate limiting
-
-Initial application-level throttling should protect authentication, token use, and mutation endpoints without pretending to be full DDoS protection. The reverse proxy applies request limits. Rate-limit responses use `429` and `Retry-After` where meaningful.
-
-Do not depend on in-process counters for a multi-worker hard security guarantee. If distributed throttling becomes necessary, introduce shared state through an ADR.
-
-## 10. Versioning and compatibility
-
-- No breaking semantic or schema change within `/api/v1/` after beta without a migration/deprecation plan.
-- Additive fields may appear; clients must ignore unknown fields.
-- Enum additions require review because strict clients may break.
-- Dates are always aware timestamps.
-- IDs are opaque.
-- OpenAPI generation is tested in CI.
-
-## 11. Agent reference workflow
-
-```text
-GET assets matching requirements
-GET availability for candidate asset
-POST reservation with Idempotency-Key
-on 409: choose another slot/asset and retry with a new key
-run work through a separate mechanism
-POST release with a new Idempotency-Key
-```
-
-The client must retain reservation IDs and must not infer entitlement from a successful availability read.
+- `/api/v1/tokens/` creation/revocation;
+- `/api/v1/me` without trailing slash;
+- administrative reservation APIs;
+- projects, memberships, group/resource authorization;
+- availability rules, blackouts, maintenance calendar API;
+- service-account/admin token issuance;
+- API throttling;
+- execution gateway integration.

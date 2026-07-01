@@ -81,7 +81,7 @@ Delivers:
 
 ### Work Order 0005 — scoped API token lifecycle
 
-Status: current implementation slice.
+Status: merged.
 
 Delivers:
 
@@ -94,7 +94,7 @@ Delivers:
 
 ### Work Order 0006 — API v1 reservation operations
 
-Status: next after Work Order 0005 merge.
+Status: current implementation slice.
 
 Delivers:
 
@@ -107,6 +107,8 @@ Delivers:
 - same domain service tests across web/API.
 
 ### Work Order 0007 — management, audit, and policy UX
+
+Status: next after Work Order 0006 merge.
 
 Delivers:
 

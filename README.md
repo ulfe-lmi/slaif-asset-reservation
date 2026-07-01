@@ -6,19 +6,18 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 
 ## Status
 
-**Pre-alpha token-lifecycle MVP. Not production-ready and not yet usable as a complete reservation service.**
+**Pre-alpha API reservation MVP. Not production-ready and not yet usable as a complete reservation service.**
 
 The repository contains a minimal Django/PostgreSQL application foundation: custom user model,
 health checks, hierarchical asset inventory, sanitized bootstrap asset import, member-visible
 inventory web pages, staff-session-only inventory API, generated OpenAPI support with local Swagger
 UI assets, CI, and container
-configuration. It now also contains the internal reservation policy, reservation, PostgreSQL
-exclusivity, audit-event core, and a server-rendered human MVP for active administrator-created
-accounts. It also contains owner-managed API-token lifecycle primitives and UI. Tokens cannot yet
-call asset, availability, or reservation APIs; Work Order 0006 will bind bearer authentication,
-scopes, and idempotency to API endpoints. There is still no reservation API, project/group
-authorization, maintenance calendar, OIDC/password reset, notification system, or production
-readiness.
+configuration. It now also contains reservation policy, reservation, PostgreSQL exclusivity,
+audit-event core, a server-rendered human MVP for active administrator-created accounts, owner-managed
+API-token lifecycle UI, and initial bearer-token API endpoints for `/api/v1/me/`, advisory
+availability, and owner-scoped reservation list/create/detail/cancel/release. There is still no
+project/group authorization, maintenance calendar, token lifecycle API, OIDC/password reset,
+notification system, API throttling, or production readiness.
 
 Verified starting point for this implementation slice:
 
@@ -135,15 +134,36 @@ Human and API paths:
 
 - `http://127.0.0.1:8000/assets/` provides active-asset browsing for active human sessions.
 - `http://127.0.0.1:8000/api/v1/assets/` provides inventory reads for staff sessions only.
+- `http://127.0.0.1:8000/api/v1/me/` provides safe bearer-token principal context.
+- `http://127.0.0.1:8000/api/v1/assets/<uuid>/availability/` provides bearer-token advisory
+  availability with the `availability:read` scope.
+- `http://127.0.0.1:8000/api/v1/reservations/` provides bearer-token owner reservation list/create
+  operations with `reservations:read` or `reservations:create`.
 - `http://127.0.0.1:8000/tokens/` provides owner-scoped token lifecycle management for active
   human sessions.
 
-The REST asset API remains staff-session-only. Bearer-token verification exists but is not enabled
-on any API endpoint yet. Newly created tokens are shown once and cannot be recovered afterward.
+The REST asset list/detail API remains staff-session-only. Bearer-token asset list/detail access,
+token lifecycle APIs, reservation administration APIs, project/resource restrictions, and
+service-account token issuance remain deferred. Newly created tokens are shown once and cannot be
+recovered afterward.
 
-Reservation creation, cancellation, and release are exposed only through the server-rendered member
-UI and call the authoritative reservation services. No reservation or availability REST API route is
-exposed yet. Admin inspection is available, but reservation and audit admin screens remain read-only.
+Example API calls using a fake placeholder token:
+
+```bash
+curl -H 'Authorization: Bearer sar_00000000000000000000000000000000_FAKE_PLACEHOLDER' \
+  http://127.0.0.1:8000/api/v1/me/
+
+curl -X POST \
+  -H 'Authorization: Bearer sar_00000000000000000000000000000000_FAKE_PLACEHOLDER' \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: local-example-0001' \
+  -d '{"asset_id":"00000000-0000-0000-0000-000000000000","start_at":"2026-07-01T08:00:00Z","end_at":"2026-07-01T09:00:00Z","purpose":"local test"}' \
+  http://127.0.0.1:8000/api/v1/reservations/
+```
+
+Reservation creation, cancellation, and release are exposed through both the server-rendered member
+UI and bearer-token API endpoints. Both paths call the same authoritative reservation services.
+Admin inspection is available, but reservation and audit admin screens remain read-only.
 
 Generate and validate the current OpenAPI shell:
 

@@ -1109,10 +1109,10 @@ def test_api_token_production_setting_fail_fast() -> None:
         assert result.returncode != 0
 
 
-def test_no_bearer_security_or_token_routes_in_openapi(client) -> None:
+def test_no_token_lifecycle_routes_in_openapi_root(client) -> None:
     response = client.get("/api/v1/")
     assert response.status_code == 200
     assert "tokens" not in response.json()["endpoints"]
-    assert "reservations" not in response.json()["endpoints"]
-    assert client.get("/api/v1/me").status_code == 404
+    assert "reservations" in response.json()["endpoints"]
+    assert client.get("/api/v1/me/").status_code == 401
     assert client.get("/api/v1/tokens/").status_code == 404

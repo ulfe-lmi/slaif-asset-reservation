@@ -28,6 +28,9 @@ class ApiRootView(APIView):  # type: ignore[misc]
                 "version": "v1",
                 "endpoints": {
                     "assets": "/api/v1/assets/",
+                    "availability": "/api/v1/assets/{asset_id}/availability/",
+                    "me": "/api/v1/me/",
+                    "reservations": "/api/v1/reservations/",
                 },
             }
         )

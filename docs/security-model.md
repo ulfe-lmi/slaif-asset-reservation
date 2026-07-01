@@ -133,6 +133,22 @@ owner, name, verifier, scopes, expiry, and creation time are compared with the s
 write. Only revocation fields together or `last_used_at` may change through service update
 authorization.
 
+Work Order 0006 enables bearer authentication only on `/api/v1/me/`, advisory availability, and
+owner-scoped reservation endpoints. The staff asset list/detail API remains staff-session-only.
+Every bearer endpoint checks explicit scopes; authentication alone is not authorization.
+
+Idempotency records store the owner, token, action, key, canonical request hash, safe replay body,
+bounded allowlisted replay headers, target reference, and correlation UUID. The current replay-header
+allowlist covers the reservation create `Location` header. Expired matching rows fail explicitly
+with `idempotency_expired`; they are not replayed and do not trigger another mutation while cleanup is
+deferred. Idempotency records never store bearer plaintext, Authorization headers, raw request
+bodies, session cookies, CSRF values, token secrets, verifiers, peppers, passwords, or private
+reservation/audit internals.
+
+Problem-details responses are deliberately terse and include stable codes plus a correlation UUID.
+They do not expose ORM exception text, SQL, constraint names, stack traces, token lookup details, or
+secret material.
+
 ## 6. Authorization model
 
 Authorization is action-specific. A principal may be able to see an asset but not reserve it, or read own reservations but not another user's purpose.

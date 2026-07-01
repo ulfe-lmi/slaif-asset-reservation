@@ -93,6 +93,33 @@ plaintext is returned once and is never recoverable. The verifier pepper is supp
 database and differs from Django `SECRET_KEY`. Token identity/history fields are immutable through
 ordinary ORM paths; service-authorized writes may only set revocation and last-use metadata.
 
+Work Order 0006 binds bearer authentication to `/api/v1/me/`, advisory availability, and
+owner-scoped reservation endpoints only. Token lifecycle APIs, service-account issuance, projects,
+memberships, and resource restrictions remain deferred.
+
+## 5.1 Idempotency record
+
+Work Order 0006 implements `IdempotencyRecord` for bearer-token mutation replay:
+
+- `id: UUID`;
+- owner user;
+- API token;
+- action;
+- idempotency key;
+- canonical request hash;
+- request method and path;
+- safe response status/body;
+- optional target type/UUID;
+- correlation UUID;
+- created and expiry timestamps.
+
+Uniqueness is scoped to owner, API token, action, and idempotency key. The key is client generated,
+8 through 128 printable ASCII non-whitespace characters, and is not a secret. The record stores only
+the canonical hash and safe replay body, never bearer tokens, Authorization headers, raw request
+bodies, session cookies, CSRF values, token secrets, verifiers, peppers, passwords, or audit
+internals. Records carry a 24-hour retention target; until cleanup is implemented, stored records
+remain authoritative for replay/conflict decisions.
+
 ## 6. Asset
 
 Assets form a shallow hierarchy. Initial pattern:

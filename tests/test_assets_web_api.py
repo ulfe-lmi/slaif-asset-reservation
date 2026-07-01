@@ -242,4 +242,9 @@ def test_api_root_reports_asset_endpoint(client) -> None:
     response = client.get("/api/v1/")
 
     assert response.status_code == 200
-    assert response.json()["endpoints"] == {"assets": "/api/v1/assets/"}
+    assert response.json()["endpoints"] == {
+        "assets": "/api/v1/assets/",
+        "availability": "/api/v1/assets/{asset_id}/availability/",
+        "me": "/api/v1/me/",
+        "reservations": "/api/v1/reservations/",
+    }

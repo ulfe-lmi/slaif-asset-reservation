@@ -80,13 +80,21 @@ baseline before Work Order 0005:
 fbf3a962d767497a2424ceac2244decf2f1eca23
 ```
 
+Work Order 0005 added scoped API-token lifecycle, one-time plaintext display, revocation,
+verification primitives, and owner-facing management pages. Verified `main` baseline before Work
+Order 0006:
+
+```text
+543f38fe68b8e62572a5ef498e68d9e7ec04b5ae
+```
+
 ## Next recommended task
 
-Work Order 0005 is the current slice: scoped API-token lifecycle, one-time plaintext display,
-revocation, verification primitives, and owner-facing management pages.
+Work Order 0006 is the current slice: API v1 reservation operations and idempotency for software
+agents.
 
-After Work Order 0005 is reviewed and merged, Work Order 0006 remains the next major slice: API v1
-reservation operations and idempotency.
+After Work Order 0006 is reviewed and merged, Work Order 0007 is the next major slice: management,
+audit, and policy UX.
 
 ## Do not do next
 
