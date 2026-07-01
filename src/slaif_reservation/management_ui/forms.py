@@ -5,12 +5,49 @@ from typing import Any
 
 from django import forms
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from slaif_reservation.accounts.validators import TIMEZONE_NAME_MAX_LENGTH, validate_timezone_name
 from slaif_reservation.assets.models import Asset
-from slaif_reservation.reservations.models import Reservation, ReservationPolicy
-from slaif_reservation.reservations.time_utils import LocalTimeError, interpret_local_wall_time
+from slaif_reservation.audit.models import AuditEvent
+from slaif_reservation.reservations.models import (
+    Reservation,
+    ReservationLifecycle,
+    ReservationPolicy,
+)
+from slaif_reservation.reservations.time_utils import (
+    LocalTimeError,
+    interpret_local_wall_time,
+    require_aware_utc,
+)
+
+
+class AwareDateTimeFilterField(forms.CharField):
+    def clean(self, value: Any) -> datetime | None:
+        cleaned = super().clean(value)
+        if cleaned in self.empty_values:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(cleaned).replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise forms.ValidationError(_("Enter an aware ISO-8601 timestamp.")) from exc
+        if not timezone.is_aware(parsed):
+            raise forms.ValidationError(_("Enter an aware ISO-8601 timestamp."))
+        try:
+            return require_aware_utc(parsed, field_name=str(self.label or "timestamp"))
+        except ValidationError as exc:
+            raise forms.ValidationError(_("Enter an aware ISO-8601 timestamp.")) from exc
+
+
+class FilterFormMixin:
+    navigation_fields = {"page"}
+
+    def has_real_filters(self) -> bool:
+        data = getattr(self, "data", {})
+        return any(
+            key not in self.navigation_fields and str(value).strip() for key, value in data.items()
+        )
 
 
 class ReservationPolicyForm(forms.Form):
@@ -174,7 +211,7 @@ class ManagementCancellationForm(forms.Form):
     )
 
 
-class ReservationFilterForm(forms.Form):
+class ReservationFilterForm(FilterFormMixin, forms.Form):
     asset = forms.ModelChoiceField(
         queryset=Asset.objects.select_related("parent").order_by("slug"),
         required=False,
@@ -184,6 +221,56 @@ class ReservationFilterForm(forms.Form):
         required=False,
         choices=[("", "Any status")] + list(Reservation.STATUS_CHOICES),
     )
+    lifecycle = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("", "Any lifecycle"),
+            (ReservationLifecycle.ACTIVE, "Active"),
+            (ReservationLifecycle.UPCOMING, "Upcoming"),
+            (ReservationLifecycle.COMPLETED, "Completed"),
+            (ReservationLifecycle.CANCELLED, "Cancelled"),
+            (ReservationLifecycle.RELEASED, "Released"),
+        ],
+    )
+    from_at = AwareDateTimeFilterField(label=_("From"), required=False)
+    to_at = AwareDateTimeFilterField(label=_("To"), required=False)
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.fields["from"] = self.fields.pop("from_at")
+        self.fields["to"] = self.fields.pop("to_at")
+
+    def clean(self) -> dict[str, Any]:
+        cleaned = super().clean() or {}
+        from_at = cleaned.get("from")
+        to_at = cleaned.get("to")
+        if from_at and to_at and from_at >= to_at:
+            self.add_error("to", _("To must be after from."))
+        return cleaned
+
+
+class AuditFilterForm(FilterFormMixin, forms.Form):
+    action = forms.ChoiceField(
+        required=False,
+        choices=[("", "Any action")] + list(AuditEvent.ACTION_CHOICES),
+    )
+    target_type = forms.CharField(required=False, max_length=80)
+    actor = forms.CharField(required=False, max_length=120)
+    source = forms.ChoiceField(
+        required=False,
+        choices=[("", "Any source")] + list(AuditEvent.SOURCE_CHOICES),
+    )
+    correlation_id = forms.UUIDField(required=False)
+    occurred_from = AwareDateTimeFilterField(label=_("Occurred from"), required=False)
+    occurred_to = AwareDateTimeFilterField(label=_("Occurred to"), required=False)
+
+    def clean(self) -> dict[str, Any]:
+        cleaned = super().clean() or {}
+        occurred_from = cleaned.get("occurred_from")
+        occurred_to = cleaned.get("occurred_to")
+        if occurred_from and occurred_to and occurred_from > occurred_to:
+            self.add_error("occurred_to", _("Occurred to must be after occurred from."))
+        return cleaned
 
 
 def _parse_datetime_local(value: str) -> datetime:

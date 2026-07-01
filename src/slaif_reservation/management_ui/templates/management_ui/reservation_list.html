@@ -5,7 +5,11 @@
   {% include "management_ui/_nav.html" %}
   <h1>{% trans "Managed reservations" %}</h1>
   <form method="get">
-    <label>{% trans "Search" %} <input name="q" value="{{ request.GET.q }}"></label>
+    {{ filter_form.non_field_errors }}
+    {% for field in filter_form %}
+      <label>{{ field.label }} {{ field }}</label>
+      {{ field.errors }}
+    {% endfor %}
     <button type="submit">{% trans "Filter" %}</button>
   </form>
   <table>

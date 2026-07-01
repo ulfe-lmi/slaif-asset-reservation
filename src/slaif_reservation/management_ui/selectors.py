@@ -44,7 +44,7 @@ def reservation_queryset(params: Any | None = None) -> QuerySet[Reservation]:
     if not params:
         return queryset
     if asset_id := params.get("asset"):
-        queryset = queryset.filter(asset_id=asset_id)
+        queryset = queryset.filter(asset=asset_id)
     if status := params.get("status"):
         queryset = queryset.filter(status=status)
     if q := str(params.get("q", "")).strip():
@@ -73,6 +73,10 @@ def reservation_queryset(params: Any | None = None) -> QuerySet[Reservation]:
             queryset = queryset.filter(status=Reservation.STATUS_CANCELLED)
         elif lifecycle == ReservationLifecycle.RELEASED:
             queryset = queryset.filter(status=Reservation.STATUS_RELEASED)
+    if from_at := params.get("from"):
+        queryset = queryset.filter(start_at__gte=from_at)
+    if to_at := params.get("to"):
+        queryset = queryset.filter(start_at__lt=to_at)
     return queryset
 
 
@@ -87,12 +91,20 @@ def audit_queryset(params: Any | None = None) -> QuerySet[AuditEvent]:
     if source := params.get("source"):
         queryset = queryset.filter(source=source)
     if correlation_id := params.get("correlation_id"):
-        try:
-            queryset = queryset.filter(correlation_id=uuid.UUID(str(correlation_id)))
-        except ValueError:
-            queryset = queryset.none()
+        queryset = queryset.filter(correlation_id=correlation_id)
     if actor := params.get("actor"):
-        queryset = queryset.filter(Q(actor_user__display_name__icontains=actor))
+        actor_query = Q(actor_user__display_name__icontains=actor) | Q(
+            actor_user__email__icontains=actor
+        )
+        try:
+            actor_query |= Q(actor_user_id=uuid.UUID(str(actor)))
+        except ValueError:
+            pass
+        queryset = queryset.filter(actor_query)
+    if occurred_from := params.get("occurred_from"):
+        queryset = queryset.filter(occurred_at__gte=occurred_from)
+    if occurred_to := params.get("occurred_to"):
+        queryset = queryset.filter(occurred_at__lte=occurred_to)
     return queryset
 
 

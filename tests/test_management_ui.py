@@ -20,8 +20,11 @@ from slaif_reservation.reservations.models import (
 )
 from slaif_reservation.reservations.services import (
     create_blackout,
+    create_policy,
     create_reservation,
     deactivate_blackout,
+    deactivate_policy,
+    update_policy,
 )
 from slaif_reservation.web.availability import availability_for_asset
 
@@ -173,6 +176,35 @@ def bearer(owner: User, scopes: list[str]) -> str:
 
 def auth_header(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+def policy_payload(asset: Asset, **overrides: str) -> dict[str, str]:
+    payload = {
+        "name": "Managed policy form",
+        "asset": str(asset.id),
+        "min_duration_minutes": "15",
+        "max_duration_minutes": "120",
+        "booking_horizon_days": "30",
+        "min_lead_minutes": "0",
+        "cancellation_cutoff_minutes": "0",
+        "max_upcoming_per_principal": "10",
+        "max_concurrent_per_principal": "2",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def blackout_payload(
+    asset: Asset, start: timezone.datetime, end: timezone.datetime
+) -> dict[str, str]:
+    return {
+        "asset": str(asset.id),
+        "timezone": "UTC",
+        "start": start.astimezone(UTC).replace(tzinfo=None).strftime("%Y-%m-%dT%H:%M"),
+        "end": end.astimezone(UTC).replace(tzinfo=None).strftime("%Y-%m-%dT%H:%M"),
+        "reason": "maintenance window",
+        "confirm_overlaps": "on",
+    }
 
 
 @pytest.mark.django_db
@@ -553,6 +585,384 @@ def test_audit_browsing_export_and_privacy(client: Client, staff_user: User, ass
     assert "Authorization" not in body
     assert "cookie" not in body.lower()
     assert "pepper" not in body.lower()
+
+
+@pytest.mark.django_db
+def test_audit_occurred_filters_and_export_recent_fallback(
+    client: Client,
+    staff_user: User,
+    asset: Asset,
+) -> None:
+    now = timezone.now()
+    old = AuditEvent.objects.create(
+        occurred_at=now - timedelta(days=10),
+        actor_user=staff_user,
+        action=AuditEvent.ACTION_POLICY_CREATED,
+        target_type="reservation_policy",
+        target_id=asset.id,
+        correlation_id=asset.id,
+        source=AuditEvent.SOURCE_ADMIN,
+        metadata={"marker": "old"},
+    )
+    middle = AuditEvent.objects.create(
+        occurred_at=now - timedelta(days=3),
+        actor_user=staff_user,
+        action=AuditEvent.ACTION_BLACKOUT_CREATED,
+        target_type="maintenance_blackout",
+        target_id=asset.id,
+        correlation_id=asset.id,
+        source=AuditEvent.SOURCE_ADMIN,
+        metadata={"marker": "middle"},
+    )
+    recent = AuditEvent.objects.create(
+        occurred_at=now - timedelta(hours=2),
+        actor_user=staff_user,
+        action=AuditEvent.ACTION_RESERVATION_CREATED,
+        target_type="reservation",
+        target_id=asset.id,
+        correlation_id=asset.id,
+        source=AuditEvent.SOURCE_ADMIN,
+        metadata={"marker": "recent"},
+    )
+    client.force_login(staff_user)
+
+    response = client.get(
+        "/manage/audit/", {"occurred_from": (now - timedelta(days=4)).isoformat()}
+    )
+    assert response.status_code == 200
+    assert str(old.id).encode() not in response.content
+    assert str(middle.id).encode() in response.content
+    assert str(recent.id).encode() in response.content
+
+    response = client.get("/manage/audit/", {"occurred_to": (now - timedelta(days=1)).isoformat()})
+    assert response.status_code == 200
+    assert str(old.id).encode() in response.content
+    assert str(middle.id).encode() in response.content
+    assert str(recent.id).encode() not in response.content
+
+    response = client.get(
+        "/manage/audit/",
+        {
+            "occurred_from": (now - timedelta(days=4)).isoformat(),
+            "occurred_to": (now - timedelta(days=1)).isoformat(),
+        },
+    )
+    assert response.status_code == 200
+    assert str(old.id).encode() not in response.content
+    assert str(middle.id).encode() in response.content
+    assert str(recent.id).encode() not in response.content
+
+    response = client.get("/manage/audit/", {"occurred_from": "not-a-timestamp"})
+    assert response.status_code == 200
+    assert b"Enter an aware ISO-8601 timestamp" in response.content
+    assert b"Traceback" not in response.content
+
+    export = client.get(
+        "/manage/audit/export.csv",
+        {"occurred_from": (now - timedelta(days=4)).isoformat()},
+    )
+    body = b"".join(export.streaming_content).decode()
+    assert "middle" in body
+    assert "recent" in body
+    assert "old" not in body
+
+    for params in ({}, {"page": "2"}):
+        export = client.get("/manage/audit/export.csv", params)
+        body = b"".join(export.streaming_content).decode()
+        assert "old" not in body
+        assert "recent" in body
+
+
+@pytest.mark.django_db
+def test_management_reservation_filters(
+    client: Client,
+    staff_user: User,
+    member_user: User,
+    other_user: User,
+    asset: Asset,
+    policy: ReservationPolicy,
+) -> None:
+    other_asset = Asset.objects.create(
+        slug="management-other-gpu",
+        name="Management Other GPU",
+        kind=Asset.KIND_GPU,
+        parent=asset.parent,
+        active=True,
+        reservable=True,
+        verification_required=False,
+    )
+    ReservationPolicy.objects.create(
+        name="Other management policy",
+        asset=other_asset,
+        min_duration_minutes=15,
+        max_duration_minutes=240,
+        booking_horizon_days=30,
+        min_lead_minutes=0,
+        cancellation_cutoff_minutes=0,
+        max_upcoming_per_principal=20,
+        max_concurrent_per_principal=5,
+        purpose_required=False,
+    )
+    now = timezone.now().replace(second=0, microsecond=0)
+    active = direct_reservation(
+        owner=other_user,
+        target=asset,
+        start=now - timedelta(minutes=30),
+        end=now + timedelta(minutes=30),
+    )
+    upcoming = direct_reservation(
+        owner=other_user,
+        target=asset,
+        start=now + timedelta(days=2),
+        end=now + timedelta(days=2, hours=1),
+    )
+    other_asset_reservation = direct_reservation(
+        owner=member_user,
+        target=other_asset,
+        start=now + timedelta(days=3),
+        end=now + timedelta(days=3, hours=1),
+    )
+    cancelled = direct_reservation(
+        owner=other_user,
+        target=asset,
+        start=now + timedelta(days=4),
+        end=now + timedelta(days=4, hours=1),
+        status=Reservation.STATUS_CANCELLED,
+    )
+    completed = direct_reservation(
+        owner=member_user,
+        target=asset,
+        start=now - timedelta(days=3),
+        end=now - timedelta(days=3, hours=-1),
+    )
+    client.force_login(staff_user)
+
+    response = client.get("/manage/reservations/", {"asset": str(asset.id)})
+    assert response.status_code == 200
+    assert str(upcoming.id).encode() in response.content
+    assert str(other_asset_reservation.id).encode() not in response.content
+
+    response = client.get("/manage/reservations/", {"q": other_user.email})
+    assert response.status_code == 200
+    assert str(upcoming.id).encode() in response.content
+    assert str(other_asset_reservation.id).encode() not in response.content
+
+    response = client.get("/manage/reservations/", {"status": Reservation.STATUS_CANCELLED})
+    assert response.status_code == 200
+    assert str(cancelled.id).encode() in response.content
+    assert str(upcoming.id).encode() not in response.content
+
+    response = client.get("/manage/reservations/", {"lifecycle": "active"})
+    assert response.status_code == 200
+    assert str(active.id).encode() in response.content
+    assert str(upcoming.id).encode() not in response.content
+
+    response = client.get(
+        "/manage/reservations/",
+        {
+            "from": (now + timedelta(days=1)).isoformat(),
+            "to": (now + timedelta(days=3)).isoformat(),
+        },
+    )
+    assert response.status_code == 200
+    assert str(upcoming.id).encode() in response.content
+    assert str(completed.id).encode() not in response.content
+
+    response = client.get(
+        "/manage/reservations/",
+        {
+            "from": (now + timedelta(days=3)).isoformat(),
+            "to": (now + timedelta(days=1)).isoformat(),
+        },
+    )
+    assert response.status_code == 200
+    assert b"To must be after from" in response.content
+    assert b"Traceback" not in response.content
+
+    client.logout()
+    client.force_login(member_user)
+    assert client.get(f"/reservations/{upcoming.id}/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_management_mutations_require_csrf(
+    staff_user: User,
+    other_user: User,
+    asset: Asset,
+    policy: ReservationPolicy,
+) -> None:
+    start, end = future_window(days=7)
+    blackout = create_blackout(
+        asset=asset,
+        actor_user=staff_user,
+        reason="maintenance",
+        start_at=start,
+        end_at=end,
+        confirmed_overlap=True,
+    ).blackout
+    cancellable = direct_reservation(
+        owner=other_user,
+        target=asset,
+        start=end + timedelta(days=1),
+        end=end + timedelta(days=1, hours=1),
+    )
+    releasable = direct_reservation(
+        owner=other_user,
+        target=asset,
+        start=timezone.now() - timedelta(minutes=30),
+        end=timezone.now() + timedelta(minutes=30),
+    )
+    audit_count = AuditEvent.objects.count()
+    client = Client(enforce_csrf_checks=True)
+    client.force_login(staff_user)
+
+    checks = [
+        ("post", "/manage/policies/new/", policy_payload(asset, name="CSRF create")),
+        (
+            "post",
+            f"/manage/policies/{policy.id}/edit/",
+            policy_payload(asset, name="CSRF update"),
+        ),
+        ("post", f"/manage/policies/{policy.id}/deactivate/", {}),
+        (
+            "post",
+            "/manage/blackouts/new/",
+            blackout_payload(asset, end + timedelta(days=2), end + timedelta(days=2, hours=1)),
+        ),
+        ("post", f"/manage/blackouts/{blackout.id}/deactivate/", {}),
+        ("post", f"/manage/reservations/{cancellable.id}/cancel/", {"reason": "ops"}),
+        ("post", f"/manage/reservations/{releasable.id}/release/", {}),
+    ]
+    for method, path, data in checks:
+        response = getattr(client, method)(path, data)
+        assert response.status_code == 403
+
+    policy.refresh_from_db()
+    blackout.refresh_from_db()
+    cancellable.refresh_from_db()
+    releasable.refresh_from_db()
+    assert policy.active
+    assert blackout.active
+    assert cancellable.status == Reservation.STATUS_CONFIRMED
+    assert releasable.status == Reservation.STATUS_CONFIRMED
+    assert AuditEvent.objects.count() == audit_count
+    assert not ReservationPolicy.objects.filter(name="CSRF create").exists()
+
+
+@pytest.mark.django_db
+def test_management_get_requests_do_not_mutate_post_only_actions(
+    client: Client,
+    staff_user: User,
+    other_user: User,
+    asset: Asset,
+    policy: ReservationPolicy,
+) -> None:
+    start, end = future_window(days=8)
+    blackout = create_blackout(
+        asset=asset,
+        actor_user=staff_user,
+        reason="maintenance",
+        start_at=start,
+        end_at=end,
+        confirmed_overlap=True,
+    ).blackout
+    cancellable = direct_reservation(
+        owner=other_user,
+        target=asset,
+        start=end + timedelta(days=1),
+        end=end + timedelta(days=1, hours=1),
+    )
+    releasable = direct_reservation(
+        owner=other_user,
+        target=asset,
+        start=timezone.now() - timedelta(minutes=30),
+        end=timezone.now() + timedelta(minutes=30),
+    )
+    audit_count = AuditEvent.objects.count()
+    client.force_login(staff_user)
+
+    paths = [
+        f"/manage/policies/{policy.id}/deactivate/",
+        f"/manage/blackouts/{blackout.id}/deactivate/",
+        f"/manage/reservations/{cancellable.id}/cancel/",
+        f"/manage/reservations/{releasable.id}/release/",
+    ]
+    for path in paths:
+        response = client.get(path)
+        assert response.status_code == 405
+
+    assert client.get("/manage/policies/new/").status_code == 200
+    assert client.get(f"/manage/policies/{policy.id}/edit/").status_code == 200
+    assert client.get("/manage/blackouts/new/").status_code == 200
+    policy.refresh_from_db()
+    blackout.refresh_from_db()
+    cancellable.refresh_from_db()
+    releasable.refresh_from_db()
+    assert policy.active
+    assert blackout.active
+    assert cancellable.status == Reservation.STATUS_CONFIRMED
+    assert releasable.status == Reservation.STATUS_CONFIRMED
+    assert AuditEvent.objects.count() == audit_count
+
+
+@pytest.mark.django_db
+def test_policy_audit_failure_rolls_back_create_update_and_deactivate(
+    monkeypatch: pytest.MonkeyPatch,
+    staff_user: User,
+    asset: Asset,
+    policy: ReservationPolicy,
+) -> None:
+    def fail_audit(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("audit unavailable")
+
+    audit_count = AuditEvent.objects.count()
+    policy_count = ReservationPolicy.objects.count()
+    monkeypatch.setattr("slaif_reservation.reservations.services.append_audit_event", fail_audit)
+
+    with pytest.raises(RuntimeError):
+        create_policy(
+            actor_user=staff_user,
+            name="Rollback global policy",
+            asset=None,
+            min_duration_minutes=15,
+            max_duration_minutes=120,
+            booking_horizon_days=30,
+            min_lead_minutes=0,
+            cancellation_cutoff_minutes=0,
+            max_upcoming_per_principal=10,
+            max_concurrent_per_principal=2,
+            purpose_required=False,
+        )
+    assert ReservationPolicy.objects.count() == policy_count
+    assert AuditEvent.objects.count() == audit_count
+
+    original_name = policy.name
+    original_active = policy.active
+    with pytest.raises(RuntimeError):
+        update_policy(
+            policy=policy,
+            actor_user=staff_user,
+            name="Should roll back",
+            asset=asset,
+            min_duration_minutes=15,
+            max_duration_minutes=120,
+            booking_horizon_days=30,
+            min_lead_minutes=0,
+            cancellation_cutoff_minutes=0,
+            max_upcoming_per_principal=10,
+            max_concurrent_per_principal=2,
+            purpose_required=False,
+        )
+    policy.refresh_from_db()
+    assert policy.name == original_name
+    assert policy.active == original_active
+    assert AuditEvent.objects.count() == audit_count
+
+    with pytest.raises(RuntimeError):
+        deactivate_policy(policy=policy, actor_user=staff_user)
+    policy.refresh_from_db()
+    assert policy.active == original_active
+    assert AuditEvent.objects.count() == audit_count
 
 
 @pytest.mark.django_db

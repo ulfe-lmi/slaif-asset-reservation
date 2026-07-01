@@ -25,8 +25,10 @@ from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
 from slaif_reservation.management_ui.auth import management_required
 from slaif_reservation.management_ui.forms import (
+    AuditFilterForm,
     MaintenanceBlackoutForm,
     ManagementCancellationForm,
+    ReservationFilterForm,
     ReservationPolicyForm,
 )
 from slaif_reservation.management_ui.selectors import (
@@ -246,10 +248,14 @@ def blackout_deactivate(request: HttpRequest, blackout_id: uuid.UUID) -> HttpRes
 
 @management_required
 def reservation_list(request: HttpRequest) -> HttpResponse:
+    form = ReservationFilterForm(request.GET)
+    queryset = (
+        reservation_queryset(form.cleaned_data) if form.is_valid() else Reservation.objects.none()
+    )
     return render(
         request,
         "management_ui/reservation_list.html",
-        {"page": _page(request, reservation_queryset(request.GET), per_page=50)},
+        {"filter_form": form, "page": _page(request, queryset, per_page=50)},
     )
 
 
@@ -310,10 +316,12 @@ def reservation_release(request: HttpRequest, reservation_id: uuid.UUID) -> Http
 
 @management_required
 def audit_list(request: HttpRequest) -> HttpResponse:
+    form = AuditFilterForm(request.GET)
+    queryset = audit_queryset(form.cleaned_data) if form.is_valid() else AuditEvent.objects.none()
     return render(
         request,
         "management_ui/audit_list.html",
-        {"page": _page(request, audit_queryset(request.GET), per_page=50)},
+        {"filter_form": form, "page": _page(request, queryset, per_page=50)},
     )
 
 
@@ -325,8 +333,9 @@ def audit_detail(request: HttpRequest, event_id: uuid.UUID) -> HttpResponse:
 
 @management_required
 def audit_export(request: HttpRequest) -> StreamingHttpResponse:
-    queryset = audit_queryset(request.GET)
-    if not request.GET:
+    form = AuditFilterForm(request.GET)
+    queryset = audit_queryset(form.cleaned_data) if form.is_valid() else AuditEvent.objects.none()
+    if not form.has_real_filters():
         queryset = queryset.filter(occurred_at__gte=timezone.now() - timedelta(days=7))
     rows = list(queryset[:EXPORT_LIMIT])
     response = StreamingHttpResponse(
