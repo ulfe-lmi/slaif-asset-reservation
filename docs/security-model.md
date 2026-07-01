@@ -180,6 +180,15 @@ artifacts and backup destinations are operator-controlled sensitive storage and 
 committed. The repository provides runbooks but no automated backup scheduler, encryption layer,
 off-host copy, or monitoring stack in this slice.
 
+SmartScheduling migration tooling accepts only local JSON/YAML files and synthetic fixtures in this
+repository. Commands reject URLs, unsupported extensions, unknown private fields, duplicate legacy
+IDs, malformed or ambiguous times, and unknown statuses. Private exports, cookies, browser local
+storage, screenshots, traces, phone numbers, raw email exports, private appointment notes, and live
+SmartScheduling URLs must remain outside Git, CI, PRs, logs, and issue comments. Import planning and
+JSON reports contain safe IDs, classifications, counts, and warnings only; they do not contain raw
+export rows or private notes. Successful imports audit only safe legacy source/ID, import batch ID,
+asset ID, and time range.
+
 ## 6. Authorization model
 
 Authorization is action-specific. A principal may be able to see an asset but not reserve it, or read own reservations but not another user's purpose.

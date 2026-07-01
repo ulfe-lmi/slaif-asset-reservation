@@ -6,7 +6,7 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 
 ## Status
 
-**Pre-alpha operational-hardening stage. Not production-ready and not yet deployed.**
+**Pre-alpha SmartScheduling migration-tooling stage. Not production-ready and not yet deployed.**
 
 The repository contains a minimal Django/PostgreSQL application foundation: custom user model,
 health checks, hierarchical asset inventory, sanitized bootstrap asset import, member-visible
@@ -22,7 +22,9 @@ production-shaped Compose/proxy examples, structured production logging, operati
 idempotency cleanup, backup/restore wrappers, and operator runbooks. There is still no real
 production deployment, project/group authorization, full operating-hours calendar, token lifecycle
 API, management REST API, OIDC/password reset, notification system, API throttling, execution
-gateway, automated scheduler, production monitoring stack, or SmartScheduling migration tooling.
+gateway, automated scheduler, production monitoring stack, or real SmartScheduling import/cutover.
+This slice adds only synthetic-fixture-driven SmartScheduling migration tooling; private exports
+remain outside Git and CI.
 
 Verified starting point for this implementation slice:
 
@@ -99,6 +101,19 @@ Apply it to the local development database only after reviewing the dry-run coun
 ```bash
 uv run --env-file .env python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml --apply
 ```
+
+Inspect the synthetic SmartScheduling migration fixture without private data:
+
+```bash
+uv run --env-file .env python manage.py inspect_smartscheduling_export \
+  --input data/synthetic/smartscheduling_export.yaml \
+  --source smartscheduling-synthetic \
+  --timezone Europe/Ljubljana
+```
+
+The SmartScheduling migration commands are for synthetic fixtures and future human-supervised
+rehearsals only. Do not commit private exports, cookies, screenshots, browser traces, phone
+numbers, raw emails, or legacy private notes.
 
 Run the local application:
 

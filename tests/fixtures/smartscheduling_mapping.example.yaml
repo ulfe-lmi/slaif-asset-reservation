@@ -1,0 +1,5 @@
+format: slaif-smartscheduling-mapping-v1
+users:
+  legacy-person-1: "00000000-0000-0000-0000-000000000001"
+assets:
+  legacy-gpu-1: "00000000-0000-0000-0000-000000000002"

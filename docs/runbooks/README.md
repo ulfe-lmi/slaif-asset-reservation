@@ -10,6 +10,7 @@ Runbooks for the internal pre-alpha operational-hardening stage:
 - [Database unavailable/readiness failure](database-unavailable.md)
 - [Expired idempotency cleanup](idempotency-cleanup.md)
 - [Management blackout process](management-blackouts.md)
+- [SmartScheduling migration rehearsal](smartscheduling-migration.md)
 
 These runbooks do not claim that production deployment, monitoring, automated backups, OIDC,
 notifications, or execution-gateway integration are complete.

@@ -123,7 +123,7 @@ Delivers:
 
 ### Work Order 0008 — operational hardening
 
-Status: current implementation slice.
+Status: merged.
 
 Delivers:
 
@@ -138,7 +138,7 @@ Delivers:
 
 ### Work Order 0009 — SmartScheduling migration tooling
 
-Status: next after Work Order 0008 merge.
+Status: current implementation slice.
 
 Delivers:
 
@@ -150,6 +150,8 @@ Delivers:
 - legacy conflict reporting.
 
 ### Work Order 0010 — alpha verification and remediation
+
+Status: next after Work Order 0009 merge.
 
 Verification-only run, strategic/cross-model security and architecture audit, then narrowly scoped repair pull requests. Do not combine unrelated audit findings into one large repair.
 

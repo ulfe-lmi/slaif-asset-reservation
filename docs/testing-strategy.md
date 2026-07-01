@@ -101,6 +101,12 @@ structured logging redaction, request-log field minimization, `/health/ready` mi
 readiness, `operational_check`, PostgreSQL backup/restore wrapper refusal and dry-run behavior, and
 expired idempotency-record cleanup dry-run/apply behavior.
 
+Work Order 0009 adds SmartScheduling migration-tooling tests for strict synthetic export parsing,
+private-field rejection, unsupported extension/URL refusal, ambiguous/nonexistent local time
+rejection, duplicate legacy ID detection, explicit user/asset mapping, unmapped and conflict
+classifications, dry-run no-write behavior, idempotent apply, changed-record detection, blackout and
+reservation conflicts, command output/report redaction, and audit-failure rollback.
+
 ### Migration tests
 
 - bootstrap YAML schema validation;

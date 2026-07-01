@@ -15,5 +15,10 @@ __pycache__
 !.env.example
 backups
 deploy/secrets
+legacy_exports
+private_exports
+smartscheduling_exports
+*.smart-export.*
+migration_artifacts/private
 docs
 tests

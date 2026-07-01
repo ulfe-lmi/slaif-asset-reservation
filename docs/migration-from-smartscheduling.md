@@ -144,22 +144,24 @@ Store real exports outside Git with access controls.
 
 ### Phase 3: importer
 
-Management command requirements:
+Work Order 0009 implements synthetic-fixture-driven tooling with these commands:
 
 ```text
-import_smartscheduling --input <path> --dry-run
-import_smartscheduling --input <path> --apply --batch-id <id>
+inspect_smartscheduling_export --input <path> --source <name> --timezone <zone>
+plan_smartscheduling_import --input <path> --source <name> --timezone <zone> [--mapping <path>]
+import_smartscheduling_export --input <path> --source <name> --timezone <zone> [--mapping <path>]
+import_smartscheduling_export --apply --input <path> --source <name> --timezone <zone> [--mapping <path>]
 ```
 
-- dry-run by default or explicit dry-run available;
-- schema validation;
-- deterministic ID mapping;
-- idempotent re-run;
-- transaction boundaries;
-- rejected-row report without secret leakage;
-- reconciliation totals;
-- no silent truncation;
-- synthetic fixtures in Git, real exports outside Git.
+The implemented toolchain validates the complete synthetic export before planning, rejects URLs and
+unsupported file extensions, normalizes local wall times through explicit IANA timezone handling,
+uses explicit user/asset mapping, reports deterministic counts, writes optional redacted JSON
+reports, and imports only eligible records in explicit `--apply` mode. Repeated applies use
+`legacy_source + legacy_id` idempotency evidence; changed imported rows report `legacy_changed` and
+are not overwritten.
+
+Real exports remain outside Git. A private rehearsal still needs human approval, private storage,
+backup before apply, and manual reconciliation.
 
 ### Phase 4: rehearsal
 
@@ -200,6 +202,10 @@ Every import batch reports:
 - timezone assumptions;
 - validation errors;
 - no raw personal rows in the report.
+
+Work Order 0009 reports only safe identifiers, classifications, counts, warnings, source checksum,
+and imported reservation references. It does not include raw export rows, phone numbers, raw email
+addresses, cookies, browser state, or private notes.
 
 ## 9. Conflict handling
 

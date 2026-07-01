@@ -343,7 +343,7 @@ The scaffold is intentionally not production-ready. Remaining gaps include:
 - no backup scheduler or restore drill against a production copy;
 - no production monitoring stack or alert routing;
 - no OIDC, email, password reset, or notifications;
-- no SmartScheduling migration tooling;
+- no real SmartScheduling export processed, production import performed, or cutover rehearsed;
 - no execution gateway integration;
 - reverse-proxy static-asset strategy for production if WhiteNoise is later replaced;
 - no projects/resource restrictions or delegated resource-manager roles beyond active staff.
