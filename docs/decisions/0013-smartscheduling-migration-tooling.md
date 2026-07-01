@@ -42,6 +42,16 @@ client notes, cookies, tokens, screenshots, traces, or browser storage. Idempote
 `legacy_source + legacy_id`: repeating the same normalized record reports `already_imported`, while
 changed data for an imported legacy ID reports `legacy_changed` and is not overwritten.
 
+Dry-run plans are advisory. Apply revalidates each would-create record inside the apply transaction
+before writing: the legacy import record lookup, mapped asset, mapped user, selected effective
+policy, active blackout overlap, and current blocking reservation overlap are checked again. If
+authoritative state changed after planning, apply skips that record with the final deterministic
+classification rather than importing stale data. PostgreSQL reservation exclusivity remains the
+final arbiter of reservation-vs-reservation races. The apply JSON report is therefore the
+authoritative final import artifact for that run; it includes `mode="apply"`, the import batch ID,
+final counts, final per-record classifications, and reservation IDs only for imported or already
+imported records.
+
 Successful imported reservations append ordinary `reservation.created` audit events with
 `source="migration"` and safe metadata: legacy source, legacy ID, import batch ID, asset ID, and
 time range. Audit metadata never includes purpose text, private notes, raw user data, credentials,

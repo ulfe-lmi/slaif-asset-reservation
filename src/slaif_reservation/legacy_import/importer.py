@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
@@ -13,12 +14,21 @@ from slaif_reservation.audit.services import append_audit_event
 from slaif_reservation.legacy_import.exceptions import LegacyImportError
 from slaif_reservation.legacy_import.models import LegacyImportBatch, LegacyImportRecord
 from slaif_reservation.legacy_import.planner import (
+    PLAN_CLASSIFICATIONS,
+    _asset_allowed,
+    _message,
     normalized_appointment_hash,
     plan_import,
     safe_plan_report,
 )
 from slaif_reservation.legacy_import.types import ImportPlan, PlannedAppointment
-from slaif_reservation.reservations.models import Reservation
+from slaif_reservation.reservations.exceptions import (
+    POLICY_AMBIGUOUS,
+    POLICY_NOT_CONFIGURED,
+    ReservationDomainError,
+)
+from slaif_reservation.reservations.models import MaintenanceBlackout, Reservation
+from slaif_reservation.reservations.services import _enforce_policy, lock_effective_policy
 
 UserModel = get_user_model()
 
@@ -67,10 +77,7 @@ def _create_imported_reservation(
         purpose=appointment.purpose,
     )
     reservation.full_clean(validate_constraints=False)
-    try:
-        reservation.save()
-    except IntegrityError as exc:
-        raise LegacyImportError("Reservation conflict occurred during import apply.") from exc
+    reservation.save()
 
     append_audit_event(
         action=AuditEvent.ACTION_RESERVATION_CREATED,
@@ -107,24 +114,293 @@ def _create_imported_reservation(
     return reservation
 
 
-def apply_import(plan: ImportPlan) -> ApplyResult:
-    eligible = [record for record in plan.records if record.classification == "would_create"]
-    counts = dict(plan.counts)
+def _existing_record_classification(item: PlannedAppointment) -> PlannedAppointment | None:
+    appointment = item.appointment
+    existing = (
+        LegacyImportRecord.objects.select_for_update()
+        .filter(
+            legacy_source=appointment.legacy_source,
+            legacy_id=appointment.legacy_id,
+        )
+        .first()
+    )
+    if existing is None:
+        return None
+    normalized_hash = normalized_appointment_hash(appointment)
+    classification: Literal["already_imported", "legacy_changed"] = (
+        "already_imported" if existing.normalized_hash == normalized_hash else "legacy_changed"
+    )
+    return PlannedAppointment(
+        appointment=appointment,
+        classification=classification,
+        asset_id=item.asset_id,
+        user_id=item.user_id,
+        reservation_id=str(existing.reservation_id) if existing.reservation_id else None,
+        messages=(
+            _message(
+                classification,
+                appointment.legacy_id,
+                "Legacy appointment was already imported."
+                if classification == "already_imported"
+                else "Legacy appointment changed after import; not overwritten.",
+            ),
+        ),
+    )
+
+
+def _revalidate_for_apply(item: PlannedAppointment) -> PlannedAppointment:
+    existing = _existing_record_classification(item)
+    if existing is not None:
+        return existing
+
+    appointment = item.appointment
+    if item.asset_id is None:
+        return PlannedAppointment(
+            appointment=appointment,
+            classification="unmapped_asset",
+            messages=(
+                _message(
+                    "unmapped_asset",
+                    appointment.legacy_id,
+                    "Legacy resource could not be mapped to an asset.",
+                ),
+            ),
+        )
+    if item.user_id is None:
+        return PlannedAppointment(
+            appointment=appointment,
+            classification="unmapped_user",
+            asset_id=item.asset_id,
+            messages=(
+                _message(
+                    "unmapped_user",
+                    appointment.legacy_id,
+                    "Legacy requester could not be mapped to an existing user.",
+                ),
+            ),
+        )
+
+    try:
+        asset = Asset.objects.select_for_update().get(pk=item.asset_id)
+    except Asset.DoesNotExist:
+        return PlannedAppointment(
+            appointment=appointment,
+            classification="unmapped_asset",
+            messages=(
+                _message(
+                    "unmapped_asset",
+                    appointment.legacy_id,
+                    "Mapped asset no longer exists.",
+                ),
+            ),
+        )
+    if asset.parent_id:
+        asset.parent = Asset.objects.get(pk=asset.parent_id)
+
+    try:
+        user = UserModel.objects.select_for_update().get(pk=item.user_id)
+    except UserModel.DoesNotExist:
+        return PlannedAppointment(
+            appointment=appointment,
+            classification="unmapped_user",
+            asset_id=str(asset.id),
+            messages=(
+                _message(
+                    "unmapped_user",
+                    appointment.legacy_id,
+                    "Mapped requester no longer exists.",
+                ),
+            ),
+        )
+
+    if not user.is_active or getattr(user, "is_service_account", False):
+        return PlannedAppointment(
+            appointment=appointment,
+            classification="unmapped_user",
+            asset_id=str(asset.id),
+            user_id=str(user.id),
+            messages=(
+                _message(
+                    "unmapped_user",
+                    appointment.legacy_id,
+                    "Mapped requester is not an active human user.",
+                ),
+            ),
+        )
+
+    if not _asset_allowed(asset):
+        return PlannedAppointment(
+            appointment=appointment,
+            classification="asset_not_reservable",
+            asset_id=str(asset.id),
+            user_id=str(user.id),
+            messages=(
+                _message(
+                    "asset_not_reservable",
+                    appointment.legacy_id,
+                    "Mapped asset is inactive, non-reservable, or unsupported.",
+                ),
+            ),
+        )
+
+    try:
+        policy = lock_effective_policy(asset)
+        if appointment.start_at >= timezone.now():
+            _enforce_policy(
+                policy=policy,
+                principal=user,
+                start_at=appointment.start_at,
+                end_at=appointment.end_at,
+                purpose=appointment.purpose,
+                now=timezone.now(),
+            )
+    except ReservationDomainError as exc:
+        policy_classification: Literal["policy_not_configured", "error"] = "policy_not_configured"
+        if exc.code == POLICY_AMBIGUOUS:
+            policy_classification = "error"
+        elif exc.code != POLICY_NOT_CONFIGURED:
+            policy_classification = "error"
+        return PlannedAppointment(
+            appointment=appointment,
+            classification=policy_classification,
+            asset_id=str(asset.id),
+            user_id=str(user.id),
+            messages=(
+                _message(
+                    policy_classification,
+                    appointment.legacy_id,
+                    "No unambiguous effective reservation policy applies.",
+                    level="error",
+                ),
+            ),
+        )
+
+    if (
+        MaintenanceBlackout.objects.select_for_update()
+        .filter(
+            asset=asset,
+            active=True,
+            start_at__lt=appointment.end_at,
+            end_at__gt=appointment.start_at,
+        )
+        .exists()
+    ):
+        return PlannedAppointment(
+            appointment=appointment,
+            classification="blackout_conflict",
+            asset_id=str(asset.id),
+            user_id=str(user.id),
+            messages=(
+                _message(
+                    "blackout_conflict",
+                    appointment.legacy_id,
+                    "Appointment overlaps an active maintenance blackout.",
+                ),
+            ),
+        )
+
+    if (
+        Reservation.objects.select_for_update()
+        .filter(
+            asset=asset,
+            status__in=[Reservation.STATUS_CONFIRMED, Reservation.STATUS_RELEASED],
+            start_at__lt=appointment.end_at,
+            effective_end_at__gt=appointment.start_at,
+        )
+        .exists()
+    ):
+        return PlannedAppointment(
+            appointment=appointment,
+            classification="reservation_conflict",
+            asset_id=str(asset.id),
+            user_id=str(user.id),
+            messages=(
+                _message(
+                    "reservation_conflict",
+                    appointment.legacy_id,
+                    "Appointment overlaps an existing blocking reservation.",
+                ),
+            ),
+        )
+
+    return PlannedAppointment(
+        appointment=appointment,
+        classification="would_create",
+        asset_id=str(asset.id),
+        user_id=str(user.id),
+    )
+
+
+def _mark_imported(item: PlannedAppointment, reservation: Reservation) -> PlannedAppointment:
+    return PlannedAppointment(
+        appointment=item.appointment,
+        classification="imported",
+        asset_id=item.asset_id,
+        user_id=item.user_id,
+        reservation_id=str(reservation.id),
+    )
+
+
+def _mark_constraint_conflict(item: PlannedAppointment) -> PlannedAppointment:
+    return PlannedAppointment(
+        appointment=item.appointment,
+        classification="reservation_conflict",
+        asset_id=item.asset_id,
+        user_id=item.user_id,
+        messages=(
+            _message(
+                "reservation_conflict",
+                item.appointment.legacy_id,
+                "Appointment overlaps an existing blocking reservation.",
+            ),
+        ),
+    )
+
+
+def _apply_counts(records: list[PlannedAppointment]) -> dict[str, int]:
+    counts = {classification: 0 for classification in PLAN_CLASSIFICATIONS}
     counts["imported"] = 0
+    for item in records:
+        counts[item.classification] = counts.get(item.classification, 0) + 1
+    counts["total"] = len(records)
+    return counts
+
+
+def apply_import(plan: ImportPlan) -> ApplyResult:
+    final_records: list[PlannedAppointment] = []
     with transaction.atomic():
         batch = _create_batch(
             plan=plan,
             mode=LegacyImportBatch.MODE_APPLY,
             status=LegacyImportBatch.STATUS_APPLIED,
-            summary={"counts": counts},
+            summary={"counts": {"total": len(plan.records), "imported": 0}},
         )
-        for item in eligible:
-            _create_imported_reservation(item=item, batch=batch)
-            counts["imported"] += 1
+        for item in plan.records:
+            if item.classification != "would_create":
+                final_records.append(item)
+                continue
+            final_item = _revalidate_for_apply(item)
+            if final_item.classification != "would_create":
+                final_records.append(final_item)
+                continue
+            try:
+                with transaction.atomic():
+                    reservation = _create_imported_reservation(item=final_item, batch=batch)
+            except IntegrityError:
+                final_records.append(_mark_constraint_conflict(final_item))
+                continue
+            final_records.append(_mark_imported(final_item, reservation))
+        counts = _apply_counts(final_records)
+        final_plan = ImportPlan(
+            export=plan.export,
+            records=tuple(final_records),
+            counts=counts,
+            messages=tuple(message for record in final_records for message in record.messages),
+        )
         batch.summary = {"counts": counts}
         batch.full_clean()
         batch.save(update_fields=["summary"])
-    return ApplyResult(batch=batch, plan=plan, counts=counts)
+    return ApplyResult(batch=batch, plan=final_plan, counts=counts)
 
 
 def inspect_summary(plan: ImportPlan) -> dict[str, Any]:
@@ -145,3 +421,10 @@ def build_plan(export: Any, mapping: Any) -> ImportPlan:
 
 def build_safe_report(plan: ImportPlan) -> dict[str, Any]:
     return safe_plan_report(plan)
+
+
+def build_apply_report(result: ApplyResult) -> dict[str, Any]:
+    report = safe_plan_report(result.plan)
+    report["mode"] = LegacyImportBatch.MODE_APPLY
+    report["batch_id"] = str(result.batch.id)
+    return report

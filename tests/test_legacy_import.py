@@ -10,12 +10,13 @@ import pytest
 import yaml
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.utils import timezone
 
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
 from slaif_reservation.legacy_import.exceptions import LegacyImportError
-from slaif_reservation.legacy_import.importer import apply_import
+from slaif_reservation.legacy_import.importer import apply_import, build_apply_report
 from slaif_reservation.legacy_import.mapping import LegacyMapping, load_mapping
 from slaif_reservation.legacy_import.models import LegacyImportBatch, LegacyImportRecord
 from slaif_reservation.legacy_import.parser import parse_synthetic_export
@@ -387,6 +388,161 @@ def test_apply_creates_migration_reservation_audit_and_is_idempotent(tmp_path: P
     assert AuditEvent.objects.count() == 1
 
 
+def test_apply_revalidates_new_blackout_inside_transaction(tmp_path: Path) -> None:
+    plan = parsed_plan(tmp_path)
+    item = plan.records[0]
+    staff = User.objects.create_user(
+        email="legacy-blackout-staff@example.com",
+        password="not-a-secret",
+        is_staff=True,
+    )
+    asset_obj = Asset.objects.get(pk=item.asset_id)
+    create_blackout(
+        asset=asset_obj,
+        actor_user=staff,
+        reason="Synthetic blackout",
+        start_at=item.appointment.start_at,
+        end_at=item.appointment.end_at,
+        confirmed_overlap=True,
+    )
+    audit_before = AuditEvent.objects.filter(
+        action=AuditEvent.ACTION_RESERVATION_CREATED,
+        source=AuditEvent.SOURCE_MIGRATION,
+    ).count()
+
+    result = apply_import(plan)
+
+    assert result.counts["imported"] == 0
+    assert result.counts["blackout_conflict"] == 1
+    assert result.plan.records[0].classification == "blackout_conflict"
+    assert Reservation.objects.count() == 0
+    assert LegacyImportRecord.objects.count() == 0
+    assert (
+        AuditEvent.objects.filter(
+            action=AuditEvent.ACTION_RESERVATION_CREATED,
+            source=AuditEvent.SOURCE_MIGRATION,
+        ).count()
+        == audit_before
+    )
+
+
+def test_apply_revalidates_new_reservation_conflict_inside_transaction(tmp_path: Path) -> None:
+    plan = parsed_plan(tmp_path)
+    item = plan.records[0]
+    Reservation.objects.create(
+        asset=Asset.objects.get(pk=item.asset_id),
+        requested_by_user=User.objects.get(pk=item.user_id),
+        source=Reservation.SOURCE_MIGRATION,
+        status=Reservation.STATUS_CONFIRMED,
+        start_at=item.appointment.start_at,
+        end_at=item.appointment.end_at,
+        effective_end_at=item.appointment.end_at,
+    )
+
+    result = apply_import(plan)
+
+    assert result.counts["imported"] == 0
+    assert result.counts["reservation_conflict"] == 1
+    assert result.plan.records[0].classification == "reservation_conflict"
+    assert Reservation.objects.count() == 1
+    assert LegacyImportRecord.objects.count() == 0
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 0
+
+
+@pytest.mark.parametrize("field", ["active", "reservable"])
+def test_apply_revalidates_asset_state_inside_transaction(tmp_path: Path, field: str) -> None:
+    plan = parsed_plan(tmp_path)
+    asset_obj = Asset.objects.get(pk=plan.records[0].asset_id)
+    setattr(asset_obj, field, False)
+    if field == "active":
+        asset_obj.reservable = False
+    asset_obj.save()
+
+    result = apply_import(plan)
+
+    assert result.counts["imported"] == 0
+    assert result.counts["asset_not_reservable"] == 1
+    assert Reservation.objects.count() == 0
+    assert LegacyImportRecord.objects.count() == 0
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 0
+
+
+def test_apply_revalidates_user_state_inside_transaction(tmp_path: Path) -> None:
+    plan = parsed_plan(tmp_path)
+    owner = User.objects.get(pk=plan.records[0].user_id)
+    owner.is_active = False
+    owner.save(update_fields=["is_active"])
+
+    result = apply_import(plan)
+
+    assert result.counts["imported"] == 0
+    assert result.counts["unmapped_user"] == 1
+    assert Reservation.objects.count() == 0
+    assert LegacyImportRecord.objects.count() == 0
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 0
+
+
+def test_apply_revalidates_missing_future_policy_inside_transaction(tmp_path: Path) -> None:
+    start = timezone.localtime(timezone.now() + timedelta(days=2)).replace(tzinfo=None)
+    plan = parsed_plan(
+        tmp_path,
+        appointments=[
+            {
+                "legacy_id": "future-policy-stale",
+                "resource_legacy_id": "legacy-gpu-1",
+                "requester_legacy_id": "legacy-person-1",
+                "start": start.isoformat(timespec="minutes"),
+                "end": (start + timedelta(hours=1)).isoformat(timespec="minutes"),
+                "status": "confirmed",
+            }
+        ],
+    )
+    stale_policy = ReservationPolicy.objects.get(asset__isnull=True)
+    stale_policy.active = False
+    stale_policy._slaif_reservation_service_update = True
+    stale_policy.save()
+    delattr(stale_policy, "_slaif_reservation_service_update")
+
+    result = apply_import(plan)
+
+    assert result.counts["imported"] == 0
+    assert result.counts["policy_not_configured"] == 1
+    assert Reservation.objects.count() == 0
+    assert LegacyImportRecord.objects.count() == 0
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 0
+
+
+def test_apply_revalidates_existing_legacy_import_record_inside_transaction(
+    tmp_path: Path,
+) -> None:
+    plan = parsed_plan(tmp_path)
+    item = plan.records[0]
+    batch = LegacyImportBatch.objects.create(
+        source_name=plan.export.legacy_source,
+        source_checksum=plan.export.source_checksum,
+        synthetic=True,
+        mode=LegacyImportBatch.MODE_APPLY,
+        status=LegacyImportBatch.STATUS_APPLIED,
+        summary={"counts": {"imported": 0}},
+    )
+    LegacyImportRecord.objects.create(
+        batch=batch,
+        legacy_source=item.appointment.legacy_source,
+        legacy_id=item.appointment.legacy_id,
+        normalized_hash="0" * 64,
+        result=LegacyImportRecord.RESULT_LEGACY_CHANGED,
+        safe_metadata={},
+    )
+
+    result = apply_import(plan)
+
+    assert result.counts["imported"] == 0
+    assert result.counts["legacy_changed"] == 1
+    assert Reservation.objects.count() == 0
+    assert LegacyImportRecord.objects.count() == 1
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 0
+
+
 def test_changed_legacy_record_is_reported_not_overwritten(tmp_path: Path) -> None:
     apply_import(parsed_plan(tmp_path))
     changed = parsed_plan(
@@ -553,6 +709,78 @@ def test_command_dry_run_report_is_redacted_and_apply_requires_explicit_flag(
     assert Reservation.objects.count() == 1
 
 
+def test_apply_report_reflects_final_apply_result_and_is_redacted(tmp_path: Path) -> None:
+    plan = parsed_plan(tmp_path)
+
+    result = apply_import(plan)
+    report = build_apply_report(result)
+    encoded_report = json.dumps(report)
+
+    assert report["mode"] == "apply"
+    assert report["batch_id"] == str(result.batch.id)
+    assert report["counts"]["imported"] == 1
+    assert report["records"][0]["classification"] == "imported"
+    assert report["records"][0]["reservation_id"] == str(Reservation.objects.get().id)
+    assert "Synthetic purpose" not in encoded_report
+    assert "phone" not in encoded_report.lower()
+    assert "cookie" not in encoded_report.lower()
+    assert "authorization" not in encoded_report.lower()
+
+
+def test_apply_report_reflects_apply_time_conflict(tmp_path: Path) -> None:
+    plan = parsed_plan(tmp_path)
+    item = plan.records[0]
+    Reservation.objects.create(
+        asset=Asset.objects.get(pk=item.asset_id),
+        requested_by_user=User.objects.get(pk=item.user_id),
+        source=Reservation.SOURCE_MIGRATION,
+        status=Reservation.STATUS_CONFIRMED,
+        start_at=item.appointment.start_at,
+        end_at=item.appointment.end_at,
+        effective_end_at=item.appointment.end_at,
+    )
+
+    result = apply_import(plan)
+    report = build_apply_report(result)
+
+    assert report["mode"] == "apply"
+    assert report["counts"]["reservation_conflict"] == 1
+    assert report["counts"]["imported"] == 0
+    assert report["records"][0]["classification"] == "reservation_conflict"
+    assert "reservation_id" not in report["records"][0]
+
+
+def test_apply_command_report_uses_final_apply_report(tmp_path: Path) -> None:
+    owner = user()
+    asset_obj = asset()
+    policy()
+    export_path = write_export(tmp_path)
+    mapping_path = write_mapping(tmp_path, owner=owner, asset_obj=asset_obj)
+    report_path = tmp_path / "apply-report.json"
+
+    call_command(
+        "import_smartscheduling_export",
+        "--apply",
+        "--input",
+        str(export_path),
+        "--source",
+        "smartscheduling-synthetic",
+        "--timezone",
+        "Europe/Ljubljana",
+        "--mapping",
+        str(mapping_path),
+        "--report-json",
+        str(report_path),
+        stdout=StringIO(),
+    )
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["mode"] == "apply"
+    assert report["batch_id"] == str(LegacyImportBatch.objects.get().id)
+    assert report["counts"]["imported"] == 1
+    assert report["records"][0]["classification"] == "imported"
+
+
 def test_command_inspect_and_plan_outputs_are_deterministic(tmp_path: Path) -> None:
     owner = user()
     asset_obj = asset()
@@ -652,3 +880,54 @@ def test_future_import_uses_current_policy_boundaries(tmp_path: Path) -> None:
 
     assert plan.counts["error"] == 1
     assert plan.records[0].messages[0].code == "error"
+
+
+@pytest.mark.parametrize(
+    "url_value",
+    [
+        "file:///tmp/export.yaml",
+        "ftp://legacy.example/export.yaml",
+        "https://legacy.example/export.yaml",
+    ],
+)
+def test_input_url_schemes_are_refused(tmp_path: Path, url_value: str) -> None:
+    with pytest.raises(LegacyImportError, match="URL inputs are not accepted"):
+        parse_synthetic_export(
+            Path(url_value),
+            source_name="smartscheduling-synthetic",
+            timezone_name="Europe/Ljubljana",
+        )
+
+
+@pytest.mark.parametrize(
+    "report_path",
+    [
+        "file:///tmp/report.json",
+        "ftp://legacy.example/report.json",
+        "https://legacy.example/report.json",
+    ],
+)
+def test_report_json_url_schemes_are_refused(tmp_path: Path, report_path: str) -> None:
+    owner = user()
+    asset_obj = asset()
+    policy()
+    export_path = write_export(tmp_path)
+    mapping_path = write_mapping(tmp_path, owner=owner, asset_obj=asset_obj)
+
+    with pytest.raises(CommandError, match="Report path must be a local filesystem path"):
+        call_command(
+            "import_smartscheduling_export",
+            "--input",
+            str(export_path),
+            "--source",
+            "smartscheduling-synthetic",
+            "--timezone",
+            "Europe/Ljubljana",
+            "--mapping",
+            str(mapping_path),
+            "--report-json",
+            report_path,
+            stdout=StringIO(),
+        )
+
+    assert Reservation.objects.count() == 0

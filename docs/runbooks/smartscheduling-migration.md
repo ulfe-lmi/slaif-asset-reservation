@@ -48,6 +48,13 @@ uv run --env-file .env python manage.py import_smartscheduling_export \
   --report-json /tmp/slaif-smartscheduling-apply.json
 ```
 
+The apply command revalidates current database state inside the apply transaction before creating
+each reservation. A record that was `would_create` during dry-run may become `blackout_conflict`,
+`reservation_conflict`, `asset_not_reservable`, `policy_not_configured`, `already_imported`, or
+`legacy_changed` at apply time if the database changed. Treat the apply JSON report, not the earlier
+dry-run report, as the authoritative final import artifact. It includes the batch ID, final counts,
+final per-record classifications, and reservation IDs only for imported or already-imported records.
+
 ## Reconciliation Checklist
 
 - Map every legacy person to an existing SLAIF user UUID; do not auto-create production users.
@@ -65,8 +72,9 @@ uv run --env-file .env python manage.py import_smartscheduling_export \
 2. Run the dry-run planner against the exact export and mapping files intended for apply.
 3. Review the redacted JSON report and command counts.
 4. Apply against a disposable rehearsal database before any production attempt.
-5. Verify imported reservations, audit events, and `LegacyImportRecord` idempotency evidence.
-6. If the rehearsal is wrong, restore the database backup; the importer does not implement a
+5. Review the apply JSON report for final classifications after transaction-time revalidation.
+6. Verify imported reservations, audit events, and `LegacyImportRecord` idempotency evidence.
+7. If the rehearsal is wrong, restore the database backup; the importer does not implement a
    partial rollback command.
 
 No production cutover, restore drill against production, or real SmartScheduling export is performed

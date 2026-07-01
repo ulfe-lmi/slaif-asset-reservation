@@ -10,7 +10,7 @@ from django.db import DatabaseError
 from slaif_reservation.legacy_import.exceptions import LegacyImportError
 from slaif_reservation.legacy_import.importer import build_plan
 from slaif_reservation.legacy_import.mapping import load_mapping
-from slaif_reservation.legacy_import.parser import parse_synthetic_export
+from slaif_reservation.legacy_import.parser import _reject_url, parse_synthetic_export
 
 
 def add_common_import_arguments(parser: CommandParser, *, include_mapping: bool = True) -> None:
@@ -51,10 +51,11 @@ def load_export(options: dict[str, Any]) -> Any:
 def write_report(path_value: str | None, payload: dict[str, Any]) -> None:
     if not path_value:
         return
+    try:
+        _reject_url(path_value)
+    except LegacyImportError as exc:
+        raise CommandError("Report path must be a local filesystem path.") from exc
     path = Path(path_value)
-    raw = str(path)
-    if raw.startswith(("http://", "https://")):
-        raise CommandError("Report path must be a local filesystem path.")
     if not path.parent.exists():
         raise CommandError("Report parent directory does not exist.")
     try:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -67,9 +68,12 @@ PRIVATE_OR_UNSUPPORTED_KEYS = frozenset(
 )
 
 
+URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:/+")
+
+
 def _reject_url(value: str) -> None:
     lowered = value.strip().lower()
-    if lowered.startswith(("http://", "https://", "http:", "https:")):
+    if URL_SCHEME_RE.match(lowered):
         raise LegacyImportError("URL inputs are not accepted.")
 
 

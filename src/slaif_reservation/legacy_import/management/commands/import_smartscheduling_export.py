@@ -5,7 +5,11 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
 from slaif_reservation.legacy_import.exceptions import LegacyImportError
-from slaif_reservation.legacy_import.importer import apply_import, build_safe_report
+from slaif_reservation.legacy_import.importer import (
+    apply_import,
+    build_apply_report,
+    build_safe_report,
+)
 from slaif_reservation.legacy_import.management.commands._common import (
     add_common_import_arguments,
     load_plan,
@@ -38,4 +42,4 @@ class Command(BaseCommand):
         self.stdout.write(f"legacy_source={plan.export.legacy_source}")
         self.stdout.write(f"batch_id={result.batch.id}")
         print_counts(self, result.counts)
-        write_report(options.get("report_json"), build_safe_report(result.plan))
+        write_report(options.get("report_json"), build_apply_report(result))

@@ -315,23 +315,25 @@ def plan_import(export: NormalizedLegacyExport, mapping: LegacyMapping) -> Impor
 
 
 def safe_plan_report(plan: ImportPlan) -> dict[str, Any]:
+    def record_payload(record: PlannedAppointment) -> dict[str, Any]:
+        payload = {
+            "legacy_id": record.appointment.legacy_id,
+            "classification": record.classification,
+            "asset_id": record.asset_id,
+            "user_id": record.user_id,
+            "messages": [
+                {"level": message.level, "code": message.code, "message": message.message}
+                for message in record.messages
+            ],
+        }
+        if record.classification in {"imported", "already_imported"} and record.reservation_id:
+            payload["reservation_id"] = record.reservation_id
+        return payload
+
     return {
         "legacy_source": plan.export.legacy_source,
         "source_checksum": plan.export.source_checksum,
         "synthetic": plan.export.synthetic,
         "counts": dict(sorted(plan.counts.items())),
-        "records": [
-            {
-                "legacy_id": record.appointment.legacy_id,
-                "classification": record.classification,
-                "asset_id": record.asset_id,
-                "user_id": record.user_id,
-                "reservation_id": record.reservation_id,
-                "messages": [
-                    {"level": message.level, "code": message.code, "message": message.message}
-                    for message in record.messages
-                ],
-            }
-            for record in plan.records
-        ],
+        "records": [record_payload(record) for record in plan.records],
     }

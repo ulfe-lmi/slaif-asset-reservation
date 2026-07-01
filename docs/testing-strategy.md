@@ -105,7 +105,8 @@ Work Order 0009 adds SmartScheduling migration-tooling tests for strict syntheti
 private-field rejection, unsupported extension/URL refusal, ambiguous/nonexistent local time
 rejection, duplicate legacy ID detection, explicit user/asset mapping, unmapped and conflict
 classifications, dry-run no-write behavior, idempotent apply, changed-record detection, blackout and
-reservation conflicts, command output/report redaction, and audit-failure rollback.
+reservation conflicts, apply-time stale-plan revalidation, final apply JSON report classifications,
+command output/report redaction, and audit-failure rollback.
 
 ### Migration tests
 
