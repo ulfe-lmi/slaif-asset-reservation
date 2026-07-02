@@ -138,7 +138,7 @@ Delivers:
 
 ### Work Order 0009 — SmartScheduling migration tooling
 
-Status: current implementation slice.
+Status: merged.
 
 Delivers:
 
@@ -151,11 +151,21 @@ Delivers:
 
 ### Work Order 0010 — alpha verification and remediation
 
-Status: next after Work Order 0009 merge.
+Status: completed verification.
 
-Verification-only run, strategic/cross-model security and architecture audit, then narrowly scoped repair pull requests. Do not combine unrelated audit findings into one large repair.
+Verification-only run, strategic/cross-model security and architecture audit, then narrowly scoped
+repair pull requests. Work Order 0010 found no blocker, high, or medium findings. The first
+docs-only repair addressed continuity drift after verification.
 
 Internal-alpha gate is defined in `docs/discovery-brief.md`.
+
+### Next roadmap item
+
+Status: human-selected.
+
+The next implementation or remediation slice is not automatic. A human maintainer should choose
+whether to close or supersede old continuity debt such as issue #10, proceed to a narrow
+remediation, or start the next roadmap item.
 
 ## Phase 4: operational beta
 

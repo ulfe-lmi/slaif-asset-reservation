@@ -10,9 +10,9 @@ Preserve this promise:
 
 ## Current product stage
 
-The project is at the internal pre-alpha SmartScheduling migration-tooling stage. After this
-migration-tooling slice, the next roadmap slice is alpha verification and remediation unless the
-human lead changes roadmap order.
+The project has completed alpha verification after the synthetic SmartScheduling migration-tooling
+slice. It is ready for the next human-selected roadmap slice with the accepted internal-alpha
+limitations, but it is not production-ready and has not been deployed.
 Read these documents before changing behavior:
 
 - `docs/discovery-brief.md`

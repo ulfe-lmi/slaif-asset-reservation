@@ -37,9 +37,11 @@ Build an authenticated asset reservation authority for shared laboratory compute
 - durations are legacy services and are not migrated as new domain entities;
 - no private clients/appointments are included in repository artifacts.
 
-## Current milestone after Work Order 0008 merge
+## Current milestone after Work Order 0010 verification
 
-Constitution and architecture accepted. Work Orders 0001 through 0008 are merged into `main`.
+Constitution and architecture accepted. Work Orders 0001 through 0009 are merged into `main`, and
+Work Order 0010 completed alpha verification and remediation planning. The project is internally
+alpha-verified with limitations, not production-ready, and not deployed.
 Work Order 0001 established the executable foundation:
 
 - Django project under `src/slaif_reservation/`;
@@ -112,12 +114,39 @@ Verified `main` baseline before Work Order 0009:
 28e9e6198fcf3b632c21d26cf55c9fd8e93143d3
 ```
 
+Work Order 0009 added synthetic-only SmartScheduling migration tooling with parsing, mapping,
+dry-run planning, idempotent apply, apply-time revalidation, staging evidence, command adapters,
+redacted reports, and a migration runbook. Verified `main` baseline before Work Order 0010:
+
+```text
+bc9901a72b7f46863c87a81dccd587c22e6d78f2
+```
+
+Work Order 0010 performed alpha verification and remediation planning. Verification found no
+blocker, high, or medium findings. The release/readiness assessment was ready with limitations for
+internal-alpha verification/remediation planning.
+
+Remaining limitations include:
+
+- no production deployment or cutover;
+- no real SmartScheduling import or cutover;
+- no projects, memberships, or resource restrictions;
+- no execution gateway or Neumann integration;
+- no production OIDC, email, password reset, or notifications;
+- no production monitoring stack;
+- no backup scheduler.
+
+Recorded follow-up findings:
+
+- issue #10 remains open as old continuity debt even though Work Order 0005 and later work are
+  merged; do not close it without an explicit maintainer decision;
+- production Compose validation still requires a temporary ignored `deploy/env.production` file for
+  direct local `docker compose -f compose.production.example.yaml config` checks.
+
 ## Next recommended task
 
-Work Order 0009 is the current slice: SmartScheduling migration tooling.
-
-After Work Order 0009 is reviewed and merged, Work Order 0010 is the next major slice:
-alpha verification and remediation.
+The next task is human-selected. A maintainer should decide whether to close or supersede issue #10,
+address any narrow remediation, or proceed to the next roadmap item.
 
 ## Do not do next
 

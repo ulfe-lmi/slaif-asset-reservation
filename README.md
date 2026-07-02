@@ -6,7 +6,7 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 
 ## Status
 
-**Pre-alpha SmartScheduling migration-tooling stage. Not production-ready and not yet deployed.**
+**Internally alpha-verified with limitations. Not production-ready and not yet deployed.**
 
 The repository contains a minimal Django/PostgreSQL application foundation: custom user model,
 health checks, hierarchical asset inventory, sanitized bootstrap asset import, member-visible
@@ -19,12 +19,12 @@ availability, owner-scoped reservation list/create/detail/cancel/release, and a 
 management area for policies, coarse maintenance blackouts, cross-user reservation inspection and
 lifecycle actions, and audit browsing/export. Operational-hardening artifacts now include
 production-shaped Compose/proxy examples, structured production logging, operational checks,
-idempotency cleanup, backup/restore wrappers, and operator runbooks. There is still no real
-production deployment, project/group authorization, full operating-hours calendar, token lifecycle
-API, management REST API, OIDC/password reset, notification system, API throttling, execution
-gateway, automated scheduler, production monitoring stack, or real SmartScheduling import/cutover.
-This slice adds only synthetic-fixture-driven SmartScheduling migration tooling; private exports
-remain outside Git and CI.
+idempotency cleanup, backup/restore wrappers, operator runbooks, and synthetic-fixture-driven
+SmartScheduling migration tooling. Work Order 0010 completed alpha verification with no blocker,
+high, or medium findings. There is still no real production deployment, project/group
+authorization, full operating-hours calendar, token lifecycle API, management REST API, OIDC/password
+reset, notification system, API throttling, execution gateway, automated scheduler, production
+monitoring stack, or real SmartScheduling import/cutover. Private exports remain outside Git and CI.
 
 Verified starting point for this implementation slice:
 
