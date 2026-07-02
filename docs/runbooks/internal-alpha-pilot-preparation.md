@@ -29,6 +29,8 @@ selected.
 - Main CI is green on the intended pilot commit.
 - `deploy/rehearse_internal_alpha_deployment.sh` passes on disposable local resources.
 - `operational_check` passes in the rehearsed environment.
+- `pilot_readiness_check --strict` passes after the pilot database has staff users, selected
+  assets, ordinary pilot users, and active reservation policies configured.
 - Fresh migrations apply to disposable PostgreSQL.
 - Backup and restore wrapper behavior is understood, and an isolated restore drill is planned
   before any real pilot data is accepted.
@@ -99,6 +101,8 @@ Use this checklist as a planning aid. It is not a substitute for a deployment ap
 - [ ] Confirm exported audit rows contain no token plaintext, Authorization headers, raw request
   bodies, physical locators, or private notes.
 - [ ] Run `operational_check`.
+- [ ] Run `pilot_readiness_check` and resolve required failures before using `--strict` as the
+  final database readiness gate.
 - [ ] Run backup wrapper dry-run/refusal checks.
 - [ ] Plan an isolated restore drill before accepting real pilot data.
 - [ ] Run `deploy/rehearse_internal_alpha_deployment.sh`.

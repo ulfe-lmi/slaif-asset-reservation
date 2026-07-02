@@ -20,6 +20,8 @@ limitations. This readiness gate remains the pass/fail rehearsal checklist.
 - `deploy/rehearse_internal_alpha_deployment.sh` completes successfully.
 - A fresh migration chain applies to disposable PostgreSQL.
 - `operational_check` passes in the rehearsed environment.
+- `pilot_readiness_check --strict` passes against the intended pilot database state after pilot
+  assets, staff accounts, users, and policies are configured.
 - The production-shaped Compose example renders with a temporary ignored `deploy/env.production`.
 - Docker image runtime user is `10001:10001`.
 - Required static assets and sanitized bootstrap assets are present in the image.
@@ -43,6 +45,7 @@ limitations. This readiness gate remains the pass/fail rehearsal checklist.
 - Real production secrets are missing, unapproved, or stored in the repository.
 - The rehearsal script fails.
 - Migrations fail or `operational_check` fails.
+- `pilot_readiness_check --strict` fails after the pilot database has been prepared.
 - Backup/restore refusal or dry-run behavior is not understood.
 - A blocker, high, or medium verification finding remains unresolved.
 - Asset or policy ownership is unclear.
@@ -66,6 +69,22 @@ For a quick Compose-only validation:
 ```bash
 deploy/rehearse_internal_alpha_deployment.sh --config-only
 ```
+
+## Database Readiness Command
+
+After preparing a disposable or intended pilot database, run the read-only readiness status command:
+
+```bash
+python manage.py pilot_readiness_check
+python manage.py pilot_readiness_check --strict
+python manage.py pilot_readiness_check --json
+```
+
+The command reports aggregate counts and pass/warn/fail checks for staff users, ordinary pilot
+users, active assets, reservable exclusive assets, reservation policies, assets without effective
+policy, active blackouts, recent audit events, API-token status counts, expired idempotency rows,
+and database migration readiness. It is read-only and must not print token material, private
+reservation text, physical locators, cookies, CSRF values, or private SmartScheduling data.
 
 ## Backup And Restore Drill
 

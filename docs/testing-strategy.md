@@ -113,6 +113,11 @@ example, temporary ignored production env handling, Docker runtime user/static/b
 fresh disposable migrations, bootstrap import dry-run, `operational_check`, health/login/management
 smoke paths, safe unauthenticated API problem details, and OpenAPI validation.
 
+Work Order 0013 adds `pilot_readiness_check` tests for read-only aggregate reporting, strict versus
+non-strict exit behavior, JSON output redaction, minimal-ready and empty-database gate behavior,
+assets-without-policy warnings, expired idempotency warnings, and application table counts remaining
+unchanged before and after the command.
+
 ### Migration tests
 
 - bootstrap YAML schema validation;
@@ -135,6 +140,8 @@ smoke paths, safe unauthenticated API problem details, and OpenAPI validation.
 - upgrade from previous tagged schema once releases exist.
 - `operational_check` verifies database connectivity, migration state, required static assets,
   critical settings, sanitized bootstrap inventory validation, and cleanup command registration.
+- `pilot_readiness_check` verifies aggregate pilot database readiness without mutating rows or
+  emitting secrets/private fields.
 - `deploy/rehearse_internal_alpha_deployment.sh` performs a disposable production-shaped rehearsal
   without real secrets, DNS, TLS, production data, or deployment targets. Its config-only tests also
   verify that overriding `SLAIF_REHEARSAL_PORT` changes the single published app port instead of
