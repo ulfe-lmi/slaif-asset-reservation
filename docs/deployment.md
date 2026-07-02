@@ -273,6 +273,13 @@ The internal-alpha pilot readiness runbook documents the backup/restore rehearsa
 docs/runbooks/internal-alpha-pilot-readiness.md
 ```
 
+The pilot preparation pack documents the operator checklist and placeholder-only participant
+communication templates for a future controlled internal lab pilot:
+
+```text
+docs/runbooks/internal-alpha-pilot-preparation.md
+```
+
 ## 8. Reverse proxy and TLS
 
 - valid certificate and automatic renewal;
