@@ -173,6 +173,11 @@ application cannot start successfully without the required runtime environment. 
 reject placeholder or too-short `SLAIF_DJANGO_SECRET_KEY` values and reject documented
 development/test/example API-token peppers, including whitespace-padded forms.
 
+`compose.production.example.yaml` publishes the app on loopback only. By default it binds
+`127.0.0.1:8000`; set `SLAIF_APP_HOST_PORT` when rendering or running the example to choose a
+different host port. The rehearsal script sets this variable from `SLAIF_REHEARSAL_PORT` so the
+smoke checks probe only the configured rehearsal port.
+
 ## 5. Containers
 
 The scaffold image:

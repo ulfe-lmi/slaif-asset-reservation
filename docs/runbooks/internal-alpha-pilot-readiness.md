@@ -54,7 +54,8 @@ deploy/rehearse_internal_alpha_deployment.sh
 
 The script creates temporary ignored deployment files with synthetic values, uses
 `compose.production.example.yaml`, builds the runtime image, starts disposable PostgreSQL and app
-services, runs smoke checks, then removes the temporary files and Compose volume.
+services, runs smoke checks against the configured `SLAIF_REHEARSAL_PORT`, then removes the
+temporary files and Compose volume.
 
 For a quick Compose-only validation:
 

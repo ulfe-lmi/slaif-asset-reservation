@@ -41,15 +41,28 @@ def token_for(owner: User):
 
 def fake_docker(tmp_path: Path) -> dict[str, str]:
     log_path = tmp_path / "docker.log"
+    rendered_config_path = tmp_path / "rendered-compose.json"
     docker_path = tmp_path / "docker"
     docker_path.write_text(
-        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$SLAIF_FAKE_DOCKER_LOG"\nexit 0\n',
+        """#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$SLAIF_FAKE_DOCKER_LOG"
+if [[ "$*" == *"compose"* && "$*" == *"config"* && "$*" == *"--format json"* ]]; then
+  port="${SLAIF_APP_HOST_PORT:-8000}"
+  printf '%s' '{"services":{"app":{"ports":[{"host_ip":"127.0.0.1","published":"' \
+    | tee "$SLAIF_FAKE_DOCKER_RENDERED_CONFIG"
+  printf '%s' "$port" | tee -a "$SLAIF_FAKE_DOCKER_RENDERED_CONFIG"
+  printf '%s\n' '","target":8000,"protocol":"tcp"}]}}}' \
+    | tee -a "$SLAIF_FAKE_DOCKER_RENDERED_CONFIG"
+fi
+exit 0
+""",
         encoding="utf-8",
     )
     docker_path.chmod(0o755)
     env = os.environ.copy()
     env["PATH"] = f"{tmp_path}:{env['PATH']}"
     env["SLAIF_FAKE_DOCKER_LOG"] = str(log_path)
+    env["SLAIF_FAKE_DOCKER_RENDERED_CONFIG"] = str(rendered_config_path)
     return env
 
 
@@ -73,6 +86,40 @@ def test_rehearsal_config_only_uses_temporary_env_and_cleans_up(tmp_path: Path) 
     docker_log = (tmp_path / "docker.log").read_text(encoding="utf-8")
     assert "compose.production.example.yaml" in docker_log
     assert " config" in docker_log
+
+
+def test_rehearsal_config_only_uses_configured_port_without_base_port(tmp_path: Path) -> None:
+    env = fake_docker(tmp_path)
+    env["SLAIF_REHEARSAL_PORT"] = "18081"
+
+    result = subprocess.run(
+        [str(REHEARSAL_SCRIPT), "--config-only"],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not REHEARSAL_ENV.exists()
+    assert not REHEARSAL_PASSWORD.exists()
+    rendered_config = json.loads((tmp_path / "rendered-compose.json").read_text(encoding="utf-8"))
+    app_ports = rendered_config["services"]["app"]["ports"]
+    assert {
+        "host_ip": "127.0.0.1",
+        "published": "18081",
+        "target": 8000,
+        "protocol": "tcp",
+    } in app_ports
+    assert all(
+        not (
+            item.get("host_ip") == "127.0.0.1"
+            and str(item.get("published")) == "8000"
+            and str(item.get("target")) == "8000"
+        )
+        for item in app_ports
+    )
 
 
 def test_rehearsal_refuses_to_overwrite_existing_production_env(tmp_path: Path) -> None:

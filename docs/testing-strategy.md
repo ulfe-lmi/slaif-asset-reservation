@@ -136,7 +136,9 @@ smoke paths, safe unauthenticated API problem details, and OpenAPI validation.
 - `operational_check` verifies database connectivity, migration state, required static assets,
   critical settings, sanitized bootstrap inventory validation, and cleanup command registration.
 - `deploy/rehearse_internal_alpha_deployment.sh` performs a disposable production-shaped rehearsal
-  without real secrets, DNS, TLS, production data, or deployment targets.
+  without real secrets, DNS, TLS, production data, or deployment targets. Its config-only tests also
+  verify that overriding `SLAIF_REHEARSAL_PORT` changes the single published app port instead of
+  inheriting the production example's default `127.0.0.1:8000` binding.
 
 ## 3. Critical test matrix
 

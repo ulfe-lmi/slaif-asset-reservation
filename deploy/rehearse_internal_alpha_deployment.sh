@@ -51,6 +51,7 @@ port="${SLAIF_REHEARSAL_PORT:-18080}"
 image="${SLAIF_REHEARSAL_IMAGE:-slaif-asset-reservation:internal-alpha}"
 tmp_dir=""
 override_file=""
+rendered_config_file=""
 created_env=0
 created_password=0
 compose_started=0
@@ -93,6 +94,7 @@ require_command() {
 
 require_command docker
 require_command curl
+require_command python3
 
 [[ -f "$compose_file" ]] || die "compose.production.example.yaml is missing"
 [[ -d "$deploy_dir" ]] || die "deploy directory is missing"
@@ -100,9 +102,11 @@ require_command curl
 [[ ! -e "$env_file" ]] || die "deploy/env.production already exists; refusing to overwrite a real deployment env file"
 [[ ! -e "$password_file" ]] || die "deploy/secrets/postgres_password already exists; refusing to overwrite a real secret file"
 [[ "$port" =~ ^[0-9]+$ ]] || die "SLAIF_REHEARSAL_PORT must be a TCP port number"
+export SLAIF_APP_HOST_PORT="$port"
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/slaif-alpha-rehearsal.XXXXXX")"
 override_file="$tmp_dir/compose.override.yaml"
+rendered_config_file="$tmp_dir/rendered-compose.json"
 
 mkdir -p "$secrets_dir"
 umask 077
@@ -132,12 +136,38 @@ cat > "$override_file" <<EOF
 services:
   app:
     image: ${image}
-    ports:
-      - "127.0.0.1:${port}:8000"
 EOF
 
 log "rendering production Compose config with synthetic env"
 compose config >/dev/null
+compose config --format json > "$rendered_config_file"
+python3 - "$rendered_config_file" "$port" <<'PY'
+from __future__ import annotations
+
+import json
+import sys
+
+config_path, expected_port = sys.argv[1:3]
+with open(config_path, encoding="utf-8") as handle:
+    config = json.load(handle)
+
+ports = config["services"]["app"].get("ports", [])
+matches = []
+extra_base_bindings = []
+for item in ports:
+    if not isinstance(item, dict):
+        continue
+    target = str(item.get("target", ""))
+    published = str(item.get("published", ""))
+    host_ip = str(item.get("host_ip", ""))
+    if target == "8000" and published == expected_port and host_ip == "127.0.0.1":
+        matches.append(item)
+    if expected_port != "8000" and target == "8000" and published == "8000" and host_ip == "127.0.0.1":
+        extra_base_bindings.append(item)
+
+if len(matches) != 1 or extra_base_bindings:
+    raise SystemExit("rehearsal Compose config does not publish exactly the requested app port")
+PY
 
 if [[ "$mode" == "config-only" ]]; then
   log "config-only=ok"
