@@ -1,0 +1,1 @@
+"""SmartScheduling migration management commands."""

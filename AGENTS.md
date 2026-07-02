@@ -10,9 +10,9 @@ Preserve this promise:
 
 ## Current product stage
 
-The project is at the internal pre-alpha operational-hardening stage. After this operations
-slice, the next roadmap slice is SmartScheduling migration tooling unless the human lead changes
-roadmap order.
+The project is at the internal pre-alpha SmartScheduling migration-tooling stage. After this
+migration-tooling slice, the next roadmap slice is alpha verification and remediation unless the
+human lead changes roadmap order.
 Read these documents before changing behavior:
 
 - `docs/discovery-brief.md`

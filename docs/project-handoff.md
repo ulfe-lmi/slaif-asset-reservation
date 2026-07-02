@@ -37,9 +37,9 @@ Build an authenticated asset reservation authority for shared laboratory compute
 - durations are legacy services and are not migrated as new domain entities;
 - no private clients/appointments are included in repository artifacts.
 
-## Current milestone after Work Order 0007 merge
+## Current milestone after Work Order 0008 merge
 
-Constitution and architecture accepted. Work Orders 0001 through 0007 are merged into `main`.
+Constitution and architecture accepted. Work Orders 0001 through 0008 are merged into `main`.
 Work Order 0001 established the executable foundation:
 
 - Django project under `src/slaif_reservation/`;
@@ -104,12 +104,20 @@ Verified `main` baseline before Work Order 0008:
 6e5e69f8634e648cc35f6db1386972996162cfb4
 ```
 
+Work Order 0008 added production-shaped examples, structured logging, operational checks,
+backup/restore wrappers, idempotency cleanup, deployment smoke guidance, and operator runbooks.
+Verified `main` baseline before Work Order 0009:
+
+```text
+28e9e6198fcf3b632c21d26cf55c9fd8e93143d3
+```
+
 ## Next recommended task
 
-Work Order 0008 is the current slice: operational hardening.
+Work Order 0009 is the current slice: SmartScheduling migration tooling.
 
-After Work Order 0008 is reviewed and merged, Work Order 0009 is the next major slice:
-SmartScheduling migration tooling.
+After Work Order 0009 is reviewed and merged, Work Order 0010 is the next major slice:
+alpha verification and remediation.
 
 ## Do not do next
 

@@ -185,6 +185,23 @@ Work Order 0008 adds production-shaped operational commands without adding a new
 Scheduling for cleanup/backups uses host cron or systemd timers. No Redis, Celery, Kubernetes,
 Terraform, monitoring stack, or production deployment target is added in this slice.
 
+### 4.2.4 SmartScheduling migration adapter
+
+Work Order 0009 adds local management-command adapters for synthetic SmartScheduling migration
+tooling. Commands follow this order:
+
+1. reject URL inputs and unsupported file extensions;
+2. parse the strict synthetic JSON/YAML format;
+3. normalize local legacy wall times to UTC using an explicit IANA timezone;
+4. validate user and asset mapping files without logging their contents;
+5. plan classifications for importable, skipped, unmapped, conflicted, changed, and error records;
+6. write only optional redacted JSON reports to explicit local paths;
+7. in `--apply` mode, create eligible `source="migration"` reservations and safe import records in
+   the same transaction as audit evidence.
+
+The adapter never contacts SmartScheduling, reads cookies, scrapes browser state, or stores raw
+private export rows.
+
 ### 4.2.2 API adapter flow
 
 Bearer-token API views follow this order:

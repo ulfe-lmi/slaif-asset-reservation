@@ -14,5 +14,6 @@ Accepted decisions:
 10. `0010-api-idempotency-and-problem-details.md`
 11. `0011-management-blackouts-and-audit-ux.md`
 12. `0012-operational-hardening-and-deployment-shape.md`
+13. `0013-smartscheduling-migration-tooling.md`
 
 Create a new numbered ADR when a proposal changes architecture, trust boundaries, persistence semantics, authentication, major dependencies, deployment, or release invariants. Do not rewrite accepted history to conceal a changed decision; supersede it explicitly.

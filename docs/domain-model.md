@@ -120,6 +120,36 @@ bodies, session cookies, CSRF values, token secrets, verifiers, peppers, passwor
 internals. Records carry a 24-hour retention target; until cleanup is implemented, stored records
 remain authoritative for replay/conflict decisions.
 
+## 5.2 Legacy import evidence
+
+Work Order 0009 adds SmartScheduling migration tooling for synthetic fixtures and future
+human-supervised rehearsals. `LegacyImportBatch` records safe batch evidence:
+
+- UUID identity;
+- source name and SHA-256 checksum;
+- `synthetic` flag;
+- optional creator;
+- dry-run/apply mode;
+- planned/applied/failed status;
+- safe summary counts;
+- warning/error counts;
+- creation timestamp.
+
+`LegacyImportRecord` records imported legacy appointment provenance:
+
+- UUID identity;
+- import batch;
+- legacy source and legacy ID;
+- normalized record hash;
+- result such as imported/already-imported/legacy-changed;
+- optional imported reservation;
+- safe metadata such as asset/reservation IDs and time range.
+
+These models do not store raw export rows, phone numbers, raw email addresses, client free-text
+notes, cookies, screenshots, traces, browser storage, bearer tokens, or private SmartScheduling
+payloads. Idempotency is keyed by `legacy_source + legacy_id`. A changed record with the same legacy
+identity is reported as `legacy_changed` and is not silently overwritten.
+
 ## 6. Asset
 
 Assets form a shallow hierarchy. Initial pattern:

@@ -169,6 +169,13 @@ ENV/
 env.bak/
 venv.bak/
 
+# Private legacy migration inputs and artifacts
+legacy_exports/
+private_exports/
+smartscheduling_exports/
+*.smart-export.*
+migration_artifacts/private/
+
 # Spyder project settings
 .spyderproject
 .spyproject
