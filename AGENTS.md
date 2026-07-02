@@ -10,9 +10,9 @@ Preserve this promise:
 
 ## Current product stage
 
-The project has completed alpha verification after the synthetic SmartScheduling migration-tooling
-slice. It is ready for the next human-selected roadmap slice with the accepted internal-alpha
-limitations, but it is not production-ready and has not been deployed.
+The project has completed alpha verification and is now in the internal-alpha deployment rehearsal
+and pilot-readiness gate. The rehearsal uses synthetic disposable resources only. The system remains
+not production-ready and has not been deployed.
 Read these documents before changing behavior:
 
 - `docs/discovery-brief.md`

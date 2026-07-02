@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import subprocess
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
@@ -18,6 +20,11 @@ from slaif_reservation.api.models import IdempotencyRecord
 from slaif_reservation.config.logging import JsonLogFormatter
 from slaif_reservation.config.middleware import SafeRequestLogMiddleware
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+REHEARSAL_SCRIPT = REPO_ROOT / "deploy" / "rehearse_internal_alpha_deployment.sh"
+REHEARSAL_ENV = REPO_ROOT / "deploy" / "env.production"
+REHEARSAL_PASSWORD = REPO_ROOT / "deploy" / "secrets" / "postgres_password"
+
 
 def user(email: str = "ops-member@example.com") -> User:
     return User.objects.create_user(email=email, password="not-a-secret")
@@ -30,6 +37,74 @@ def token_for(owner: User):
         scopes=["reservations:read"],
         lifetime_days=1,
     ).token
+
+
+def fake_docker(tmp_path: Path) -> dict[str, str]:
+    log_path = tmp_path / "docker.log"
+    docker_path = tmp_path / "docker"
+    docker_path.write_text(
+        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$SLAIF_FAKE_DOCKER_LOG"\nexit 0\n',
+        encoding="utf-8",
+    )
+    docker_path.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}:{env['PATH']}"
+    env["SLAIF_FAKE_DOCKER_LOG"] = str(log_path)
+    return env
+
+
+def test_rehearsal_config_only_uses_temporary_env_and_cleans_up(tmp_path: Path) -> None:
+    assert not REHEARSAL_ENV.exists()
+    assert not REHEARSAL_PASSWORD.exists()
+
+    result = subprocess.run(
+        [str(REHEARSAL_SCRIPT), "--config-only"],
+        cwd=REPO_ROOT,
+        env=fake_docker(tmp_path),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "config-only=ok" in result.stdout
+    assert not REHEARSAL_ENV.exists()
+    assert not REHEARSAL_PASSWORD.exists()
+    docker_log = (tmp_path / "docker.log").read_text(encoding="utf-8")
+    assert "compose.production.example.yaml" in docker_log
+    assert " config" in docker_log
+
+
+def test_rehearsal_refuses_to_overwrite_existing_production_env(tmp_path: Path) -> None:
+    REHEARSAL_ENV.write_text("already-present=true\n", encoding="utf-8")
+    try:
+        result = subprocess.run(
+            [str(REHEARSAL_SCRIPT), "--config-only"],
+            cwd=REPO_ROOT,
+            env=fake_docker(tmp_path),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    finally:
+        REHEARSAL_ENV.unlink(missing_ok=True)
+
+    assert result.returncode == 1
+    assert "already exists" in result.stderr
+    assert "already-present=true" not in result.stdout
+
+
+def test_rehearsal_generated_env_remains_ignored() -> None:
+    result = subprocess.run(
+        ["git", "check-ignore", "deploy/env.production"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == "deploy/env.production"
 
 
 def idempotency_record(*, owner: User, expires_at: timezone.datetime) -> IdempotencyRecord:
