@@ -37,13 +37,13 @@ Build an authenticated asset reservation authority for shared laboratory compute
 - durations are legacy services and are not migrated as new domain entities;
 - no private clients/appointments are included in repository artifacts.
 
-## Current milestone during Work Order 0011 rehearsal
+## Current milestone during Work Order 0012 pilot preparation
 
-Constitution and architecture accepted. Work Orders 0001 through 0009 are merged into `main`, and
-Work Order 0010 completed alpha verification and remediation planning. The project is internally
-alpha-verified with limitations, not production-ready, and not deployed. Work Order 0011 is adding a
-disposable production-shaped rehearsal path and pilot readiness gate without touching production
-systems, real secrets, DNS, TLS, or production data.
+Constitution and architecture accepted. Work Orders 0001 through 0011 are complete on `main`,
+including Work Order 0010 alpha verification and Work Order 0011 deployment rehearsal. The project
+is internally alpha-verified with limitations, not production-ready, and not deployed. Work Order
+0012 is adding a pilot preparation pack for a first controlled internal lab pilot without deploying
+or creating real users, tokens, policies, reservations, secrets, or private SmartScheduling imports.
 Work Order 0001 established the executable foundation:
 
 - Django project under `src/slaif_reservation/`;
@@ -128,9 +128,20 @@ Work Order 0010 performed alpha verification and remediation planning. Verificat
 blocker, high, or medium findings. The release/readiness assessment was ready with limitations for
 internal-alpha verification/remediation planning.
 
-Work Order 0011 adds a local/staging-like deployment rehearsal script and internal-alpha pilot
+Work Order 0011 added a local/staging-like deployment rehearsal script and internal-alpha pilot
 readiness checklist. It is evidence that existing operational artifacts can be exercised coherently
 with synthetic disposable resources; it is not a real deployment or production-readiness claim.
+
+Verified `main` baseline before Work Order 0012:
+
+```text
+5f92d551a027ad60f55e4eb96c40aae0d0ea8334
+```
+
+Work Order 0012 prepares a concrete internal-alpha pilot pack for human operators. It covers pilot
+assumptions, success criteria, operator checklists, placeholder-only communication templates,
+go/no-go conditions, and limitations. It does not deploy, touch production systems, process private
+exports, or change application behavior.
 
 Remaining limitations include:
 
@@ -150,9 +161,9 @@ Recorded follow-up findings from Work Order 0010:
 
 ## Next recommended task
 
-After Work Order 0011 merges, the next task remains human-selected. A maintainer should choose
-between pilot preparation, production identity decisions, monitoring decisions, or remediation
-found by the rehearsal.
+After Work Order 0012 merges, the next task remains human-selected. A maintainer should choose
+between real pilot-host preparation, production identity decisions, monitoring decisions,
+resource-policy work, or remediation found during pilot preparation.
 
 ## Do not do next
 

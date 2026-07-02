@@ -21,10 +21,12 @@ lifecycle actions, and audit browsing/export. Operational-hardening artifacts no
 production-shaped Compose/proxy examples, structured production logging, operational checks,
 idempotency cleanup, backup/restore wrappers, operator runbooks, and synthetic-fixture-driven
 SmartScheduling migration tooling. Work Order 0010 completed alpha verification with no blocker,
-high, or medium findings. There is still no real production deployment, project/group
-authorization, full operating-hours calendar, token lifecycle API, management REST API, OIDC/password
-reset, notification system, API throttling, execution gateway, automated scheduler, production
-monitoring stack, or real SmartScheduling import/cutover. Private exports remain outside Git and CI.
+high, or medium findings. Work Order 0011 added a disposable deployment rehearsal and pilot
+readiness gate, and Work Order 0012 adds operator-facing pilot preparation documentation. There is
+still no real production deployment, project/group authorization, full operating-hours calendar,
+token lifecycle API, management REST API, OIDC/password reset, notification system, API throttling,
+execution gateway, automated scheduler, production monitoring stack, or real SmartScheduling
+import/cutover. Private exports remain outside Git and CI.
 
 Verified starting point for this implementation slice:
 
@@ -173,6 +175,11 @@ deploy/rehearse_internal_alpha_deployment.sh
 This builds and exercises the production-shaped Compose example with temporary synthetic values
 only. See `docs/runbooks/internal-alpha-pilot-readiness.md` for the pilot readiness gates and no-go
 conditions. It is not a real deployment.
+
+For first controlled pilot planning, use
+`docs/runbooks/internal-alpha-pilot-preparation.md`. It defines pilot assumptions, operator
+checklists, placeholder-only communication templates, go/no-go conditions, and limitations without
+performing deployment or creating real users, tokens, policies, reservations, or secrets.
 
 Human and API paths:
 

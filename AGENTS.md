@@ -10,9 +10,10 @@ Preserve this promise:
 
 ## Current product stage
 
-The project has completed alpha verification and is now in the internal-alpha deployment rehearsal
-and pilot-readiness gate. The rehearsal uses synthetic disposable resources only. The system remains
-not production-ready and has not been deployed.
+The project has completed alpha verification and internal-alpha deployment rehearsal. It is now in
+the internal-alpha pilot preparation pack stage. Pilot preparation is documentation/checklist work
+only, uses synthetic or placeholder data, and does not authorize deployment. The system remains not
+production-ready and has not been deployed.
 Read these documents before changing behavior:
 
 - `docs/discovery-brief.md`

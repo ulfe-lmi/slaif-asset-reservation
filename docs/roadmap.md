@@ -159,13 +159,38 @@ docs-only repair addressed continuity drift after verification.
 
 Internal-alpha gate is defined in `docs/discovery-brief.md`.
 
+### Work Order 0011 — internal alpha deployment rehearsal
+
+Status: merged.
+
+Delivers:
+
+- disposable production-shaped rehearsal script;
+- temporary synthetic production-env handling;
+- Docker runtime/static/bootstrap checks;
+- fresh disposable migrations and bootstrap import smoke;
+- health/login/management/API smoke checks;
+- pilot readiness gate runbook.
+
+### Work Order 0012 — internal alpha pilot preparation pack
+
+Status: current.
+
+Delivers:
+
+- first controlled internal lab pilot plan;
+- operator checklist for assets, staff, users, policies, tokens, audit, backup, and rehearsal;
+- placeholder-only communication templates;
+- explicit go/no-go conditions and limitations;
+- no deployment and no production data, secrets, DNS, TLS, or private SmartScheduling exports.
+
 ### Next roadmap item
 
 Status: human-selected.
 
 The next implementation or remediation slice is not automatic. A human maintainer should choose
-whether to close or supersede old continuity debt such as issue #10, proceed to a narrow
-remediation, or start the next roadmap item.
+whether to proceed with a real pilot-host decision, production identity decision, monitoring
+decision, resource-policy slice, or another narrow remediation discovered during preparation.
 
 ## Phase 4: operational beta
 
