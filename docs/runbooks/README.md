@@ -3,6 +3,7 @@
 Runbooks for the internal pre-alpha operational-hardening stage:
 
 - [First internal-alpha deployment](first-internal-alpha-deployment.md)
+- [Internal-alpha pilot readiness](internal-alpha-pilot-readiness.md)
 - [Backup and restore](backup-and-restore.md)
 - [Migration and rollback](migration-and-rollback.md)
 - [Leaked API token response](leaked-api-token.md)

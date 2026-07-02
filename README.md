@@ -164,6 +164,16 @@ uv run --env-file .env python manage.py restore_database --input /tmp/slaif-loca
 The backup/restore commands default to validation-only dry-run. Use `--apply` only against an
 approved target database. Do not commit backup artifacts.
 
+Disposable internal-alpha deployment rehearsal:
+
+```bash
+deploy/rehearse_internal_alpha_deployment.sh
+```
+
+This builds and exercises the production-shaped Compose example with temporary synthetic values
+only. See `docs/runbooks/internal-alpha-pilot-readiness.md` for the pilot readiness gates and no-go
+conditions. It is not a real deployment.
+
 Human and API paths:
 
 - `http://127.0.0.1:8000/assets/` provides active-asset browsing for active human sessions.

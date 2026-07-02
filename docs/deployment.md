@@ -95,6 +95,25 @@ Work Order 0008 adds example-only production deployment artifacts:
 These files describe the supported first internal-alpha shape but are not a real deployment. The
 development Compose file remains unchanged and loopback-only.
 
+Work Order 0011 adds a disposable internal-alpha rehearsal entry point:
+
+```bash
+deploy/rehearse_internal_alpha_deployment.sh
+```
+
+The script creates temporary ignored `deploy/env.production` and `deploy/secrets/postgres_password`
+files with synthetic values, validates `compose.production.example.yaml`, builds the runtime image,
+applies migrations to disposable PostgreSQL, runs bootstrap/import and operational checks, starts
+the app, verifies health/login/management/API smoke paths, validates OpenAPI, then removes the
+temporary env/secret files and Compose volume. It is local rehearsal evidence only, not a production
+deployment.
+
+For fast Compose validation without building or starting services:
+
+```bash
+deploy/rehearse_internal_alpha_deployment.sh --config-only
+```
+
 Work Order 0004 adds local browser workflow tests. Development and CI install Chromium with:
 
 ```bash
@@ -148,9 +167,16 @@ development database. Compose supplies the application service with its own cont
 
 For production-shaped configuration, copy `deploy/env.production.example` on the deployment host and
 replace every placeholder from a protected secret store into an untracked `deploy/env.production`
-file. Never commit `deploy/env.production`. Production settings reject placeholder or too-short
-`SLAIF_DJANGO_SECRET_KEY` values and reject documented development/test/example API-token peppers,
-including whitespace-padded forms.
+file. Never commit `deploy/env.production`. The production Compose example can render with
+`docker compose -f compose.production.example.yaml config` before that file exists, but the
+application cannot start successfully without the required runtime environment. Production settings
+reject placeholder or too-short `SLAIF_DJANGO_SECRET_KEY` values and reject documented
+development/test/example API-token peppers, including whitespace-padded forms.
+
+`compose.production.example.yaml` publishes the app on loopback only. By default it binds
+`127.0.0.1:8000`; set `SLAIF_APP_HOST_PORT` when rendering or running the example to choose a
+different host port. The rehearsal script sets this variable from `SLAIF_REHEARSAL_PORT` so the
+smoke checks probe only the configured rehearsal port.
 
 ## 5. Containers
 
@@ -205,6 +231,15 @@ It verifies database connectivity, applied migrations, required static assets, c
 sanitized bootstrap inventory validation, and idempotency cleanup command registration. It does not
 require production secrets when run under local/test settings.
 
+For a disposable production-shaped smoke run, use:
+
+```bash
+deploy/rehearse_internal_alpha_deployment.sh
+```
+
+The rehearsal uses production settings with synthetic local-only values and disables SSL redirect
+because no real reverse proxy or TLS endpoint exists in this local check.
+
 ## 7. Database lifecycle
 
 ### Migrations
@@ -231,6 +266,12 @@ The default mode validates only. Apply mode uses `pg_dump` or `pg_restore`, requ
 encryption, off-host copy, restore-drill cadence, and failure alerts remain operator policy.
 
 A backup without a restore test into an isolated database is not release evidence.
+
+The internal-alpha pilot readiness runbook documents the backup/restore rehearsal gate:
+
+```text
+docs/runbooks/internal-alpha-pilot-readiness.md
+```
 
 ## 8. Reverse proxy and TLS
 

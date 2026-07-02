@@ -37,11 +37,13 @@ Build an authenticated asset reservation authority for shared laboratory compute
 - durations are legacy services and are not migrated as new domain entities;
 - no private clients/appointments are included in repository artifacts.
 
-## Current milestone after Work Order 0010 verification
+## Current milestone during Work Order 0011 rehearsal
 
 Constitution and architecture accepted. Work Orders 0001 through 0009 are merged into `main`, and
 Work Order 0010 completed alpha verification and remediation planning. The project is internally
-alpha-verified with limitations, not production-ready, and not deployed.
+alpha-verified with limitations, not production-ready, and not deployed. Work Order 0011 is adding a
+disposable production-shaped rehearsal path and pilot readiness gate without touching production
+systems, real secrets, DNS, TLS, or production data.
 Work Order 0001 established the executable foundation:
 
 - Django project under `src/slaif_reservation/`;
@@ -126,6 +128,10 @@ Work Order 0010 performed alpha verification and remediation planning. Verificat
 blocker, high, or medium findings. The release/readiness assessment was ready with limitations for
 internal-alpha verification/remediation planning.
 
+Work Order 0011 adds a local/staging-like deployment rehearsal script and internal-alpha pilot
+readiness checklist. It is evidence that existing operational artifacts can be exercised coherently
+with synthetic disposable resources; it is not a real deployment or production-readiness claim.
+
 Remaining limitations include:
 
 - no production deployment or cutover;
@@ -136,17 +142,17 @@ Remaining limitations include:
 - no production monitoring stack;
 - no backup scheduler.
 
-Recorded follow-up findings:
+Recorded follow-up findings from Work Order 0010:
 
-- issue #10 remains open as old continuity debt even though Work Order 0005 and later work are
-  merged; do not close it without an explicit maintainer decision;
-- production Compose validation still requires a temporary ignored `deploy/env.production` file for
-  direct local `docker compose -f compose.production.example.yaml config` checks.
+- issue #10 was reviewed and closed as completed after Work Order 0010 governance verification;
+- production Compose validation requires a temporary ignored `deploy/env.production` file, now
+  created and removed by the Work Order 0011 rehearsal path.
 
 ## Next recommended task
 
-The next task is human-selected. A maintainer should decide whether to close or supersede issue #10,
-address any narrow remediation, or proceed to the next roadmap item.
+After Work Order 0011 merges, the next task remains human-selected. A maintainer should choose
+between pilot preparation, production identity decisions, monitoring decisions, or remediation
+found by the rehearsal.
 
 ## Do not do next
 

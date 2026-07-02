@@ -108,6 +108,11 @@ classifications, dry-run no-write behavior, idempotent apply, changed-record det
 reservation conflicts, apply-time stale-plan revalidation, final apply JSON report classifications,
 command output/report redaction, and audit-failure rollback.
 
+Work Order 0011 adds internal-alpha deployment rehearsal checks for the production-shaped Compose
+example, temporary ignored production env handling, Docker runtime user/static/bootstrap evidence,
+fresh disposable migrations, bootstrap import dry-run, `operational_check`, health/login/management
+smoke paths, safe unauthenticated API problem details, and OpenAPI validation.
+
 ### Migration tests
 
 - bootstrap YAML schema validation;
@@ -130,6 +135,10 @@ command output/report redaction, and audit-failure rollback.
 - upgrade from previous tagged schema once releases exist.
 - `operational_check` verifies database connectivity, migration state, required static assets,
   critical settings, sanitized bootstrap inventory validation, and cleanup command registration.
+- `deploy/rehearse_internal_alpha_deployment.sh` performs a disposable production-shaped rehearsal
+  without real secrets, DNS, TLS, production data, or deployment targets. Its config-only tests also
+  verify that overriding `SLAIF_REHEARSAL_PORT` changes the single published app port instead of
+  inheriting the production example's default `127.0.0.1:8000` binding.
 
 ## 3. Critical test matrix
 
@@ -212,6 +221,7 @@ mkdir -p build/openapi
 DATABASE_URL=postgres://slaif:slaif@localhost:5432/slaif_reservation uv run python manage.py spectacular --file build/openapi/schema.yaml --validate --fail-on-warn
 uv run pip-audit
 docker compose config
+deploy/rehearse_internal_alpha_deployment.sh --config-only
 docker build --tag slaif-asset-reservation:local .
 docker image inspect slaif-asset-reservation:local --format '{{.Config.User}}'
 ```

@@ -10,6 +10,9 @@ production deployment has happened.
 - Protected secret store or host-only secret files prepared.
 - PostgreSQL storage and backup destination selected.
 - Human maintainer approval for the release commit.
+- `deploy/rehearse_internal_alpha_deployment.sh` passed locally or in an equivalent staging
+  rehearsal with synthetic disposable values.
+- `docs/runbooks/internal-alpha-pilot-readiness.md` pass/no-go gates were reviewed.
 
 ## Steps
 

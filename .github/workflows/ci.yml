@@ -88,24 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config
-      - run: |
-          cat > deploy/env.production <<'EOF'
-          DJANGO_SETTINGS_MODULE=slaif_reservation.config.settings.production
-          SLAIF_DJANGO_SECRET_KEY=ci-production-secret-key-not-for-deployment-32-bytes
-          SLAIF_ALLOWED_HOSTS=reservation.example.test
-          SLAIF_CSRF_TRUSTED_ORIGINS=https://reservation.example.test
-          SLAIF_ENABLE_API_DOCS=false
-          SLAIF_PUBLIC_API_DOCS=false
-          SLAIF_SECURE_SSL_REDIRECT=true
-          SLAIF_SECURE_HSTS_SECONDS=0
-          SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS=false
-          SLAIF_SECURE_HSTS_PRELOAD=false
-          SLAIF_API_TOKEN_PEPPER=ci-production-api-token-pepper-not-for-deployment-32-bytes
-          SLAIF_API_TOKEN_MAX_LIFETIME_DAYS=90
-          DATABASE_URL=postgres://slaif:ci-password@db:5432/slaif_reservation
-          EOF
-      - run: docker compose -f compose.production.example.yaml config
-      - run: rm -f deploy/env.production
+      - run: deploy/rehearse_internal_alpha_deployment.sh --config-only
       - run: docker build --tag slaif-asset-reservation:ci .
       - run: test "$(docker image inspect slaif-asset-reservation:ci --format '{{.Config.User}}')" = "10001:10001"
       - run: docker run --rm --entrypoint test slaif-asset-reservation:ci -f /app/staticfiles/web/site.css
