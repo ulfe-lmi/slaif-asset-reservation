@@ -3,6 +3,19 @@
 A professional reservation authority for shared laboratory assets, designed for both authenticated humans and authenticated software agents.
 
 The initial deployment targets scattered Linux compute machines and their GPUs. The domain model remains asset-oriented so that other exclusive laboratory resources can be added without recreating the legacy appointment-salon abstraction.
+## Development workflow (conversion candidate, inactive)
+
+A Codex-only Concentrated OAP conversion candidate (bootstrap generation 1, 2026-09-13) adds root
+`PLAN.md`, `ARCHITECTURE.md`, `CRITICAL.md`, `ARCHITECTURE-for-agents.md`,
+`OAP-COMMUNICATION-coding-agent.md`, `STATUS.md`, `TESTING.md`, the `oap/` governance tree
+and `tests/oap/` harness. It is materialized locally and **inactive**: no active order, no
+operational agents, no commits by the bootstrap. The one-time conversion adoption (WO0014)
+remains human-merged; see `docs/OAP-RUNBOOK.md`,
+`docs/decisions/0014-concentrated-oap-workflow-conversion.md` and
+`docs/BOOTSTRAP-SOURCES.md`. The accepted baseline architecture is preserved at
+`docs/bootstrap/1/previous/docs-architecture.md`; the live `docs/architecture.md` path is a
+compatibility pointer.
+
 
 ## Status
 

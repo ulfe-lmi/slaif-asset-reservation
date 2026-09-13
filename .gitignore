@@ -235,3 +235,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Concentrated OAP local runtime (generation 1): private/transient, never committed
+oap/.oap-*.lock
+oap/leases/
+.oap-runtime/
+oap/tmp/

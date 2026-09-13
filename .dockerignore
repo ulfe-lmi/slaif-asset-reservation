@@ -22,3 +22,15 @@ smartscheduling_exports
 migration_artifacts/private
 docs
 tests
+# Concentrated OAP control plane and private runtime must never enter the image
+oap/
+docs/bootstrap/
+tests/oap/
+STATUS.md
+CRITICAL.md
+PLAN.md
+ARCHITECTURE.md
+ARCHITECTURE-for-agents.md
+OAP-COMMUNICATION-coding-agent.md
+TESTING.md
+MANIFEST.sha256

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "kind": "curated_read_only_source_observations_not_installation_receipt",
+  "observed_on": "2026-09-07",
+  "repository": "ulfe-lmi/slaif-asset-reservation",
+  "visibility": "private",
+  "main_sha": "1fcc2c91d793556a91711365abef562604b62f84",
+  "tree_sha": "90029f6313e40294a37bce976c17ee3cc6de8578",
+  "main_commit_historical_date": "2026-07-02T12:26:37Z",
+  "main_ci": {
+    "run_id": 28589883454,
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "1fcc2c91d793556a91711365abef562604b62f84",
+    "url": "https://github.com/ulfe-lmi/slaif-asset-reservation/actions/runs/28589883454",
+    "qualification": "remote run metadata observed, product tests not rerun by package designer"
+  },
+  "open_pull_requests": [],
+  "open_issues": [],
+  "tracked_root_files_absent": [
+    "PLAN.md",
+    "ARCHITECTURE.md",
+    "CRITICAL.md",
+    "CLAUDE.md"
+  ],
+  "tracked_operational_oap_tree_present": false,
+  "branch_protected_field": false,
+  "full_ruleset_and_external_merge_side_effects": "UNVERIFIED",
+  "original_architecture": {
+    "path": "docs/architecture.md",
+    "blob_sha": "246870a7771452ce3878c228b9ad7ffd8e71eda0",
+    "snapshot": "sources/repository/docs-architecture.md",
+    "status_label": "Accepted baseline"
+  },
+  "existing_inventory": {
+    "path": "data/bootstrap/assets.yaml",
+    "blob_sha": "7c9ed1e4a072173960ebb9bdd886ce4c1fafe3a1",
+    "snapshot": "sources/repository/assets.yaml",
+    "physical_verification": "NOT ESTABLISHED BY THIS FILE"
+  },
+  "inspected_paths": {
+    "AGENTS.md": "3f43feeb0a3581d46af4efaa0150f8a1a705e46c",
+    "pyproject.toml": "8daf14c3d653a9ee7a33bd4c06fba6e26c632919",
+    ".github/workflows/ci.yml": "06e89027aa36c77c1555dc855d0c3fa15bcb031c",
+    "docs/discovery-brief.md": "9f294dc874c069bfab43639e5d9c70c2dab85dbb",
+    "src/slaif_reservation/api/management/commands/pilot_readiness_check.py": "903d86c1c68ebf0c321f72b32fb85d11e9584235"
+  },
+  "external_state_writes_performed": false,
+  "installation_performed": false,
+  "product_tests_run_here": false,
+  "known_limits": [
+    "Only selected code/docs inspected; no new complete product audit",
+    "Target local checkout and installed runtime not available in planning session",
+    "Full Concentrated OAP chapter unavailable; supplied generator is the selected minimum profile"
+  ]
+}

@@ -65,3 +65,11 @@ Details:
 - [ ] Migrations and API changes are intentional.
 - [ ] Security/privacy impact is acceptable.
 - [ ] Documentation and readiness language are honest.
+## Workflow classification
+
+- Legacy work order (human-merged): fill the agent report from the execution evidence.
+- Concentrated OAP round (post-adoption only): the agent report section is completed
+  from the immutable published `oap/reports/<ID>-<slug>.md` (implementation head, result,
+  CI separation). The conversion adoption PR (WO0014) is human-merged; agent-merged PRs
+  are not part of the legacy workflow.
+- This PR did not activate OAP, run product orders, merge for itself or deploy.

@@ -1,0 +1,191 @@
+{
+ "schema_version": 1,
+ "generation": "1",
+ "identities": {
+  "AGENTS.md": {
+   "sha256": "ca31b2882318808425134c2cf2d0c2bd49395d47a543e09aa07a597fbbee80d9",
+   "size": 1058,
+   "generation": "1"
+  },
+  "PLAN.md": {
+   "sha256": "d5677519a1546906eca644cb5be34a93f038a73fa20d6ba241cfdd0add6b9ef6",
+   "size": 10642,
+   "generation": "1"
+  },
+  "ARCHITECTURE.md": {
+   "sha256": "9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4",
+   "size": 45869,
+   "generation": "1"
+  },
+  "ARCHITECTURE-for-agents.md": {
+   "sha256": "99d07ddef9fff9c984a3bddeda47fa006d2072de6887b0922d91530e9913f6d3",
+   "size": 12929,
+   "generation": "1"
+  },
+  "OAP-COMMUNICATION-coding-agent.md": {
+   "sha256": "8199d8a9c15a085d32d8f83402ce96b8020b7cf639f3c1691a589ccf4d51c4ed",
+   "size": 4105,
+   "generation": "1"
+  },
+  "TESTING.md": {
+   "sha256": "e25648cd7fcfa99f765b4e6e985f1a284651d202c075a41cc9e212aebbd721c8",
+   "size": 5402,
+   "generation": "1"
+  },
+  "STATUS.md": {
+   "sha256": "f3c413886162be9a7c81a758dc24b4c03108bca6fccc559914d2ed1233f5c1cf",
+   "size": 1808,
+   "generation": "1"
+  },
+  "SECURITY.md": {
+   "sha256": "daf778776ef7b34b9dfda7fc7ac13ffc034bff08ae73b245408f5faa01bccdab",
+   "size": 3435,
+   "generation": "1"
+  },
+  "oap/README.md": {
+   "sha256": "76b3c1a20004126c9a8950727e8da238cadd7b98008016a085d7cb438ed8ed91",
+   "size": 1794,
+   "generation": "1"
+  },
+  "oap/RECOVERY.md": {
+   "sha256": "6e91b07f21d14e0889215dfe9c5328343b5210393b0747935c52aa4a2e5ac186",
+   "size": 3196,
+   "generation": "1"
+  },
+  "oap/COMPLETENESS.md": {
+   "sha256": "58311b8632e9e5aac1aa07d3fb55a39a6129253562381cd9422c34df7ae87755",
+   "size": 13932,
+   "generation": "1"
+  },
+  "oap/runtime.env.example": {
+   "sha256": "bd51872aaaf5744b760671bebb585b5119deb508f9f332afd3eb0d2bd73df9cb",
+   "size": 1014,
+   "generation": "1"
+  },
+  "oap/coding-instructions/AGENTS.md": {
+   "sha256": "1611e9700de5b311deeb45460162464f7f24462e74790dddfcec2bb016b30394",
+   "size": 6403,
+   "generation": "1"
+  },
+  "oap/coding-instructions/SECURITY-CORE.md": {
+   "sha256": "e89bb76e9e1baea6827971ee305ef01fb3fc399cf2b686df4f8d0050d171a948",
+   "size": 1410,
+   "generation": "1"
+  },
+  "oap/coding-instructions/TESTING-CORE.md": {
+   "sha256": "3b3e40674b81ceda8b753f70bf5beaeb09f8b1845c355a37c24974a8d4c578e1",
+   "size": 1823,
+   "generation": "1"
+  },
+  "oap/strategic-instructions/AGENTS.md": {
+   "sha256": "c08e07bf6b5719682079e2d8571b2a8b66f25a0d0ba81fd3b677ef45ee501cc7",
+   "size": 16853,
+   "generation": "1"
+  },
+  "oap/strategic-instructions/OAP-COMMUNICATION-strategic.md": {
+   "sha256": "e6d82a39f30c170ab58603991c89472e04d5b0dc9814d794a9cd303c6290bfa0",
+   "size": 22965,
+   "generation": "1"
+  },
+  "oap/strategic-instructions/strategic_model_init_material.md": {
+   "sha256": "0b5f08595ccc81d5f13426897ff639984da6c0463a5986f6c8a25142fd011762",
+   "size": 5325,
+   "generation": "1"
+  },
+  "oap/strategic-instructions/INITIAL-ROADMAP.md": {
+   "sha256": "aa3e104a7508849748604bb440c111bb23cf2f33cf09e343d5df342524a4535a",
+   "size": 3183,
+   "generation": "1"
+  },
+  "oap/governance/DISTILLATION-MAP.md": {
+   "sha256": "4ae7d4bfb18c5c0f36395e11f295e5d32475c9aa2e0531ebec052cc0dda931ca",
+   "size": 10281,
+   "generation": "1"
+  },
+  "oap/governance/CONTEXT-BUDGET.md": {
+   "sha256": "10fcc838734d14e2c917a7f608469e78aa4ef09b50881d9182a480719e1b22e9",
+   "size": 1420,
+   "generation": "1"
+  },
+  "oap/governance/HUMAN-AUTHORITY.example.json": {
+   "sha256": "d085cf151a857e1c3ba6f5eeaa09d6c54fb3034bef85fb40daea6ee613a35c66",
+   "size": 722,
+   "generation": "1"
+  },
+  "oap/templates/WORK-ORDER-TEMPLATE.md": {
+   "sha256": "067f115494d70da91ab1a50530d034ffcf1dedadd76ef75c8636de9290e13ebb",
+   "size": 1984,
+   "generation": "1"
+  },
+  "oap/templates/REPORT-TEMPLATE.md": {
+   "sha256": "3f356e32c3524610286294b6934fcf5ed42fbf0f2044eed8f02b99dee25f0be1",
+   "size": 1568,
+   "generation": "1"
+  },
+  "oap/templates/STRATEGIC-REVIEW-CHECKLIST.md": {
+   "sha256": "8d797757e30ece996be1520e6ad6e1c27b160e22c8a20aca8a5eba2a1bcc8a01",
+   "size": 1963,
+   "generation": "1"
+  },
+  "oap/templates/CRITICAL-ENTRY-TEMPLATE.md": {
+   "sha256": "001cf5f2b559b23f085487e18bd23777de6048b4b78d35e6f5ca7755f1203950",
+   "size": 1766,
+   "generation": "1"
+  },
+  "oap/templates/HUMAN-ADJUDICATION-TEMPLATE.md": {
+   "sha256": "301acc77481dbf73d0fb7e816144ed93e6e2704410ecef91a836438399540b4a",
+   "size": 1120,
+   "generation": "1"
+  },
+  "oap/templates/HANDOFF-TEMPLATE.md": {
+   "sha256": "46c128b9c33be3291ee65253e33e9f5bf9cde0798c07de691a76cc17509fbf74",
+   "size": 699,
+   "generation": "1"
+  },
+  "oap/audit/ICA-PROTOCOL.md": {
+   "sha256": "a4cf5abd6407fcb671a9ccd1f2c8bc0e9d8024b3ea88abb93b1ab796063ec918",
+   "size": 2376,
+   "generation": "1"
+  },
+  "oap/audit/ICA-REQUEST-TEMPLATE.md": {
+   "sha256": "53af0e3d3bb61524002d9b2330882fca2d53972f1b23c95e0e692552d6a63484",
+   "size": 1344,
+   "generation": "1"
+  },
+  "oap/audit/ICA-REPORT-TEMPLATE.md": {
+   "sha256": "d3e8a0671308dbe3e31593f740aabfa518a695ebe626d50ae60ae1003db694f8",
+   "size": 1501,
+   "generation": "1"
+  },
+  "oap/audit/ICA-REQUIREMENT-MATRIX-TEMPLATE.md": {
+   "sha256": "09843ed4c920725d8fb48f30d84a3aad6be56c5995d4b4c427d099c180c3b3f0",
+   "size": 9778,
+   "generation": "1"
+  },
+  "oap/audit/requests/conversion.DRAFT.md": {
+   "sha256": "cac5e634d3a44af1dc5ea6aa537e9848a3b029c3536bca3f2fedaf0bad45152f",
+   "size": 1656,
+   "generation": "1"
+  },
+  "oap/audit/requests/local-pilot.DRAFT.md": {
+   "sha256": "3bfc301a6aad7b1517d863f49153fdb25326f6a7968af3bf91ceaec235b39e4d",
+   "size": 1432,
+   "generation": "1"
+  },
+  "oap/prompts/coding-round.md": {
+   "sha256": "35eb250b22b4c92541d1de34f1c559e51145a0a3d7de5f661dabcaf623b606b9",
+   "size": 405,
+   "generation": "1"
+  },
+  "oap/prompts/strategic-start.md": {
+   "sha256": "825cbd3ef65bd0687437d7b915c444e81a62171338cbda4e6a875f1c059ea27d",
+   "size": 379,
+   "generation": "1"
+  },
+  "oap/prompts/ica-start.md": {
+   "sha256": "31de4dba9ac4ffad8bc5913d1b475e528713e2bdffff5389819f7cb7664b2907",
+   "size": 378,
+   "generation": "1"
+  }
+ }
+}

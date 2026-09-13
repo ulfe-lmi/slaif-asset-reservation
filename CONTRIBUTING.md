@@ -1,6 +1,6 @@
 # Contributing
 
-This repository follows a pull-request-centered Orchestrated Agentic Programming workflow.
+This repository uses an Orchestrated Agentic Programming workflow. A Codex-only Concentrated OAP conversion candidate (bootstrap generation 1) is materialized locally and inactive: until its one-time human-merged adoption (WO0014, see `docs/decisions/0014-concentrated-oap-workflow-conversion.md` and `docs/OAP-RUNBOOK.md`), the legacy human-per-merge workflow below remains in force.
 
 ## Before implementation
 

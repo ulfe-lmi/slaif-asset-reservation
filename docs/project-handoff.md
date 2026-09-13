@@ -185,3 +185,11 @@ resource-policy work, or remediation found during pilot preparation.
 - physical machine/device identifiers;
 - historical migration scope;
 - gateway authentication design.
+
+## Conversion note (2026-09-13, bootstrap generation 1)
+
+- A Codex-only Concentrated OAP conversion candidate was materialized locally at this
+  baseline (`1fcc2c91d793556a91711365abef562604b62f84`) and is inactive; it is not yet adopted and changes no product
+  behavior. See `docs/OAP-RUNBOOK.md` and `docs/BOOTSTRAP-SOURCES.md`; the accepted
+  strategic state above remains the historical record and does not override live
+  GitHub state.

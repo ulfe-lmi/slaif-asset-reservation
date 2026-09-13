@@ -1,0 +1,118 @@
+name: Codex work order
+description: One approved, PR-sized implementation task for the Codex programming agent
+title: "[WO] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is the execution contract for one Codex pull request. Verify live repository state before assignment. Read `AGENTS.md`.
+
+  - type: textarea
+    id: current_state
+    attributes:
+      label: Current verified state
+      description: Include current main SHA, relevant merged/open PRs, CI state, and existing behavior.
+      placeholder: "main SHA: ...\nRelevant PRs/issues: ...\nCurrent behavior: ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: State one outcome in product/domain language.
+    validations:
+      required: true
+
+  - type: textarea
+    id: domain_behavior
+    attributes:
+      label: Domain behavior to preserve or implement
+      description: Explain the real user/agent behavior and invariant, not just files to edit.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Concrete implementation boundaries for this PR.
+    validations:
+      required: true
+
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Explicit non-goals
+      description: Name tempting adjacent work that must not enter this PR.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Observable, testable completion criteria.
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: inspect
+    attributes:
+      label: Files and areas to inspect
+      description: Relevant docs, apps, migrations, tests, and interfaces.
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Implementation requirements and constraints
+      description: Required design behavior, dependency limits, migration/security rules, and compatibility constraints.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests and verification required
+      description: Exact commands plus positive and negative behavior to prove.
+    validations:
+      required: true
+
+  - type: textarea
+    id: docs
+    attributes:
+      label: Documentation required
+      description: Name the docs/contracts that must change, or explain why none should.
+    validations:
+      required: true
+
+  - type: textarea
+    id: setup
+    attributes:
+      label: Local setup allowed
+      description: Tools/services Codex may install or run inside its execution environment. Production access is never implied.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Governance gates
+      options:
+        - label: The task is one coherent PR-sized unit.
+          required: true
+        - label: Architectural/security decisions are already accepted or explicitly requested as an ADR.
+          required: true
+        - label: Codex must create a branch and PR and must not merge or deploy.
+          required: true
+        - label: No production secrets, private legacy exports, or personal data are required.
+          required: true
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Required final report additions
+      description: Any evidence beyond the repository PR template.
