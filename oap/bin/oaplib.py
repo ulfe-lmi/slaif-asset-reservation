@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Shared stdlib library for the Concentrated OAP helpers (SLAIF existing-repo profile).
 
-Standard library only. No model calls, no network writes. The only read-only remote
-operation is `git ls-remote` when a caller explicitly asks for remote reconciliation;
-tests inject an explicit fixture adapter instead (OAP_REMOTE_ADAPTER_FILE).
+Standard library only. No model calls, no network writes. Read-only remote operations
+are `git ls-remote` when a caller explicitly asks for remote reconciliation, and the two
+fixed read-only `gh` templates (`gh pr view`, `gh pr list`) for PR identity; tests inject
+an explicit fixture adapter instead (OAP_REMOTE_ADAPTER_FILE).
 """
 
 from __future__ import annotations
@@ -1084,6 +1085,115 @@ def git_remote_head(cwd, remote: str, ref: str, timeout: float = 20.0) -> dict:
     return {"ok": False, "head": None, "error": f"ref not found: {ref}"}
 
 
+# ---------------------------------------------------------------------- gh (read-only PR identity)
+
+GH_PR_VIEW_FIELDS = "number,headRefName,headRefOid,state,mergedAt"
+GH_PR_LIST_FIELDS = "number,headRefName,state,mergedAt"
+
+
+def gh_owner_name(repo_root: str):
+    """Parse owner/name from `git remote get-url origin` (read-only).
+
+    Returns (owner_name, None) or (None, short factual reason).
+    """
+    rc, out, _ = git(repo_root, "remote", "get-url", "origin", timeout=20.0, check=False)
+    if rc != 0:
+        return None, "origin remote not configured"
+    url = out.strip()
+    if not url:
+        return None, "origin remote URL empty"
+    path = url
+    if "://" in path:
+        path = path.split("://", 1)[1]
+        if "/" not in path:
+            return None, "cannot parse owner/name from origin URL"
+        path = path.split("/", 1)[1]
+    elif path.count(":") == 1 and "@" in path.split(":", 1)[0]:
+        path = path.split(":", 1)[1]
+    path = path.strip("/")
+    if path.endswith(".git"):
+        path = path[: -len(".git")]
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 2:
+        return None, "cannot parse owner/name from origin URL"
+    return "/".join(parts[-2:]), None
+
+
+def gh_readonly(repo_root: str, args: list, timeout: float = 30.0):
+    """Run one READ-ONLY gh query; `args` must be a fixed read-only template.
+
+    Returns (parsed JSON, None) or (None, short factual reason). Missing gh, non-zero
+    exit, timeout or unparsable output never fabricate an identity.
+    """
+    owner_name, why = gh_owner_name(repo_root)
+    if owner_name is None:
+        return None, why
+    try:
+        p = subprocess.run(
+            ["gh"] + list(args) + ["--repo", owner_name],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            timeout=timeout,
+        )
+    except FileNotFoundError:
+        return None, "gh executable not found"
+    except OSError as e:
+        return None, f"gh could not be executed: {e.strerror or e.__class__.__name__}"
+    except subprocess.TimeoutExpired:
+        return None, "gh timed out"
+    if p.returncode != 0:
+        return None, f"gh exited with code {p.returncode}"
+    try:
+        return json.loads(p.stdout.decode("utf-8", "replace")), None
+    except ValueError:
+        return None, "gh output not parseable as JSON"
+
+
+def gh_pr_identity(obj, require_head: bool):
+    """Map one gh PR JSON object to the FixtureRemote dict shape.
+
+    Returns None when a required field is missing or mistyped; the caller reports
+    unknown, never a fabricated value.
+    """
+    if not isinstance(obj, dict):
+        return None
+    for key in ("number", "headRefName", "state", "mergedAt"):
+        if key not in obj:
+            return None
+    if require_head and "headRefOid" not in obj:
+        return None
+    try:
+        number = int(obj["number"])
+    except (TypeError, ValueError):
+        return None
+    branch = obj["headRefName"]
+    state_raw = obj["state"]
+    merged_at = obj["mergedAt"]
+    if not isinstance(branch, str) or not branch:
+        return None
+    if not isinstance(state_raw, str) or not state_raw:
+        return None
+    if merged_at is not None and not isinstance(merged_at, str):
+        return None
+    head = obj.get("headRefOid")
+    if require_head and (not isinstance(head, str) or not head):
+        return None
+    merged = merged_at is not None or state_raw.upper() == "MERGED"
+    if merged:
+        state = "merged"
+    elif state_raw.upper() == "OPEN":
+        state = "open"
+    else:
+        state = "closed"
+    return {
+        "number": number,
+        "branch": branch,
+        "head": head if isinstance(head, str) and head else None,
+        "state": state,
+        "merged": merged,
+    }
+
+
 # ---------------------------------------------------------------------- locks / leases
 
 
@@ -1385,7 +1495,7 @@ class FixtureRemote:
 
 
 def load_remote_adapter(repo_root):
-    """Default adapter: read-only git ls-remote (no PR/CI knowledge -> PENDING).
+    """Default adapter: read-only git ls-remote plus read-only gh PR identity.
     Fixture adapter only via explicit env file (test mode)."""
     env_file = os.environ.get("OAP_REMOTE_ADAPTER_FILE")
     if env_file:
@@ -1396,16 +1506,39 @@ def load_remote_adapter(repo_root):
             return git_remote_head(repo_root, "origin", ref)
 
         def pr(self, repo_root, number):
-            return {
-                "unknown": True,
-                "reason": (
-                    "fixture adapter required for PR identity in tests; "
-                    "operational API not configured"
-                ),
-            }
+            if not isinstance(number, int) or isinstance(number, bool) or number <= 0:
+                return {"unknown": True, "reason": "PR number must be a positive integer"}
+            data, why = gh_readonly(
+                repo_root,
+                ["pr", "view", str(number), "--json", GH_PR_VIEW_FIELDS],
+            )
+            if why is not None:
+                return {"unknown": True, "reason": why}
+            mapped = gh_pr_identity(data, require_head=True)
+            if mapped is None:
+                return {"unknown": True, "reason": "gh PR view output missing required fields"}
+            return mapped
 
         def pr_for_branch(self, repo_root, branch):
-            return None
+            data, why = gh_readonly(
+                repo_root,
+                ["pr", "list", "--state", "all", "--json", GH_PR_LIST_FIELDS],
+            )
+            if why is not None:
+                return {"unknown": True, "reason": why}
+            if not isinstance(data, list):
+                return {"unknown": True, "reason": "gh PR list output is not a JSON list"}
+            best = None
+            rank = {"open": 0, "merged": 1, "closed": 2}
+            for entry in data:
+                if not isinstance(entry, dict) or entry.get("headRefName") != branch:
+                    continue
+                mapped = gh_pr_identity(entry, require_head=False)
+                if mapped is None:
+                    return {"unknown": True, "reason": "gh PR entry for branch missing fields"}
+                if best is None or rank.get(mapped["state"], 3) < rank.get(best["state"], 3):
+                    best = mapped
+            return best
 
         def create_pr(self, repo_root, branch, title):
             raise RefusedError("PR creation requires separately authorized operational access")

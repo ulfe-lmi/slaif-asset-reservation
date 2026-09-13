@@ -151,19 +151,49 @@ def main(argv=None):
                     rres["remote_head"], report_commit
                 )
             )
+        pr_unknown = None
         if args.pr is not None:
             pr = adapter.pr(str(repo), args.pr)
-            if not pr:
+            if pr is not None and pr.get("unknown"):
+                pr_unknown = str(pr.get("reason") or "unknown")
+            elif pr is None:
                 problems.append(f"PR {args.pr} not found on remote")
-            elif pr.get("branch") != branch:
-                problems.append(
-                    "PR {} branch {} != order branch {}".format(args.pr, pr.get("branch"), branch)
-                )
+            else:
+                if pr.get("branch") != branch:
+                    problems.append(
+                        "PR {} branch {} != order branch {}".format(
+                            args.pr, pr.get("branch"), branch
+                        )
+                    )
+                if pr.get("head") and pr["head"] != report_commit:
+                    problems.append(
+                        "PR {} head {} != report commit {}".format(
+                            args.pr, pr["head"], report_commit
+                        )
+                    )
+                if pr.get("state") in ("merged", "closed"):
+                    problems.append(
+                        "PR {} state {} != open; a published round PR must be open".format(
+                            args.pr, pr.get("state")
+                        )
+                    )
         else:
             pr = adapter.pr_for_branch(str(repo), branch) if branch else None
-            if pr and (pr.get("state") == "merged" or pr.get("merged")):
+            if pr is not None and pr.get("unknown"):
+                pr_unknown = str(pr.get("reason") or "unknown")
+            elif pr is not None and (pr.get("state") == "merged" or pr.get("merged")):
                 problems.append("branch PR is merged; a published round PR must be open")
-        if problems:
+        if pr_unknown is not None:
+            # Unresolvable remote PR identity is BLOCKED: neither a local pass nor a
+            # mismatch-on-unknown FAIL; an already-failed local check keeps FAIL.
+            check(
+                "remote_head_and_pr_identity",
+                False,
+                f"PR identity unresolvable: {pr_unknown}",
+            )
+            res["checks"]["remote_head_and_pr_identity"]["status"] = "BLOCKED"
+            res["status"] = "FAIL" if prior_fail else "BLOCKED"
+        elif problems:
             check("remote_head_and_pr_identity", False, "; ".join(problems))
         else:
             prinfo = ""
@@ -191,11 +221,8 @@ def _out(res, as_json):
             if extra in res:
                 print(f"  ({extra}) {res[extra]}")
         for name, c in res["checks"].items():
-            print(
-                "  [{}] {} {}".format(
-                    "ok" if c["ok"] else "FAIL", name, c["detail"] if not c["ok"] else ""
-                )
-            )
+            label = c.get("status", "ok" if c["ok"] else "FAIL")
+            print("  [{}] {} {}".format(label, name, c["detail"] if not c["ok"] else ""))
 
 
 if __name__ == "__main__":
