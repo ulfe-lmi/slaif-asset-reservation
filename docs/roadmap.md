@@ -184,6 +184,23 @@ Delivers:
 - explicit go/no-go conditions and limitations;
 - no deployment and no production data, secrets, DNS, TLS, or private SmartScheduling exports.
 
+### Work Order 0014 — concentrated OAP workflow conversion (reserved)
+
+Status: candidate materialized locally and inactive; adoption PR human-merged.
+
+Delivers:
+
+- root PLAN/ARCHITECTURE/CRITICAL (candidate), router AGENTS.md, oap/ governance tree;
+- preserved accepted architecture snapshot and compatibility pointer;
+- Codex-only role model, helpers, fixture harness (tests/oap/);
+- targeted doc/CI/manifest updates; no application behavior change.
+
+Acceptance:
+
+- application bytes, migrations, lockfile, inventory and history unchanged;
+- fixture harness green at the reviewed head; product regression separately authorized;
+- independent conversion audit and human adoption before any activation.
+
 ### Next roadmap item
 
 Status: human-selected.

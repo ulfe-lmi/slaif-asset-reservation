@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "status": "UNCONFIGURED_EXAMPLE_NOT_AUTHORIZATION",
+  "repository": "ulfe-lmi/slaif-asset-reservation",
+  "accepted_governance_revision": null,
+  "activation_enabled": false,
+  "development_merge_enabled": false,
+  "human_principals": [],
+  "approved_runtime_roots": [],
+  "allowed_milestones": [],
+  "authority_provenance_reference": null,
+  "merge_side_effects_evidence": null,
+  "human_adjudication_verification": {
+    "mechanism": null,
+    "trusted_origins": [],
+    "agent_shared_identities_disallowed": true
+  },
+  "release_or_deployment_authorization": false,
+  "note": "Filling fields or naming a human is not proof. Independently attribute the actual instruction; otherwise block."
+}
