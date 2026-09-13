@@ -1,0 +1,26 @@
+name: oap
+
+on:
+  pull_request:
+    paths:
+      - "oap/**"
+      - "tests/oap/**"
+      - ".github/workflows/oap.yml"
+  push:
+    branches: [main]
+    paths:
+      - "oap/**"
+      - "tests/oap/**"
+      - ".github/workflows/oap.yml"
+
+jobs:
+  oap-harness:
+    name: oap-harness
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: oap harness (pure stdlib fixtures; no product DB, no model calls)
+        run: python3 -m unittest discover -s tests/oap -p 'test_*.py' -v

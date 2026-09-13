@@ -7,12 +7,16 @@ not every requirement adjacent to it.
 ## T-01. Harness qualification
 
 Run pure helper tests without a product DB or real model:
-`python3 -m unittest discover -s tests/oap -p 'test_*.py' -v`.
-All BA-01…BA-52 cases require named implementation tests, finite timeout and owned cleanup. Actual
-disposable Git commits/FIFOs/tmux test sockets exercise transport/history; fake clients/remotes/CI
-exercise invocation and publication contracts. No real GitHub write, model call or lab access in
-bootstrap. Check source/projection/read-set/role/authority/active/recovery/SELF/DHA/ICA contracts.
-Semantic comparison and installed-client qualification have separate evidence; neither is an ICA.
+`python3 -m unittest discover -s tests/oap -p 'test_*.py' -v` (its own path-gated
+`oap-harness` CI job). The surviving slim-round suites — state, orders, publish, fifo,
+wrapper, report, DHA, privacy, continuity, round-trip canary — require named
+implementation tests, finite timeout and owned cleanup. Actual disposable Git
+commits/FIFOs/tmux test sockets exercise transport/history; fake clients/remotes/CI
+exercise invocation and publication contracts. No real GitHub write, model call or
+lab access in the harness. Check slim-order schema/superset-acceptance,
+read-set/role/authority/active/recovery/report/DHA/ICA and no-self-merge contracts.
+Historical BA case numbers are preserved in surviving files; removed BA files covered
+archived bootstrap machinery (see docs/bootstrap/archive/ARCHIVE-NOTE.md).
 
 ## T-02. Existing application regression (separately authorized adoption/development)
 
@@ -36,7 +40,6 @@ uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test
 uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test --browser chromium tests/browser
 uv run pip-audit
 git diff --check
-sha256sum -c MANIFEST.sha256
 uv run --env-file .env python manage.py spectacular --file build/openapi/schema.yaml --validate --fail-on-warn
 uv run --env-file .env python manage.py operational_check
 ```

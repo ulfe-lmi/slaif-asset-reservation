@@ -1,14 +1,17 @@
-"""BA-28..BA-32 — PR-before-report, report-only parent, future CI honesty,
-remote-vs-local reports, after-report freeze."""
+"""BA-28..BA-32 — PR-before-report, report-only parent, remote-vs-local
+reports, after-report freeze (slim 015-a verifier: exactly three checks)."""
 
 import json
+import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-import oaplib
-import oaptestlib as t
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "oap" / "bin"))
+
+import oaplib  # noqa: E402
+import oaptestlib as t  # noqa: E402
 
 
 def report_text(impl_sha: str, order_digest: str, extra: str = "", future_ci: bool = False) -> str:
@@ -77,7 +80,6 @@ class Ba28PrBeforeReport(unittest.TestCase):
             adapter = oaplib.FixtureRemote(state)
             # the report commit happens strictly AFTER the PR identity
             report_commit_time = pr_time + 60
-            t.order_meta(oid="001-a", base_sha=head0, pr_number=33)
             os_environ = __import__("os").environ
             saved = os_environ.get("OAP_REMOTE_ADAPTER_FILE")
             os_environ["OAP_REMOTE_ADAPTER_FILE"] = remote
@@ -181,20 +183,22 @@ class Ba29ReportOnlyParent(unittest.TestCase):
                 expect_json=True,
             )
             checks = js["checks"]
-            self.assertTrue(checks["order_valid"]["ok"], checks)
-            self.assertTrue(checks["report_exists"]["ok"])
-            self.assertTrue(checks["implementation_head_line"]["ok"], checks)
-            self.assertTrue(checks["self_marker"]["ok"])
-            self.assertTrue(
-                checks["first_parent"]["ok"], "first parent must be the stated implementation head"
+            self.assertEqual(
+                sorted(checks),
+                [
+                    "implementation_head_first_parent",
+                    "remote_head_and_pr_identity",
+                    "report_only_changed_path",
+                ],
+                "exactly the three slim checks",
             )
+            self.assertEqual(js["status"], "BLOCKED", js)
+            self.assertTrue(checks["report_only_changed_path"]["ok"], checks)
             self.assertTrue(
-                checks["report_only_path"]["ok"],
-                "only the report path may change: {}".format(checks["report_only_path"]["detail"]),
+                checks["implementation_head_first_parent"]["ok"],
+                "first parent must be the stated implementation head",
             )
-            self.assertTrue(checks["no_critical_mutation"]["ok"])
-            self.assertTrue(checks["order_digest_in_report"]["ok"])
-            self.assertTrue(checks["future_ci_honesty"]["ok"])
+            self.assertFalse(checks["remote_head_and_pr_identity"]["ok"])
 
     def test_ba29_extra_path_rejected(self):
         with tempfile.TemporaryDirectory(prefix=t.unique_name("ba29b")) as td:
@@ -206,8 +210,8 @@ class Ba29ReportOnlyParent(unittest.TestCase):
                 timeout=60,
                 expect_json=True,
             )
-            self.assertFalse(js["checks"]["report_only_path"]["ok"])
-            self.assertIn("src/extra.py", js["checks"]["report_only_path"]["detail"])
+            self.assertFalse(js["checks"]["report_only_changed_path"]["ok"])
+            self.assertIn("src/extra.py", js["checks"]["report_only_changed_path"]["detail"])
 
     def test_ba29_wrong_parent_rejected(self):
         with tempfile.TemporaryDirectory(prefix=t.unique_name("ba29c")) as td:
@@ -219,35 +223,13 @@ class Ba29ReportOnlyParent(unittest.TestCase):
                 timeout=60,
                 expect_json=True,
             )
-            self.assertFalse(js["checks"]["first_parent"]["ok"])
+            self.assertFalse(js["checks"]["implementation_head_first_parent"]["ok"])
+            self.assertIn(
+                "first parent", js["checks"]["implementation_head_first_parent"]["detail"]
+            )
 
 
 class Ba30FutureCi(unittest.TestCase):
-    def test_ba30_future_ci_claim_fails(self):
-        with tempfile.TemporaryDirectory(prefix=t.unique_name("ba30")) as td:
-            td = Path(td)
-            repo = td / "repo"
-            t.make_repo(repo, {"AGENTS.md": b"r\n"}, "baseline")
-            impl = t.commit_files(repo, {"src/app.py": b"impl\n"}, "implementation head")
-            order = t.make_order_file(repo, oid="001-a", base_sha=impl)
-            install_order(repo, order, "001-a")
-            t.git(repo, "add", "-A")
-            t.git(repo, "commit", "-q", "-m", "order")
-            impl = t.head(repo)
-            (repo / "oap" / "reports").mkdir(parents=True)
-            (repo / "oap" / "reports" / "001-a-canary.md").write_text(
-                report_text(impl, oaplib.sha256_hex(order.read_bytes()), future_ci=True)
-            )
-            t.git(repo, "add", "-A")
-            t.git(repo, "commit", "-q", "-m", "report")
-            rc, out, err, js = t.run_cli(
-                "verify_report.py",
-                ["--repo", str(repo), "--id", "001-a", "--json"],
-                timeout=60,
-                expect_json=True,
-            )
-            self.assertFalse(js["checks"]["future_ci_honesty"]["ok"])
-
     def test_ba30_separate_ci_identity_and_private_receipt(self):
         with tempfile.TemporaryDirectory(prefix=t.unique_name("ba30b")) as td:
             td = Path(td)
@@ -296,6 +278,7 @@ class Ba31RemoteVsLocal(unittest.TestCase):
             )
             t.git(repo, "add", "-A")
             t.git(repo, "commit", "-q", "-m", "report")
+            report_head = t.head(repo)
             (repo / "oap" / "active").write_text("001-a\n")
             # remote fixture: branch absent -> BLOCKED, never a local pass
             state = {"refs": {"refs/heads/main": t.head(repo)}, "prs": []}
@@ -308,14 +291,9 @@ class Ba31RemoteVsLocal(unittest.TestCase):
                 expect_json=True,
             )
             self.assertEqual(js["status"], "BLOCKED", js)
-            self.assertFalse(js["checks"]["remote_available"]["ok"])
+            self.assertFalse(js["checks"]["remote_head_and_pr_identity"]["ok"])
             # publication itself is unchanged: re-running verification is read-only
-            self.assertEqual(
-                t.head(repo),
-                js["checks"]["report_commit_found"]["detail"]
-                if js["checks"]["report_commit_found"]["ok"]
-                else t.head(repo),
-            )
+            self.assertEqual(t.head(repo), report_head)
             # lost response after verified push: remote head present + journal merged
             # routes to strategy review (ACCEPTED_QUIESCENT), never coding mutation
             state2 = {
@@ -375,9 +353,9 @@ class Ba31RemoteVsLocal(unittest.TestCase):
                 expect_json=True,
             )
             self.assertEqual(js["status"], "PASS", js)
-            self.assertTrue(js["checks"]["remote_available"]["ok"])
-            self.assertTrue(js["checks"]["remote_head_match"]["ok"])
-            self.assertTrue(js["checks"]["pr_identity"]["ok"])
+            c = js["checks"]["remote_head_and_pr_identity"]
+            self.assertTrue(c["ok"], js)
+            self.assertIn("PR 36 bound", c["detail"])
 
 
 class Ba32Freeze(unittest.TestCase):

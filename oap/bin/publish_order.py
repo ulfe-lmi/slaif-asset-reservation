@@ -107,10 +107,7 @@ def main(argv=None):
         _out(res, args.json)
         return 1
     step("order_schema", True, "id={}".format(meta["id"]))
-    if (
-        meta.get("repo") != vals.get("OAP_REMOTE_REPOSITORY")
-        and meta.get("repo") != "ulfe-lmi/slaif-asset-reservation"
-    ):
+    if meta.get("repo") and meta.get("repo") != vals.get("OAP_REMOTE_REPOSITORY"):
         step(
             "order_repo",
             False,
@@ -120,9 +117,21 @@ def main(argv=None):
         return 1
     step("order_repo", True)
     oid = meta["id"]
-    slug = meta["slug"]
     orders_dir = repo / "oap" / "orders"
-    dest = orders_dir / (f"{oid}-{slug}.md")
+    # slim schema has no slug: the draft filename is the publication name and must
+    # bind the order ID (classify/round_frozen/verify glob on "<ID>-*.md").
+    dest_name = opath.name
+    if not (dest_name.startswith(oid + "-") and dest_name.endswith(".md")):
+        res["status"] = "FAILED_VALIDATION"
+        step(
+            "order_name",
+            False,
+            f"draft name {dest_name!r} must be '<id>-<slug>.md' matching ID {oid}",
+        )
+        _out(res, args.json)
+        return 1
+    step("order_name", True, dest_name)
+    dest = orders_dir / dest_name
     journal = home / "workorders" / "state.json"
     jdata = {"events": []}
     if journal.exists():
@@ -141,7 +150,7 @@ def main(argv=None):
     step("pointer_state", True, ptr["state"])
     # remote reconciliation (read-only; fixture adapter explicit)
     adapter = oaplib.load_remote_adapter(str(repo))
-    rhead = adapter.remote_head(str(repo), "refs/heads/" + meta["base_branch"])
+    rhead = adapter.remote_head(str(repo), "refs/heads/" + (meta.get("base_branch") or "main"))
     if not rhead.get("ok"):
         step(
             "remote_reconcile",
@@ -152,9 +161,13 @@ def main(argv=None):
         )
         _out(res, args.json)
         return 1
-    step("remote_reconcile", True, "remote {}={}".format(meta["base_branch"], rhead["head"]))
+    step(
+        "remote_reconcile",
+        True,
+        "remote {}={}".format(meta.get("base_branch") or "main", rhead["head"]),
+    )
     # PR identity
-    if meta["pr_number"] is None:
+    if meta.get("pr_number") is None:
         existing = adapter.pr_for_branch(str(repo), meta["branch"])
         if existing:
             if existing.get("merged") or existing.get("state") == "merged":
@@ -170,17 +183,18 @@ def main(argv=None):
                 )
                 _out(res, args.json)
                 return 1
+            # CREATE_OR_RESUME: an interrupted round reuses the verified open PR
             step(
                 "pr_identity",
-                False,
-                "round a but branch already has open PR {}; order must bind it "
-                "(REUSE, not new)".format(existing.get("number")),
+                True,
+                "branch already has open PR {}; CREATE_OR_RESUME reuses it, never a second".format(
+                    existing.get("number")
+                ),
             )
-            _out(res, args.json)
-            return 1
-        step("pr_identity", True, "no PR yet for branch (CREATE_OR_RESUME)")
+        else:
+            step("pr_identity", True, "no PR yet for branch (CREATE_OR_RESUME)")
     else:
-        pr = adapter.pr(str(repo), meta["pr_number"])
+        pr = adapter.pr(str(repo), meta.get("pr_number"))
         if not pr:
             step("pr_identity", False, "PR {} not found".format(meta["pr_number"]))
             _out(res, args.json)

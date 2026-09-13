@@ -387,33 +387,25 @@ META_CLOSE = "\n-->"
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
-ORDER_REQUIRED = {
-    "schema_version": int,
-    "kind": str,
+# Slim final order schema (015-a): exactly nine meta fields plus the DHA body
+# declaration = ten fields. Published superset orders (e.g. the 25-field
+# generation-1 orders) remain valid: unknown extra keys pass through unvalidated.
+ORDER_SLIM = {
     "id": str,
-    "objective": int,
     "round": str,
-    "slug": str,
-    "state": str,
-    "repo": str,
-    "base_branch": str,
     "base_sha": str,
     "issue_number": int,
     "branch": str,
     "pr_mode": str,
-    "pr_number": (int, type(None)),
     "previous_round": (str, type(None)),
-    "provenance": list,
-    "requirements": list,
-    "governance_revision": str,
-    "source_hashes": dict,
     "allowed_paths": list,
     "forbidden_resources": list,
-    "decision_class": str,
-    "expected_report_path": str,
-    "tests": list,
-    "target_gate": str,
 }
+
+# Normalized display values for slim orders, so protected consumers that read
+# superseded keys (e.g. check_state.py) keep working. These are NOT enforced
+# schema fields.
+ORDER_NORM_DEFAULTS = {"pr_number": None, "state": "FINAL"}
 
 
 def _full_hex(v) -> bool:
@@ -421,7 +413,13 @@ def _full_hex(v) -> bool:
 
 
 def parse_order(data: bytes, strict_final: bool = False):
-    """Parse an OAP order. Returns (meta, body, errors)."""
+    """Parse an OAP order. Returns (meta, body, errors).
+
+    Slim schema: the nine ORDER_SLIM meta fields plus exactly one DHA body
+    declaration. Extra superset keys (generation-1 25-field orders) are accepted
+    and passed through unchanged; a superset 'state' key must be FINAL when
+    strict_final is set.
+    """
     errs = []
     try:
         text = data.decode("utf-8")
@@ -443,34 +441,25 @@ def parse_order(data: bytes, strict_final: bool = False):
             raise ValueError("meta not an object")
     except (ValueError, TypeError) as e:
         return None, body, errs + [f"OAP-META is not valid JSON: {e.__class__.__name__}"]
-    for key, _typ in ORDER_REQUIRED.items():
+    for key, _typ in ORDER_SLIM.items():
         if key not in meta:
             errs.append(f"meta missing key: {key}")
     if not errs:
-        for key, typ in ORDER_REQUIRED.items():
-            v = meta[key]
-            if typ is int:
-                if not isinstance(v, int) or isinstance(v, bool):
-                    errs.append(f"meta {key} must be integer")
-            elif typ is type(None) or typ is (int, type(None)):
-                if v is not None and not isinstance(v, (int, str)):
-                    errs.append(f"meta {key} has wrong type")
-            elif not isinstance(v, typ):
+        for key, typ in ORDER_SLIM.items():
+            if not isinstance(meta[key], typ) or (typ is int and isinstance(meta[key], bool)):
                 errs.append(f"meta {key} has wrong type")
         if errs:
             return meta, body, errs
-        if meta["kind"] != "order":
-            errs.append("kind must be 'order'")
         if not valid_id(meta["id"]):
             errs.append("bad ID grammar: {!r}".format(meta["id"]))
         elif meta["id"].split("-", 1)[1] != meta["round"]:
             errs.append("ID round part must equal round")
         if not _full_hex(meta["base_sha"]):
             errs.append("base_sha must be a full object ID")
-        if not _full_hex(meta["governance_revision"]):
-            errs.append("governance_revision must be a full object ID")
         if not isinstance(meta["issue_number"], int) or meta["issue_number"] <= 0:
             errs.append("issue_number must be a positive integer")
+        if not (isinstance(meta["branch"], str) and meta["branch"].strip()):
+            errs.append("branch must be a nonempty string")
         if meta["pr_mode"] not in ("CREATE_OR_RESUME", "AMEND"):
             errs.append("pr_mode invalid")
         if meta["round"] == "a":
@@ -483,54 +472,17 @@ def parse_order(data: bytes, strict_final: bool = False):
                 errs.append("correction rounds require pr_mode AMEND")
             if not isinstance(meta["previous_round"], str) or not valid_id(meta["previous_round"]):
                 errs.append("previous_round must be a valid ID")
-        if meta["pr_number"] is not None and (
-            not isinstance(meta["pr_number"], int) or meta["pr_number"] <= 0
-        ):
-            errs.append("pr_number must be null or a positive integer")
-        if meta["pr_number"] is None and not (meta["round"] == "a"):
-            errs.append("pr_number null is only allowed before the initial PR of round a")
-        prov = meta["provenance"]
-        if not isinstance(prov, list) or not prov:
-            errs.append("provenance must be a nonempty list")
-        else:
-            for i, entry in enumerate(prov):
-                if not isinstance(entry, dict) or entry.get("marker") not in (
-                    "H",
-                    "A",
-                    "E",
-                    "I",
-                    "C",
-                ):
-                    errs.append(f"provenance[{i}] needs marker H|A|E|I|C")
-                elif not (isinstance(entry.get("source"), str) and entry.get("source").strip()):
-                    errs.append(f"provenance[{i}] needs concrete source")
-                elif not (
-                    isinstance(entry.get("section_or_evidence"), str)
-                    and entry.get("section_or_evidence").strip()
-                ):
-                    errs.append(f"provenance[{i}] needs concrete section_or_evidence")
-        reqs = meta["requirements"]
-        if (
-            not isinstance(reqs, list)
-            or not reqs
-            or not all(isinstance(r, str) and re.fullmatch(r"SAR-[0-9]{3}", r) for r in reqs)
-        ):
-            errs.append("requirements must be nonempty SAR-NNN IDs")
-        if meta["decision_class"] not in ("D0", "D1", "D2_PREPARATION"):
-            errs.append("decision_class invalid")
-        sh = meta["source_hashes"]
-        if not isinstance(sh, dict) or not all(
-            isinstance(k, str) and HEX64.fullmatch(v or "")
-            for k, v in (sh.items() if isinstance(sh, dict) else [])
-        ):
-            errs.append("source_hashes must map names to full sha256")
         if (
             not isinstance(meta["allowed_paths"], list)
             or not meta["allowed_paths"]
             or not all(isinstance(x, str) and x for x in meta["allowed_paths"])
         ):
             errs.append("allowed_paths must be a nonempty list of paths")
-        if strict_final and meta["state"] != "FINAL":
+        if not isinstance(meta["forbidden_resources"], list) or not all(
+            isinstance(x, str) for x in meta["forbidden_resources"]
+        ):
+            errs.append("forbidden_resources must be a list of strings")
+        if strict_final and meta.get("state") is not None and meta["state"] != "FINAL":
             errs.append(
                 "order state must be FINAL for publication (found {!r})".format(meta["state"])
             )
@@ -540,6 +492,9 @@ def parse_order(data: bytes, strict_final: bool = False):
         unres = unresolved_finalization(body)
         if unres:
             errs.append("genuine unresolved finalization field(s): {}".format(", ".join(unres[:5])))
+    # normalized display values for superseded keys (not part of the slim schema)
+    for key, default in ORDER_NORM_DEFAULTS.items():
+        meta.setdefault(key, default)
     return meta, body, errs
 
 

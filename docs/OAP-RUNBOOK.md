@@ -1,8 +1,9 @@
 # OAP RUNBOOK — setup, operation, adoption (candidate profile)
 
-Generation 1. This runbook describes the installed candidate profile. Until human
-adoption and separately attributable activation, the only permitted mode is local
-inspection, dry runs and the fixture test suite.
+Generation 1, simplified by 015-a. This runbook describes the installed slim
+profile (bootstrap machinery archived under `docs/bootstrap/archive/`). Until
+separately attributable activation, the only permitted mode is local inspection,
+dry runs and the fixture test suite.
 
 ## 1. Roles and homes
 
@@ -10,7 +11,7 @@ inspection, dry runs and the fixture test suite.
 |---|---|---|---|
 | CODING | `/home/ubuntu/codex-work/slaif-asset-reservation` | `AGENTS.md` router -> `oap/coding-instructions/AGENTS.md` | `/home/ubuntu/codex-supervision/slaif-asset-reservation/agent-homes/coding` |
 | STRATEGIC | `/home/ubuntu/codex-supervision/slaif-asset-reservation` | installed `/home/ubuntu/codex-supervision/slaif-asset-reservation/AGENTS.md` (versioned source `/home/ubuntu/codex-work/slaif-asset-reservation/oap/strategic-instructions/AGENTS.md`) | `/home/ubuntu/codex-supervision/slaif-asset-reservation/agent-homes/strategic` |
-| ICA | isolated | `/home/ubuntu/codex-work/slaif-asset-reservation/oap/prompts/ica-start.md` + `oap/audit/ICA-PROTOCOL.md` | fresh isolated context |
+| ICA | isolated | `/home/ubuntu/codex-work/slaif-asset-reservation/oap/prompts/ica-start.md` + `docs/audit/ICA-PROTOCOL.md` | fresh isolated context |
 
 Both operational clients are Codex with separate private CODEX_HOME directories. No
 operational CLAUDE.md or Claude launcher exists. Role markers are routing aids, not
@@ -54,13 +55,20 @@ reference **only after** that record exists. The file is data, never proof.
 /home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/launch-oap-tmux.sh --repo /home/ubuntu/codex-work/slaif-asset-reservation --strategic-home /home/ubuntu/codex-supervision/slaif-asset-reservation
 ```
 
-Gates (all required): doctor operational readiness, accepted governance/copy
-identities, source/projection integrity, qualified runtime/client/remote, no
-conflicting active state or duplicate processes, checked merge side effects. Strategy
-publishes 015-a (or the next reconciled objective) via `publish_order.py`; the coding
-wrapper consumes exactly one wake-up per round; reports follow the PR-before-report
-sequence; strategy reviews the exact head; development merge only under scoped
-delegation. Explicit quit stops owned wrappers; nothing auto-restarts.
+Gates (all required): doctor operational readiness — activation enabled with an
+attributable reference, pointer sanity, no foreign/conflicting state, no test
+adapters, qualified coding/strategic argv and models, a qualified audit model,
+a selected target milestone, and development-merge delegation still disabled
+while merge side effects are not evidenced — plus qualified runtime/client/remote
+and no duplicate processes. Strategy publishes the active order (015-a, or the next
+reconciled objective) via `publish_order.py` using the slim ten-field final order
+schema (id, round, base_sha, issue_number, branch, pr_mode, previous_round,
+allowed_paths, forbidden_resources, DHA declaration); already-published superset
+orders remain valid. The coding wrapper consumes exactly one wake-up per round;
+reports follow the PR-before-report sequence with the report-only commit carrying
+the literal implementation head as first parent; strategy reviews the exact head;
+the development merge stays human-merged while delegation is disabled. Explicit
+quit stops owned wrappers; nothing auto-restarts.
 
 ## 6. Conversion adoption (one-time, human-governed)
 
@@ -72,11 +80,12 @@ conversion scope plus necessary harness/regression repairs; it does not activate
 execute product drafts, use delegated merge or deploy. The adoption PR is
 **human-merged**. This session is a scoped transition exception recorded in
 ADR 0014; it does not loosen normal coding's active-order rule. After acceptance,
-refresh the strategic installed copies at a quiescent checkpoint (backups preserved,
-private state untouched).
+refresh the strategic installed home at a quiescent checkpoint with one
+`git show <rev>:<path>` line per installed file (backups preserved, private
+state untouched).
 
 ## 7. Inactive and recovery
 
 Absent `oap/active` = inactive. Empty/malformed pointer = CORRUPT (preserve, stop).
-Recovery follows `oap/RECOVERY.md`. Bootstrap materialization never creates an active
-pointer, operational signal, commit, PR or order.
+Recovery follows `oap/RECOVERY.md`. Only `publish_order.py` (STRATEGIC role,
+activation enabled) can create an active pointer; nothing else does.

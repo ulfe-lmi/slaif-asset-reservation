@@ -1,13 +1,16 @@
 """BA-24/BA-25 — FIFO framing and ownership on real temporary FIFOs."""
 
 import os
+import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-import oaplib
-import oaptestlib as t
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "oap" / "bin"))
+
+import oaplib  # noqa: E402
+import oaptestlib as t  # noqa: E402
 
 
 class Ba24Framing(unittest.TestCase):

@@ -20,9 +20,6 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy src
       - run: git diff --check
-      - run: sha256sum -c MANIFEST.sha256
-      - name: oap harness (pure stdlib fixtures; no product DB, no model calls)
-        run: python3 -m unittest discover -s tests/oap -p 'test_*.py' -v
 
   test:
     name: test

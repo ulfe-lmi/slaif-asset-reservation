@@ -4,12 +4,15 @@ signal-after-durability."""
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-import oaplib
-import oaptestlib as t
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "oap" / "bin"))
+
+import oaplib  # noqa: E402
+import oaptestlib as t  # noqa: E402
 
 
 def load_publish_module():
@@ -73,26 +76,33 @@ class PublishFixture:
 
 class Ba20FirstRoundResume(unittest.TestCase):
     def test_ba20_interrupted_round_a_reuses_existing_pr(self):
+        """Slim CREATE_OR_RESUME: an interrupted round a reuses the verified open
+        branch PR; the publisher never creates or re-creates a second PR."""
         with tempfile.TemporaryDirectory(prefix=t.unique_name("ba20")) as td:
             td = Path(td)
             fx = PublishFixture(
                 td, prs=[{"number": 31, "branch": "oap/001-a", "state": "open", "merged": False}]
             )
-            # order says pr_number null (round a) but the branch already has an open PR
-            rc, out, err, js = fx.publish()
-            self.assertNotEqual(rc, 0)
+            rc, out, err, js = fx.publish(dry=True)
+            self.assertEqual(rc, 0, out)
+            self.assertEqual(js["status"], "DRY_RUN_VALID")
             steps = {s["step"]: s for s in js["steps"]}
-            self.assertFalse(steps["pr_identity"]["ok"])
-            self.assertIn("must bind it", steps["pr_identity"]["detail"])
+            self.assertTrue(steps["pr_identity"]["ok"], js)
+            self.assertIn("31", steps["pr_identity"]["detail"])
+            self.assertIn("reuses", steps["pr_identity"]["detail"])
             # no second PR was created: remote state unchanged
             state = json.loads(Path(fx.remote).read_text())
             self.assertEqual(len(state["prs"]), 1)
-            # binding the verified PR passes
-            meta = t.order_meta(oid="001-a", base_sha=fx.head, pr_number=31, branch="oap/001-a")
-            fx.order = t.make_order_file(td, meta=meta, name="bound-order.md")
-            rc2, out2, err2, js2 = fx.publish(dry=True)
-            self.assertEqual(rc2, 0, out2)
-            self.assertEqual(js2["status"], "DRY_RUN_VALID")
+            # a merged historical PR on the branch is still refused
+            fx2 = PublishFixture(
+                td / "b",
+                prs=[{"number": 31, "branch": "oap/001-a", "state": "merged", "merged": True}],
+            )
+            rc2, out2, err2, js2 = fx2.publish(dry=True)
+            self.assertNotEqual(rc2, 0)
+            steps2 = {s["step"]: s for s in js2["steps"]}
+            self.assertFalse(steps2["pr_identity"]["ok"])
+            self.assertIn("MERGED historical PR", steps2["pr_identity"]["detail"])
 
 
 class Ba21ImmutablePublication(unittest.TestCase):

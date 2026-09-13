@@ -3,13 +3,16 @@ owned-only cleanup (foreign files/sessions survive bootstrap operations).
 """
 
 import json
+import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-import oaplib
-import oaptestlib as t
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "oap" / "bin"))
+
+import oaplib  # noqa: E402
+import oaptestlib as t  # noqa: E402
 
 SENT_BEARER = "Bearer abcdef1234567890abcdef1234567890"
 SENT_SAR = "sar_ab12cd34ef56_0123456789abcdef"
@@ -130,17 +133,33 @@ class Ba50OwnedCleanup(unittest.TestCase):
         home = area / "home"
         repo.mkdir(parents=True)
         home.mkdir()
-        t.write_runtime_env(home, repo, activation=False)
+        t.write_runtime_env(home, repo, activation=True, authority=True)
 
-        # 1) engine dry-run (no writes anywhere); bootstrap root is a distinct,
-        # non-nested sibling root as the engine requires
-        boot = self.td / "bootstrap-root"
-        boot.mkdir(exist_ok=True)
-        cr = t.make_manifest_root(area, [t.file_entry("REPO/NEW-FILE.md", b"candidate\n")])
-        rc, out, err, js = t.run_engine(cr, str(repo), str(home), str(boot))
+        # 1) publish dry-run (no writes anywhere) on owned fixture state
+        head = t.make_repo(repo, {"AGENTS.md": b"router\n"})
+        remote = t.write_remote_state(self.td, {"refs": {"refs/heads/main": head}})
+        order = t.make_order_file(self.td, oid="001-a", base_sha=head)
+        before = t.snapshot(str(area))
+        rc, out, err, js = t.run_cli(
+            "publish_order.py",
+            [
+                "--repo",
+                str(repo),
+                "--strategic-home",
+                str(home),
+                "--order",
+                str(order),
+                "--dry-run",
+                "--json",
+            ],
+            env={"OAP_ROLE": "STRATEGIC", "OAP_REMOTE_ADAPTER_FILE": remote},
+            expect_json=True,
+        )
         self.assertEqual(rc, 0, out + err)
-        self.assertEqual(js["result"], "PLANNED")
-        self.assertFalse(js["writes_performed"])
+        self.assertEqual(js["status"], "DRY_RUN_VALID")
+        self.assertFalse((repo / "oap" / "active").exists())
+        after = t.snapshot(str(area))
+        self.assertEqual(before, after, "dry-run must not create or touch any file")
 
         # 2) FIFO framing round-trip on owned FIFOs only
         fifo = home / "owned.fifo"

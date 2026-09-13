@@ -11,8 +11,10 @@ import time
 import unittest
 from pathlib import Path
 
-import oaplib
-import oaptestlib as t
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "oap" / "bin"))
+
+import oaplib  # noqa: E402
+import oaptestlib as t  # noqa: E402
 
 
 def start_wrapper(

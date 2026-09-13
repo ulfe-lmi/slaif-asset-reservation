@@ -1,12 +1,15 @@
 """BA-18/BA-19 — FINAL order schema and ID/round transitions."""
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-import oaplib
-import oaptestlib as t
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "oap" / "bin"))
+
+import oaplib  # noqa: E402
+import oaptestlib as t  # noqa: E402
 
 
 def parse_full(meta: dict, body: str):
@@ -22,21 +25,47 @@ class Ba18Schema(unittest.TestCase):
 
     def test_ba18_missing_fields_rejected(self):
         base = t.order_meta(base_sha="a" * 40)
+        for key in list(t.ORDER_SLIM_KEYS):
+            m = dict(base)
+            del m[key]
+            _, _, errs = parse_full(m, t.dha_none_body())
+            self.assertTrue(any(key in e for e in errs), f"missing {key} must reject: {errs}")
+
+    def test_ba18_invalid_values_rejected(self):
+        base = t.order_meta(base_sha="a" * 40)
         cases = {
-            "provenance": ([], "provenance"),
-            "requirements": ([], "requirements"),
-            "base_sha": ("", "base_sha"),
-            "issue_number": (0, "issue_number"),
-            "pr_mode": ("MERGE_NOW", "pr_mode"),
-            "governance_revision": ("nothex", "governance_revision"),
-            "source_hashes": ({"PLAN.md": "abc"}, "source_hashes"),
-            "allowed_paths": ([], "allowed_paths"),
+            "base_sha": ("not-hex"),
+            "issue_number": (0),
+            "branch": ("   "),
+            "pr_mode": ("MERGE_NOW"),
+            "allowed_paths": (["", "x"]),
+            "forbidden_resources": (["x", 1]),
         }
-        for name, (val, key) in cases.items():
+        for name, val in cases.items():
+            key = name.replace("_bool", "")
             m = dict(base)
             m[key] = val
             _, _, errs = parse_full(m, t.dha_none_body())
-            self.assertTrue(errs, f"missing/invalid {name} must reject")
+            self.assertTrue(errs, f"invalid {name} must reject")
+        # bool is an int subclass but must not pass as issue_number
+        m = dict(base)
+        m["issue_number"] = True
+        _, _, errs = parse_full(m, t.dha_none_body())
+        self.assertTrue(errs)
+
+    def test_ba18_superset_order_accepted(self):
+        """The slim parser accepts already-published 25-field superset orders
+        (including the shape of this round's own order) as valid."""
+        sup = t.order_meta(base_sha="a" * 40, superset=True)
+        self.assertEqual(len(sup), 25)
+        _, _, errs = parse_full(sup, t.dha_none_body())
+        self.assertEqual(errs, [])
+        # and the real published order of this round, when present, parses valid
+        real = t.REPO_ROOT / "oap" / "orders" / "015-a-simplify-canary.md"
+        if real.is_file():
+            meta, body, rerrs = oaplib.parse_order(real.read_bytes(), strict_final=True)
+            self.assertEqual(rerrs, [])
+            self.assertEqual(meta["id"], "015-a")
 
     def test_ba18_dha_required_and_none_default(self):
         meta = t.order_meta(base_sha="a" * 40)
