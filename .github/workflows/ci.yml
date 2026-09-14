@@ -49,6 +49,21 @@ jobs:
           version: "0.11.23"
           enable-cache: true
       - run: uv sync --locked --all-groups
+      # pg_dump/pg_restore on the host: the ubuntu-24.04 runner has no pg client
+      # tools by default (only the postgres:17 service image has them). Install
+      # the PostgreSQL 17 client from the official PGDG repository so the client
+      # matches the server-17 dump format used by the restore_drill test, and
+      # pin /usr/local/bin so the 17 tools are deterministically on PATH.
+      - name: Install postgresql-client-17
+        run: |
+          sudo sh -c "curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg"
+          echo "deb http://apt.postgresql.org/pub/repos/apt noble-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client-17
+          sudo ln -sf /usr/lib/postgresql/17/bin/pg_dump /usr/local/bin/pg_dump
+          sudo ln -sf /usr/lib/postgresql/17/bin/pg_restore /usr/local/bin/pg_restore
+          pg_dump --version
+          pg_restore --version
       - run: uv run playwright install --with-deps chromium
       - run: uv run python manage.py migrate --noinput
       - run: uv run python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
