@@ -7,6 +7,7 @@ owner identity only. Nothing outside the owned roots is touched.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import stat
@@ -473,19 +474,61 @@ def fifo_consumer_thread(fifo_path, holder: list, timeout: float = 30.0, owner: 
     return t
 
 
-def fifo_write(fifo_path: Path, data: bytes = b"OK", fragment: bool = False) -> None:
-    fd = os.open(str(fifo_path), os.O_WRONLY)
-    try:
-        if fragment and data:
-            os.write(fd, data[:1])
+def fifo_write(
+    fifo_path: Path, data: bytes = b"OK", fragment: bool = False, deadline: float = 30.0
+) -> None:
+    """Deliver `data` to a reader that (re)opens the FIFO.
+
+    EPIPE means the session was not consumed (the reader's bounded receive
+    window closed without reading the message, e.g. the wrapper's 0.5s
+    receive timeout expired between this writer's open unblocking and its
+    write executing under runner load), so the write is retried until
+    delivered or the deadline: close the fd, pause, re-open, and rewrite
+    the FULL payload — never a partial (a fragment write that EPIPEs
+    mid-fragment re-sends both fragments fresh). On deadline expiry a
+    TimeoutError naming the FIFO is raised (a genuine failure).
+    """
+    fifo_path = Path(fifo_path)
+    limit = time.monotonic() + deadline
+    while True:
+        fd = None
+        # open(O_WRONLY) without a reader yields ENXIO: bounded poll
+        while fd is None:
+            try:
+                fd = os.open(str(fifo_path), os.O_WRONLY | os.O_NONBLOCK)
+            except OSError as e:
+                if e.errno != errno.ENXIO:
+                    raise
+            if fd is None:
+                if time.monotonic() >= limit:
+                    raise TimeoutError(
+                        f"fifo_write: no reader for FIFO {fifo_path} within {deadline}s"
+                    )
+                time.sleep(0.05)
+        try:
+            if fragment and data:
+                os.write(fd, data[:1])
+                time.sleep(0.05)
+                os.write(fd, data[1:])
+            else:
+                rest = data
+                while rest:
+                    n = os.write(fd, rest)
+                    rest = rest[n:]
+        except (BrokenPipeError, ConnectionResetError):
+            # the reader's session was torn down without consuming the
+            # message: the pipe is gone with it, so a full-payload
+            # re-delivery to a (re)opened reader cannot duplicate it
+            os.close(fd)
+            if time.monotonic() >= limit:
+                raise TimeoutError(
+                    f"fifo_write: FIFO {fifo_path} lost its reader before delivery"
+                    f" within {deadline}s"
+                ) from None
             time.sleep(0.05)
-            os.write(fd, data[1:])
-        else:
-            while data:
-                n = os.write(fd, data)
-                data = data[n:]
-    finally:
+            continue
         os.close(fd)
+        return
 
 
 def unique_name(prefix: str) -> str:
