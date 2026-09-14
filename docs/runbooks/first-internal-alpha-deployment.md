@@ -16,28 +16,26 @@ production deployment has happened.
 
 ## Steps
 
-1. Build or pull the reviewed image.
-2. Copy `deploy/env.production.example` to the ignored host-local file `deploy/env.production` and
-   replace every placeholder from a protected secret store. Never commit `deploy/env.production`.
-3. Store the PostgreSQL password in `deploy/secrets/postgres_password` or an equivalent protected
-   secret mount.
+The complete, verified command procedure is owned by `INSTALL.md`, section 5
+("Internal-alpha Docker deployment"). In summary, the operator must:
+
+1. Build the reviewed image at the reviewed commit (example tag
+   `slaif-asset-reservation:internal-alpha`, plus a commit-addressable tag for rollback).
+2. Prepare `deploy/env.production` from `deploy/env.production.example` with real values from a
+   protected secret store. Never commit `deploy/env.production`.
+3. Store the PostgreSQL password in `deploy/secrets/postgres_password`, matching the
+   `DATABASE_URL` password in `deploy/env.production`.
 4. Review `compose.production.example.yaml`; do not publish PostgreSQL publicly.
-5. Configure Caddy or another reverse proxy for HTTPS. The example `deploy/Caddyfile.example`
-   forwards to the loopback application port.
-6. Run migrations deliberately:
-
-   ```bash
-   docker compose -f compose.production.example.yaml run --rm app python manage.py migrate --noinput
-   ```
-
-7. Run operational checks:
-
-   ```bash
-   docker compose -f compose.production.example.yaml run --rm app python manage.py operational_check
-   ```
-
-8. Start the application and verify `/health/live`, `/health/ready`, `/login/`, `/manage/`, and a
-   safe unauthenticated API failure.
+5. Start PostgreSQL, then run migrations and `operational_check` deliberately (see `INSTALL.md`
+   section 5, steps 6–8).
+6. Configure initial assets and policies, and create the first administrator (see `INSTALL.md`
+   section 5, steps 9–10).
+7. Start the application and verify `/health/live`, `/health/ready`, `/login/`, `/manage/`, and a
+   safe unauthenticated API failure (see `INSTALL.md` section 5, steps 11–16).
+8. Configure Caddy or another reverse proxy for HTTPS from `deploy/Caddyfile.example` (it
+   forwards to the loopback application port), then verify HTTPS end to end.
+9. Once the pilot database is prepared, run `pilot_readiness_check --strict` (see `INSTALL.md`
+   section 5, step 17).
 
 ## Not Covered
 

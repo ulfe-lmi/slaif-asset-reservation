@@ -1,7 +1,7 @@
 # Deployment and Operations
 
-**Status:** internal pre-alpha operational hardening implemented; no real production deployment has
-been performed
+**Status:** CI-green, production-shaped internal-alpha candidate; a real deployment has not yet
+been evidenced
 
 ## 1. Target
 
@@ -35,43 +35,9 @@ No developer should need SmartScheduling credentials or production data.
 The committed Compose file is development-only. It publishes PostgreSQL and the application on
 `127.0.0.1` only, while keeping app-to-database communication on the internal Compose network.
 
-Start the database:
-
-```bash
-docker compose up -d db
-```
-
-Install locked dependencies:
-
-```bash
-uv sync --locked --all-groups
-```
-
-Apply migrations to the local PostgreSQL service:
-
-```bash
-cp .env.example .env
-uv run --env-file .env python manage.py migrate
-```
-
-Validate and optionally import the sanitized bootstrap inventory:
-
-```bash
-uv run --env-file .env python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
-uv run --env-file .env python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml --apply
-```
-
-Run the application locally:
-
-```bash
-uv run --env-file .env python manage.py runserver
-```
-
-Start the Compose application service:
-
-```bash
-docker compose up --build app
-```
+The complete development installation procedure (database, locked dependencies, env file,
+migrations, bootstrap import, runserver, superuser, health checks) is owned by `INSTALL.md`,
+sections 3 and 4. The standard verification command set for changes is in `TESTING.md`.
 
 Migrations are a deliberate command. They are not hidden inside the application worker startup.
 
@@ -95,24 +61,15 @@ Work Order 0008 adds example-only production deployment artifacts:
 These files describe the supported first internal-alpha shape but are not a real deployment. The
 development Compose file remains unchanged and loopback-only.
 
-Work Order 0011 adds a disposable internal-alpha rehearsal entry point:
-
-```bash
-deploy/rehearse_internal_alpha_deployment.sh
-```
-
-The script creates temporary ignored `deploy/env.production` and `deploy/secrets/postgres_password`
-files with synthetic values, validates `compose.production.example.yaml`, builds the runtime image,
-applies migrations to disposable PostgreSQL, runs bootstrap/import and operational checks, starts
-the app, verifies health/login/management/API smoke paths, validates OpenAPI, then removes the
-temporary env/secret files and Compose volume. It is local rehearsal evidence only, not a production
-deployment.
-
-For fast Compose validation without building or starting services:
-
-```bash
-deploy/rehearse_internal_alpha_deployment.sh --config-only
-```
+Work Order 0011 adds the disposable internal-alpha rehearsal entry point
+`deploy/rehearse_internal_alpha_deployment.sh`. The script creates temporary ignored
+`deploy/env.production` and `deploy/secrets/postgres_password` files with synthetic values,
+validates `compose.production.example.yaml`, builds the runtime image, applies migrations to
+disposable PostgreSQL, runs bootstrap/import and operational checks, starts the app, verifies
+health/login/management/API smoke paths, validates OpenAPI, then removes the temporary
+env/secret files and Compose volume. It is local rehearsal evidence only, not a production
+deployment. Its full behavior, modes (`--config-only`, `--status`, `--cleanup-owned`), and
+evidence boundaries are documented in `INSTALL.md`, section 6.
 
 Work Order 0004 adds local browser workflow tests. Development and CI install Chromium with:
 
@@ -207,6 +164,21 @@ docker run --rm --entrypoint test slaif-asset-reservation:local -f /app/data/boo
 
 The configured runtime user must be `10001:10001`.
 
+### Production dependencies
+
+- `Django`: web framework, authentication, admin, ORM, migrations, sessions, CSRF, and settings.
+- `djangorestframework`: versioned API foundation for later agent endpoints.
+- `drf-spectacular`: generated OpenAPI schema from implemented DRF views.
+- `drf-spectacular-sidecar`: local Swagger UI CSS, JavaScript, and favicon assets so API
+  documentation does not depend on an unpinned CDN resource.
+- `jsonschema`: Draft 2020-12 validation for the sanitized bootstrap inventory schema.
+- `psycopg[binary]`: PostgreSQL driver for Django and health/readiness checks.
+- `PyYAML`: safe parsing for the sanitized bootstrap inventory import command.
+- `gunicorn`: production WSGI process runner used by the container image.
+- `whitenoise`: conservative static-file middleware for the monolith deployment shape.
+
+Locked versions are recorded in `uv.lock`.
+
 ## 6. Health endpoints
 
 - `/health/live`: application process responds; no expensive dependencies.
@@ -231,14 +203,9 @@ It verifies database connectivity, applied migrations, required static assets, c
 sanitized bootstrap inventory validation, and idempotency cleanup command registration. It does not
 require production secrets when run under local/test settings.
 
-For a disposable production-shaped smoke run, use:
-
-```bash
-deploy/rehearse_internal_alpha_deployment.sh
-```
-
-The rehearsal uses production settings with synthetic local-only values and disables SSL redirect
-because no real reverse proxy or TLS endpoint exists in this local check.
+For a disposable production-shaped smoke run, use the rehearsal described in `INSTALL.md`,
+section 6. The rehearsal uses production settings with synthetic local-only values and disables
+SSL redirect because no real reverse proxy or TLS endpoint exists in this local check.
 
 ## 7. Database lifecycle
 

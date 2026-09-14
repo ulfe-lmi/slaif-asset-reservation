@@ -1,4 +1,8 @@
-# STATUS — source-observed baseline and inactive conversion
+# STATUS (HISTORICAL) — source-observed baseline, bootstrap generation 1 (2026-09-13)
+
+> **Historical point-in-time snapshot.** This file records the bootstrap generation 1
+> observations made on 2026-09-13. It is NOT a live status file; it was never maintained after
+> adoption. Current state must be read from live Git plus `oap/orders/` and `oap/reports/`.
 
 Observed repository main: 1fcc2c91d793556a91711365abef562604b62f84 (PR27 merged).
 Observed main push CI: run28589883454 success at that same revision. Historical last implementation
