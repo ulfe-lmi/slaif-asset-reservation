@@ -13,8 +13,10 @@ import unittest
 import uuid
 from pathlib import Path
 
-import oaplib
-import oaptestlib as t
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "oap" / "bin"))
+
+import oaplib  # noqa: E402
+import oaptestlib as t  # noqa: E402
 
 
 def _append_cli(repo, order, kind="admission", extra=None, env_extra=None, expect_json=True):

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Shared stdlib library for the Concentrated OAP helpers (SLAIF existing-repo profile).
 
-Standard library only. No model calls, no network writes. The only read-only remote
-operation is `git ls-remote` when a caller explicitly asks for remote reconciliation;
-tests inject an explicit fixture adapter instead (OAP_REMOTE_ADAPTER_FILE).
+Standard library only. No model calls, no network writes. Read-only remote operations
+are `git ls-remote` when a caller explicitly asks for remote reconciliation, and the two
+fixed read-only `gh` templates (`gh pr view`, `gh pr list`) for PR identity; tests inject
+an explicit fixture adapter instead (OAP_REMOTE_ADAPTER_FILE).
 """
 
 from __future__ import annotations
@@ -387,33 +388,25 @@ META_CLOSE = "\n-->"
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
-ORDER_REQUIRED = {
-    "schema_version": int,
-    "kind": str,
+# Slim final order schema (015-a): exactly nine meta fields plus the DHA body
+# declaration = ten fields. Published superset orders (e.g. the 25-field
+# generation-1 orders) remain valid: unknown extra keys pass through unvalidated.
+ORDER_SLIM = {
     "id": str,
-    "objective": int,
     "round": str,
-    "slug": str,
-    "state": str,
-    "repo": str,
-    "base_branch": str,
     "base_sha": str,
     "issue_number": int,
     "branch": str,
     "pr_mode": str,
-    "pr_number": (int, type(None)),
     "previous_round": (str, type(None)),
-    "provenance": list,
-    "requirements": list,
-    "governance_revision": str,
-    "source_hashes": dict,
     "allowed_paths": list,
     "forbidden_resources": list,
-    "decision_class": str,
-    "expected_report_path": str,
-    "tests": list,
-    "target_gate": str,
 }
+
+# Normalized display values for slim orders, so protected consumers that read
+# superseded keys (e.g. check_state.py) keep working. These are NOT enforced
+# schema fields.
+ORDER_NORM_DEFAULTS = {"pr_number": None, "state": "FINAL"}
 
 
 def _full_hex(v) -> bool:
@@ -421,7 +414,13 @@ def _full_hex(v) -> bool:
 
 
 def parse_order(data: bytes, strict_final: bool = False):
-    """Parse an OAP order. Returns (meta, body, errors)."""
+    """Parse an OAP order. Returns (meta, body, errors).
+
+    Slim schema: the nine ORDER_SLIM meta fields plus exactly one DHA body
+    declaration. Extra superset keys (generation-1 25-field orders) are accepted
+    and passed through unchanged; a superset 'state' key must be FINAL when
+    strict_final is set.
+    """
     errs = []
     try:
         text = data.decode("utf-8")
@@ -443,34 +442,25 @@ def parse_order(data: bytes, strict_final: bool = False):
             raise ValueError("meta not an object")
     except (ValueError, TypeError) as e:
         return None, body, errs + [f"OAP-META is not valid JSON: {e.__class__.__name__}"]
-    for key, _typ in ORDER_REQUIRED.items():
+    for key, _typ in ORDER_SLIM.items():
         if key not in meta:
             errs.append(f"meta missing key: {key}")
     if not errs:
-        for key, typ in ORDER_REQUIRED.items():
-            v = meta[key]
-            if typ is int:
-                if not isinstance(v, int) or isinstance(v, bool):
-                    errs.append(f"meta {key} must be integer")
-            elif typ is type(None) or typ is (int, type(None)):
-                if v is not None and not isinstance(v, (int, str)):
-                    errs.append(f"meta {key} has wrong type")
-            elif not isinstance(v, typ):
+        for key, typ in ORDER_SLIM.items():
+            if not isinstance(meta[key], typ) or (typ is int and isinstance(meta[key], bool)):
                 errs.append(f"meta {key} has wrong type")
         if errs:
             return meta, body, errs
-        if meta["kind"] != "order":
-            errs.append("kind must be 'order'")
         if not valid_id(meta["id"]):
             errs.append("bad ID grammar: {!r}".format(meta["id"]))
         elif meta["id"].split("-", 1)[1] != meta["round"]:
             errs.append("ID round part must equal round")
         if not _full_hex(meta["base_sha"]):
             errs.append("base_sha must be a full object ID")
-        if not _full_hex(meta["governance_revision"]):
-            errs.append("governance_revision must be a full object ID")
         if not isinstance(meta["issue_number"], int) or meta["issue_number"] <= 0:
             errs.append("issue_number must be a positive integer")
+        if not (isinstance(meta["branch"], str) and meta["branch"].strip()):
+            errs.append("branch must be a nonempty string")
         if meta["pr_mode"] not in ("CREATE_OR_RESUME", "AMEND"):
             errs.append("pr_mode invalid")
         if meta["round"] == "a":
@@ -483,54 +473,17 @@ def parse_order(data: bytes, strict_final: bool = False):
                 errs.append("correction rounds require pr_mode AMEND")
             if not isinstance(meta["previous_round"], str) or not valid_id(meta["previous_round"]):
                 errs.append("previous_round must be a valid ID")
-        if meta["pr_number"] is not None and (
-            not isinstance(meta["pr_number"], int) or meta["pr_number"] <= 0
-        ):
-            errs.append("pr_number must be null or a positive integer")
-        if meta["pr_number"] is None and not (meta["round"] == "a"):
-            errs.append("pr_number null is only allowed before the initial PR of round a")
-        prov = meta["provenance"]
-        if not isinstance(prov, list) or not prov:
-            errs.append("provenance must be a nonempty list")
-        else:
-            for i, entry in enumerate(prov):
-                if not isinstance(entry, dict) or entry.get("marker") not in (
-                    "H",
-                    "A",
-                    "E",
-                    "I",
-                    "C",
-                ):
-                    errs.append(f"provenance[{i}] needs marker H|A|E|I|C")
-                elif not (isinstance(entry.get("source"), str) and entry.get("source").strip()):
-                    errs.append(f"provenance[{i}] needs concrete source")
-                elif not (
-                    isinstance(entry.get("section_or_evidence"), str)
-                    and entry.get("section_or_evidence").strip()
-                ):
-                    errs.append(f"provenance[{i}] needs concrete section_or_evidence")
-        reqs = meta["requirements"]
-        if (
-            not isinstance(reqs, list)
-            or not reqs
-            or not all(isinstance(r, str) and re.fullmatch(r"SAR-[0-9]{3}", r) for r in reqs)
-        ):
-            errs.append("requirements must be nonempty SAR-NNN IDs")
-        if meta["decision_class"] not in ("D0", "D1", "D2_PREPARATION"):
-            errs.append("decision_class invalid")
-        sh = meta["source_hashes"]
-        if not isinstance(sh, dict) or not all(
-            isinstance(k, str) and HEX64.fullmatch(v or "")
-            for k, v in (sh.items() if isinstance(sh, dict) else [])
-        ):
-            errs.append("source_hashes must map names to full sha256")
         if (
             not isinstance(meta["allowed_paths"], list)
             or not meta["allowed_paths"]
             or not all(isinstance(x, str) and x for x in meta["allowed_paths"])
         ):
             errs.append("allowed_paths must be a nonempty list of paths")
-        if strict_final and meta["state"] != "FINAL":
+        if not isinstance(meta["forbidden_resources"], list) or not all(
+            isinstance(x, str) for x in meta["forbidden_resources"]
+        ):
+            errs.append("forbidden_resources must be a list of strings")
+        if strict_final and meta.get("state") is not None and meta["state"] != "FINAL":
             errs.append(
                 "order state must be FINAL for publication (found {!r})".format(meta["state"])
             )
@@ -540,6 +493,9 @@ def parse_order(data: bytes, strict_final: bool = False):
         unres = unresolved_finalization(body)
         if unres:
             errs.append("genuine unresolved finalization field(s): {}".format(", ".join(unres[:5])))
+    # normalized display values for superseded keys (not part of the slim schema)
+    for key, default in ORDER_NORM_DEFAULTS.items():
+        meta.setdefault(key, default)
     return meta, body, errs
 
 
@@ -1129,6 +1085,115 @@ def git_remote_head(cwd, remote: str, ref: str, timeout: float = 20.0) -> dict:
     return {"ok": False, "head": None, "error": f"ref not found: {ref}"}
 
 
+# ---------------------------------------------------------------------- gh (read-only PR identity)
+
+GH_PR_VIEW_FIELDS = "number,headRefName,headRefOid,state,mergedAt"
+GH_PR_LIST_FIELDS = "number,headRefName,state,mergedAt"
+
+
+def gh_owner_name(repo_root: str):
+    """Parse owner/name from `git remote get-url origin` (read-only).
+
+    Returns (owner_name, None) or (None, short factual reason).
+    """
+    rc, out, _ = git(repo_root, "remote", "get-url", "origin", timeout=20.0, check=False)
+    if rc != 0:
+        return None, "origin remote not configured"
+    url = out.strip()
+    if not url:
+        return None, "origin remote URL empty"
+    path = url
+    if "://" in path:
+        path = path.split("://", 1)[1]
+        if "/" not in path:
+            return None, "cannot parse owner/name from origin URL"
+        path = path.split("/", 1)[1]
+    elif path.count(":") == 1 and "@" in path.split(":", 1)[0]:
+        path = path.split(":", 1)[1]
+    path = path.strip("/")
+    if path.endswith(".git"):
+        path = path[: -len(".git")]
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 2:
+        return None, "cannot parse owner/name from origin URL"
+    return "/".join(parts[-2:]), None
+
+
+def gh_readonly(repo_root: str, args: list, timeout: float = 30.0):
+    """Run one READ-ONLY gh query; `args` must be a fixed read-only template.
+
+    Returns (parsed JSON, None) or (None, short factual reason). Missing gh, non-zero
+    exit, timeout or unparsable output never fabricate an identity.
+    """
+    owner_name, why = gh_owner_name(repo_root)
+    if owner_name is None:
+        return None, why
+    try:
+        p = subprocess.run(
+            ["gh"] + list(args) + ["--repo", owner_name],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            timeout=timeout,
+        )
+    except FileNotFoundError:
+        return None, "gh executable not found"
+    except OSError as e:
+        return None, f"gh could not be executed: {e.strerror or e.__class__.__name__}"
+    except subprocess.TimeoutExpired:
+        return None, "gh timed out"
+    if p.returncode != 0:
+        return None, f"gh exited with code {p.returncode}"
+    try:
+        return json.loads(p.stdout.decode("utf-8", "replace")), None
+    except ValueError:
+        return None, "gh output not parseable as JSON"
+
+
+def gh_pr_identity(obj, require_head: bool):
+    """Map one gh PR JSON object to the FixtureRemote dict shape.
+
+    Returns None when a required field is missing or mistyped; the caller reports
+    unknown, never a fabricated value.
+    """
+    if not isinstance(obj, dict):
+        return None
+    for key in ("number", "headRefName", "state", "mergedAt"):
+        if key not in obj:
+            return None
+    if require_head and "headRefOid" not in obj:
+        return None
+    try:
+        number = int(obj["number"])
+    except (TypeError, ValueError):
+        return None
+    branch = obj["headRefName"]
+    state_raw = obj["state"]
+    merged_at = obj["mergedAt"]
+    if not isinstance(branch, str) or not branch:
+        return None
+    if not isinstance(state_raw, str) or not state_raw:
+        return None
+    if merged_at is not None and not isinstance(merged_at, str):
+        return None
+    head = obj.get("headRefOid")
+    if require_head and (not isinstance(head, str) or not head):
+        return None
+    merged = merged_at is not None or state_raw.upper() == "MERGED"
+    if merged:
+        state = "merged"
+    elif state_raw.upper() == "OPEN":
+        state = "open"
+    else:
+        state = "closed"
+    return {
+        "number": number,
+        "branch": branch,
+        "head": head if isinstance(head, str) and head else None,
+        "state": state,
+        "merged": merged,
+    }
+
+
 # ---------------------------------------------------------------------- locks / leases
 
 
@@ -1430,7 +1495,7 @@ class FixtureRemote:
 
 
 def load_remote_adapter(repo_root):
-    """Default adapter: read-only git ls-remote (no PR/CI knowledge -> PENDING).
+    """Default adapter: read-only git ls-remote plus read-only gh PR identity.
     Fixture adapter only via explicit env file (test mode)."""
     env_file = os.environ.get("OAP_REMOTE_ADAPTER_FILE")
     if env_file:
@@ -1441,16 +1506,39 @@ def load_remote_adapter(repo_root):
             return git_remote_head(repo_root, "origin", ref)
 
         def pr(self, repo_root, number):
-            return {
-                "unknown": True,
-                "reason": (
-                    "fixture adapter required for PR identity in tests; "
-                    "operational API not configured"
-                ),
-            }
+            if not isinstance(number, int) or isinstance(number, bool) or number <= 0:
+                return {"unknown": True, "reason": "PR number must be a positive integer"}
+            data, why = gh_readonly(
+                repo_root,
+                ["pr", "view", str(number), "--json", GH_PR_VIEW_FIELDS],
+            )
+            if why is not None:
+                return {"unknown": True, "reason": why}
+            mapped = gh_pr_identity(data, require_head=True)
+            if mapped is None:
+                return {"unknown": True, "reason": "gh PR view output missing required fields"}
+            return mapped
 
         def pr_for_branch(self, repo_root, branch):
-            return None
+            data, why = gh_readonly(
+                repo_root,
+                ["pr", "list", "--state", "all", "--json", GH_PR_LIST_FIELDS],
+            )
+            if why is not None:
+                return {"unknown": True, "reason": why}
+            if not isinstance(data, list):
+                return {"unknown": True, "reason": "gh PR list output is not a JSON list"}
+            best = None
+            rank = {"open": 0, "merged": 1, "closed": 2}
+            for entry in data:
+                if not isinstance(entry, dict) or entry.get("headRefName") != branch:
+                    continue
+                mapped = gh_pr_identity(entry, require_head=False)
+                if mapped is None:
+                    return {"unknown": True, "reason": "gh PR entry for branch missing fields"}
+                if best is None or rank.get(mapped["state"], 3) < rank.get(best["state"], 3):
+                    best = mapped
+            return best
 
         def create_pr(self, repo_root, branch, title):
             raise RefusedError("PR creation requires separately authorized operational access")

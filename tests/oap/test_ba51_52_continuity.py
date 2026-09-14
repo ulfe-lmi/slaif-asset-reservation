@@ -169,19 +169,24 @@ class Ba52HistoricalContinuity(unittest.TestCase):
         if not _materialized():
             t.record_blocked("BA-52", "materialized candidate not present in this environment")
             self.skipTest("materialized candidate absent")
-        # reports: none fabricated, none citing WO0001-0013 as OAP rounds
-        reports = t.REPO_ROOT / "oap" / "reports"
-        if reports.is_dir():
-            files = [p for p in reports.glob("*.md")]
+        # continuity: every published report binds a published order of the same
+        # name; no fabricated reports; no report cites WO0001-WO0013 as OAP rounds
+        orders_dir = t.REPO_ROOT / "oap" / "orders"
+        reports_dir = t.REPO_ROOT / "oap" / "reports"
+        orders = {p.name for p in orders_dir.glob("*.md")} if orders_dir.is_dir() else set()
+        reports = {p.name for p in reports_dir.glob("*.md")} if reports_dir.is_dir() else set()
+        self.assertEqual(reports - orders, set(), "fabricated report without a published order")
+        for p in reports_dir.glob("*.md"):
+            text = p.read_text("utf-8", "replace")
+            self.assertNotIn("WO000", text, "legacy work orders are not OAP rounds")
+        # pointer (when present) binds exactly one order
+        ptr = t.oaplib.read_pointer(t.REPO_ROOT / "oap" / "active")
+        if ptr["state"] == "ACTIVE":
             self.assertEqual(
-                files, [], "no execution reports at bootstrap: %s" % [f.name for f in files]
+                len([n for n in orders if n.startswith(ptr["id"] + "-")]),
+                1,
+                "pointer must bind exactly one order",
             )
-        # orders: empty at bootstrap
-        orders = t.REPO_ROOT / "oap" / "orders"
-        if orders.is_dir():
-            self.assertEqual([p for p in orders.glob("*.md")], [])
-        # no active pointer
-        self.assertFalse((t.REPO_ROOT / "oap" / "active").exists())
 
     def test_ba52_drafts_exactly_the_six_seeds_no_014(self):
         if not _materialized():

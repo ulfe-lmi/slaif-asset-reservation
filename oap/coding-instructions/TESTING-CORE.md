@@ -11,7 +11,9 @@ pytest on same test DB. Wait for DB health with bounded timeout. No unknown comp
 TC-04. Baseline commands: uv sync --locked --all-groups; uv run ruff check .; uv run ruff format
 --check .; uv run mypy src; uv run --env-file .env python manage.py check; ... makemigrations --check
 --dry-run; uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test; uv run pip-audit;
-git diff --check; sha256sum -c MANIFEST.sha256. Full exact variants live in TESTING.md when ordered.
+git diff --check. Full exact variants live in TESTING.md when ordered. The oap harness
+(python3 -m unittest discover -s tests/oap -p 'test_*.py' -v) runs in its own path-gated
+oap-harness CI job, not the product quality job.
 TC-05. Browser/UI boundary: separately uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test
 --browser chromium tests/browser. API changes require spectacular --validate --fail-on-warn. Container
 changes require build, UID:GID10001:10001, static/bootstrap, rendered ports and actual smoke evidence.

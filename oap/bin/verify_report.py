@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""verify_report.py — OP-09/OP-10 report verification.
+"""verify_report.py — OP-09/OP-10 report verification (slim, 015-a).
 
-Verifies actual object format, exact order digest, literal implementation parent,
-report-only changed path, no CRITICAL mutation in the report commit, correct
-PR/branch/round, remote availability and exact remote head. Missing remote evidence
-returns BLOCKED/PENDING, never a local pass.
+Exactly three checks:
+  1. report_only_changed_path        — the report commit changes ONLY the report path
+  2. implementation_head_first_parent — literal implementation head line in the report,
+                                         and the report commit's first parent equals it
+  3. remote_head_and_pr_identity     — exact remote branch head equals the report commit,
+                                         plus PR/branch identity when --pr is given
+
+Structural preconditions (unique valid order, local report, report commit found,
+--head match) gate the run: missing local/remote evidence returns BLOCKED, never a
+local pass.
 """
 
 from __future__ import annotations
@@ -41,31 +47,59 @@ def main(argv=None):
         if not ok and res["status"] == "PASS":
             res["status"] = "FAIL"
 
+    def blocked(detail=""):
+        res["status"] = "BLOCKED"
+        res["blocked"] = oaplib.redact(detail)
+        _out(res, args.json)
+        return 1
+
+    # ---- preconditions (not counted among the three checks) ----
     head_info = oaplib.git_head(str(repo))
     fmt_len = 64 if head_info["object_format"] == "sha256" else 40
     orders = sorted((repo / "oap" / "orders").glob(oid + "-*.md"))
     if len(orders) != 1:
-        check("order_unique", False, f"pointer ID matches {len(orders)} orders")
+        res["status"] = "FAIL"
+        res["precondition"] = f"pointer ID matches {len(orders)} orders (need exactly 1)"
         _out(res, args.json)
         return 1
     ometa, obody, oerrs = oaplib.parse_order(orders[0].read_bytes(), strict_final=True)
     if oerrs:
-        check("order_valid", False, "; ".join(oerrs[:3]))
+        res["status"] = "FAIL"
+        res["precondition"] = "order invalid: " + "; ".join(oerrs[:3])
         _out(res, args.json)
         return 1
-    check("order_valid", True, orders[0].name)
     rpath = repo / "oap" / "reports" / orders[0].name
     if not rpath.is_file():
-        check("report_exists", False, "no local report")
-        res["status"] = "BLOCKED"
-        _out(res, args.json)
-        return 1
-    check("report_exists", True)
+        return blocked("no local report")
     rtext = rpath.read_text("utf-8", "replace")
     rlines = rtext.splitlines()
+    rc, blobout, _ = oaplib.git(str(repo), "hash-object", str(rpath))
+    blob_id = blobout.strip()
+    relpath = rpath.relative_to(repo).as_posix()
+    rc, out, _ = oaplib.git(
+        str(repo), "log", "--format=%H", "--find-object", blob_id, "--", relpath, check=False
+    )
+    commits = [c for c in out.splitlines() if c]
+    if not commits:
+        return blocked("no commit carries the report bytes")
+    report_commit = commits[0]
+    if args.head and args.head != report_commit:
+        res["status"] = "FAIL"
+        res["precondition"] = f"report commit {report_commit} != expected {args.head}"
+        _out(res, args.json)
+        return 1
+
+    # ---- check 1: report-only changed path ----
+    rc, diff, _ = oaplib.git(
+        str(repo), "show", "--name-only", "--format=", report_commit, check=False
+    )
+    changed = [line for line in diff.splitlines() if line.strip()]
+    check("report_only_changed_path", changed == [relpath], f"changed paths: {changed}")
+
+    # ---- check 2: literal implementation head as first parent ----
     m = [line for line in rlines if line.startswith("Implementation head SHA: ")]
     if len(m) != 1:
-        check("implementation_head_line", False, "exactly one literal line required")
+        check("implementation_head_first_parent", False, "exactly one literal line required")
     else:
         impl = m[0].split("Implementation head SHA: ", 1)[1].strip()
         if (
@@ -74,122 +108,104 @@ def main(argv=None):
             and not oaplib.HEX64.fullmatch(impl)
         ):
             check(
-                "implementation_head_line",
+                "implementation_head_first_parent",
                 False,
                 "not a full object ID in {} format".format(head_info["object_format"]),
             )
         else:
-            check("implementation_head_line", True, impl)
-            if "--head" in sys.argv or args.head:
-                pass
-            rc, p1, _ = oaplib.git(str(repo), "rev-parse", impl + "^", check=False)
+            rc, p1, _ = oaplib.git(str(repo), "rev-parse", report_commit + "^", check=False)
             if rc != 0:
                 check(
-                    "implementation_head_exists", False, "implementation head not in object store"
+                    "implementation_head_first_parent",
+                    False,
+                    "report commit is a root commit (no implementation head)",
+                )
+            elif p1.strip() != impl:
+                check(
+                    "implementation_head_first_parent",
+                    False,
+                    f"first parent {p1.strip()} != stated implementation head {impl}",
                 )
             else:
-                check("implementation_head_exists", True, p1.strip())
-    if "Report publication commit: SELF" not in rlines:
-        check("self_marker", False, "missing 'Report publication commit: SELF'")
-    else:
-        check("self_marker", True)
-    # the report commit: find commit that introduced exactly the report blob
-    rc, blobout, _ = oaplib.git(str(repo), "hash-object", str(rpath))
-    blob_id = blobout.strip()
-    relpath = rpath.relative_to(Path(repo)).as_posix()
-    rc, out, _ = oaplib.git(
-        str(repo), "log", "--format=%H", "--find-object", blob_id, "--", relpath, check=False
-    )
-    commits = [c for c in out.splitlines() if c]
-    if not commits:
-        check("report_commit_found", False, "no commit carries the report bytes")
-        _out(res, args.json)
-        return 1
-    report_commit = commits[0]
-    check("report_commit_found", True, report_commit)
-    if args.head and args.head != report_commit:
-        check("expected_head", False, f"report commit {report_commit} != expected {args.head}")
-    else:
-        check("expected_head", True, report_commit)
-    rc, p1, _ = oaplib.git(str(repo), "rev-parse", report_commit + "^", check=False)
-    if rc != 0:
-        check("first_parent", False, "report commit is a root commit (no implementation head)")
-    else:
-        p1 = p1.strip()
-        impl_line = [line for line in rlines if line.startswith("Implementation head SHA: ")]
-        if impl_line and p1 != impl_line[0].split("Implementation head SHA: ", 1)[1].strip():
-            check("first_parent", False, f"first parent {p1} != stated implementation head")
-        else:
-            check("first_parent", True, p1)
-    rc, diff, _ = oaplib.git(
-        str(repo), "show", "--name-only", "--format=", report_commit, check=False
-    )
-    changed = [line for line in diff.splitlines() if line.strip()]
-    if changed != [relpath]:
-        check("report_only_path", False, f"changed paths: {changed}")
-    else:
-        check("report_only_path", True)
-    if "CRITICAL.md" in changed:
-        check("no_critical_mutation", False, "CRITICAL.md changed in report commit")
-    else:
-        check("no_critical_mutation", True)
-    # order digest inside report metadata (OP-09: order_path/hash)
-    if "order" in rtext.lower() or True:
-        odigest = oaplib.sha256_hex(orders[0].read_bytes())
-        if odigest not in rtext:
-            check("order_digest_in_report", False, "report must reference the exact order digest")
-        else:
-            check("order_digest_in_report", True)
-    # CI honesty (colon form and heading-section form)
-    meta_block = rtext
-    import re as _re
+                check("implementation_head_first_parent", True, impl)
 
-    future_claim = bool(
-        _re.search(r"(?im)^Report head CI:\s*(success|passed|green)\s*$", meta_block)
-    )
-    if not future_claim:
-        _rlines = meta_block.splitlines()
-        for _i, _l in enumerate(_rlines):
-            if _re.match(r"^#{1,6}\s*Report head CI\s*$", _l.strip()):
-                for _l2 in _rlines[_i + 1 : _i + 6]:
-                    _s = _l2.strip()
-                    if _s and not _s.startswith("#"):
-                        if _re.fullmatch(r"success|passed|green", _s, _re.I):
-                            future_claim = True
-                        break
-                break
-    not_yet = "NOT YET OBSERVED AT AUTHORING" in meta_block
-    if future_claim:
-        check("future_ci_honesty", False, "report claims its own future report-head CI success")
-    else:
-        check(
-            "future_ci_honesty",
-            True,
-            "report-head CI explicitly unobserved" if not_yet else "no future CI claim",
-        )
-    # remote verification
+    # ---- check 3: exact remote head plus PR/branch identity ----
+    prior_fail = res["status"] == "FAIL"
     adapter = oaplib.load_remote_adapter(str(repo))
     branch = ometa.get("branch")
     rres = adapter.report_remote(str(repo), oid, ometa)
-    prior_fail = res["status"] == "FAIL"
     if not rres.get("remote_head"):
         check(
-            "remote_available", False, "remote branch not verified; local report is NOT completion"
+            "remote_head_and_pr_identity",
+            False,
+            "remote branch not verified; local report is NOT completion",
         )
+        # missing remote evidence is BLOCKED, never a local pass; an already-failed
+        # local check keeps the overall status FAIL
         res["status"] = "FAIL" if prior_fail else "BLOCKED"
     else:
-        check("remote_available", True, "remote head {}".format(rres["remote_head"]))
+        problems = []
         if rres["remote_head"] != report_commit:
-            check("remote_head_match", False, "remote head differs from report commit")
+            problems.append(
+                "remote head {} differs from report commit {}".format(
+                    rres["remote_head"], report_commit
+                )
+            )
+        pr_unknown = None
+        if args.pr is not None:
+            pr = adapter.pr(str(repo), args.pr)
+            if pr is not None and pr.get("unknown"):
+                pr_unknown = str(pr.get("reason") or "unknown")
+            elif pr is None:
+                problems.append(f"PR {args.pr} not found on remote")
+            else:
+                if pr.get("branch") != branch:
+                    problems.append(
+                        "PR {} branch {} != order branch {}".format(
+                            args.pr, pr.get("branch"), branch
+                        )
+                    )
+                if pr.get("head") and pr["head"] != report_commit:
+                    problems.append(
+                        "PR {} head {} != report commit {}".format(
+                            args.pr, pr["head"], report_commit
+                        )
+                    )
+                if pr.get("state") in ("merged", "closed"):
+                    problems.append(
+                        "PR {} state {} != open; a published round PR must be open".format(
+                            args.pr, pr.get("state")
+                        )
+                    )
         else:
-            check("remote_head_match", True)
-    if args.pr is not None:
-        pr = adapter.pr(str(repo), args.pr)
-        if not pr:
-            check("pr_identity", False, f"PR {args.pr} not found on remote")
+            pr = adapter.pr_for_branch(str(repo), branch) if branch else None
+            if pr is not None and pr.get("unknown"):
+                pr_unknown = str(pr.get("reason") or "unknown")
+            elif pr is not None and (pr.get("state") == "merged" or pr.get("merged")):
+                problems.append("branch PR is merged; a published round PR must be open")
+        if pr_unknown is not None:
+            # Unresolvable remote PR identity is BLOCKED: neither a local pass nor a
+            # mismatch-on-unknown FAIL; an already-failed local check keeps FAIL.
+            check(
+                "remote_head_and_pr_identity",
+                False,
+                f"PR identity unresolvable: {pr_unknown}",
+            )
+            res["checks"]["remote_head_and_pr_identity"]["status"] = "BLOCKED"
+            res["status"] = "FAIL" if prior_fail else "BLOCKED"
+        elif problems:
+            check("remote_head_and_pr_identity", False, "; ".join(problems))
         else:
-            ok = pr.get("branch") == branch
-            check("pr_identity", ok, "PR {} branch={}".format(args.pr, pr.get("branch")))
+            prinfo = ""
+            if args.pr is not None:
+                prinfo = f", PR {args.pr} bound"
+            check(
+                "remote_head_and_pr_identity",
+                True,
+                "remote head {} at report commit (branch {}){}".format(
+                    rres["remote_head"], branch, prinfo
+                ),
+            )
     if res["status"] == "PASS" and not all(c["ok"] for c in res["checks"].values()):
         res["status"] = "FAIL"
     _out(res, args.json)
@@ -201,12 +217,12 @@ def _out(res, as_json):
         print(json.dumps(res, indent=1, default=str))
     else:
         print("status={}".format(res["status"]))
+        for extra in ("precondition", "blocked"):
+            if extra in res:
+                print(f"  ({extra}) {res[extra]}")
         for name, c in res["checks"].items():
-            print(
-                "  [{}] {} {}".format(
-                    "ok" if c["ok"] else "FAIL", name, c["detail"] if not c["ok"] else ""
-                )
-            )
+            label = c.get("status", "ok" if c["ok"] else "FAIL")
+            print("  [{}] {} {}".format(label, name, c["detail"] if not c["ok"] else ""))
 
 
 if __name__ == "__main__":

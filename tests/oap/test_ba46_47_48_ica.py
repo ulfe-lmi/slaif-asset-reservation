@@ -239,10 +239,10 @@ class Ba48PostRemediation(IcaBase):
             self.assertIn(rid, missing)
 
     def test_ba48_report_template_mentions_human_milestone_judgment(self):
-        tpl = t.REPO_ROOT / "oap" / "audit" / "ICA-REPORT-TEMPLATE.md"
+        tpl = t.REPO_ROOT / "docs" / "audit" / "ICA-REPORT-TEMPLATE.md"
         if not tpl.is_file():
-            t.record_blocked("BA-48", "materialized ICA report template not present")
-            self.skipTest("materialized template absent")
+            t.record_blocked("BA-48", "ICA report template not present")
+            self.skipTest("ICA report template absent")
         text = tpl.read_text("utf-8", "replace")
         self.assertIn("milestone", text.lower())
         self.assertIn("human", text.lower())

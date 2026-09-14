@@ -59,17 +59,6 @@ def real_strategic_home(case: str):
     return home
 
 
-def codex_available(case: str) -> bool:
-    try:
-        p = subprocess.run(["codex", "--version"], capture_output=True, timeout=20)
-        if p.returncode == 0:
-            return True
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    record_blocked(case, "installed Codex CLI not runnable in this environment")
-    return False
-
-
 # ---------------------------------------------------------------- git fixtures
 
 
@@ -224,59 +213,85 @@ def write_runtime_env(
 
 # ---------------------------------------------------------------- orders
 
+# The slim order schema keys (015-a): nine meta fields plus the DHA body
+# declaration = ten fields. Mirrors oaplib.ORDER_SLIM.
+ORDER_SLIM_KEYS = (
+    "id",
+    "round",
+    "base_sha",
+    "issue_number",
+    "branch",
+    "pr_mode",
+    "previous_round",
+    "allowed_paths",
+    "forbidden_resources",
+)
+
 
 def order_meta(
     oid: str = "001-a",
     slug: str = "canary",
     base_sha: str = None,
     branch: str = None,
-    pr_number: int = None,
     pr_mode: str = None,
-    state: str = "FINAL",
     previous_round: str = None,
     issue_number: int = 1,
-    repo: str = REPO_ID,
-    reqs: list = None,
-    prov: list = None,
     allowed: list = None,
-    tests: list = None,
-    decision: str = "D0",
-    target_gate: str = "M-CONVERSION",
-    gov: str = "0" * 40,
+    forbidden: list = None,
+    superset: bool = False,
     **over,
 ):
+    """Slim final order meta (015-a): exactly nine meta fields plus the DHA body
+    declaration = ten fields.
+
+    superset=True adds the superseded generation-1 fields (25-field shape) for
+    tests that exercise the superset-acceptance path. Extra keys in **over are
+    accepted by the slim parser the same way.
+    """
     n, rnd = oid.split("-")
     meta = {
-        "schema_version": 1,
-        "kind": "order",
         "id": oid,
-        "objective": int(n),
         "round": rnd,
-        "slug": slug,
-        "state": state,
-        "repo": repo,
-        "base_branch": "main",
         "base_sha": base_sha or "0" * 40,
         "issue_number": issue_number,
         "branch": branch or (f"oap/{oid}"),
         "pr_mode": pr_mode or ("CREATE_OR_RESUME" if rnd == "a" else "AMEND"),
-        "pr_number": pr_number,
         "previous_round": previous_round,
-        "provenance": prov
-        or [
-            {"marker": "H", "source": "fixture human request", "section_or_evidence": "fixture"},
-            {"marker": "I", "source": "fixture inspection", "section_or_evidence": "fixture HEAD"},
-        ],
-        "requirements": reqs or ["SAR-001"],
-        "governance_revision": gov,
-        "source_hashes": {"PLAN.md": "0" * 64},
         "allowed_paths": allowed or ["oap/WORKFLOW-CANARY.md"],
-        "forbidden_resources": ["deployment", "credentials"],
-        "decision_class": decision,
-        "expected_report_path": f"oap/reports/{oid}-{slug}.md",
-        "tests": tests or ["python3 -m unittest discover -s tests/oap -p 'test_*.py' -v"],
-        "target_gate": target_gate,
+        "forbidden_resources": forbidden or ["deployment", "credentials"],
     }
+    if superset:
+        meta.update(
+            {
+                "schema_version": 1,
+                "kind": "order",
+                "objective": int(n),
+                "slug": slug,
+                "state": "FINAL",
+                "repo": REPO_ID,
+                "base_branch": "main",
+                "pr_number": None,
+                "provenance": [
+                    {
+                        "marker": "H",
+                        "source": "fixture human request",
+                        "section_or_evidence": "fixture",
+                    },
+                    {
+                        "marker": "I",
+                        "source": "fixture inspection",
+                        "section_or_evidence": "fixture HEAD",
+                    },
+                ],
+                "requirements": ["SAR-001"],
+                "governance_revision": "0" * 40,
+                "source_hashes": {"PLAN.md": "0" * 64},
+                "decision_class": "D0",
+                "expected_report_path": f"oap/reports/{oid}-{slug}.md",
+                "tests": ["python3 -m unittest discover -s tests/oap -p 'test_*.py' -v"],
+                "target_gate": "M-CONVERSION",
+            }
+        )
     meta.update(over)
     return meta
 
@@ -298,10 +313,13 @@ def make_order_file(
     meta: dict = None,
     name: str = None,
 ) -> Path:
+    """Write an order draft. The default draft name is the canonical publication
+    name <ID>-<slug>.md (the slim publisher publishes the draft bytes under its
+    own name)."""
     m = meta or order_meta(oid=oid, base_sha=base_sha)
     b = body if body is not None else dha_none_body(oid)
     text = f"<!-- OAP-META\n{json.dumps(m, indent=1)}\n-->\n{b}"
-    p = Path(tmp) / (name or ("{}-{}-order.md".format(oid, m["slug"])))
+    p = Path(tmp) / (name or (f"{m['id']}-{m.get('slug', 'canary')}.md"))
     p.write_text(text)
     return p
 
@@ -390,8 +408,9 @@ def activate_order(
         slug=slug,
         base_sha=head(repo),
         branch=branch or (f"oap/{oid}"),
-        pr_number=pr_number,
     )
+    if pr_number is not None:
+        meta["pr_number"] = pr_number
     body = dha_none_body(oid)
     text = f"<!-- OAP-META\n{json.dumps(meta, indent=1)}\n-->\n{body}"
     orders = repo / "oap" / "orders"
@@ -399,95 +418,6 @@ def activate_order(
     (orders / (f"{oid}-{slug}.md")).write_text(text)
     (repo / "oap" / "active").write_text(oid + "\n")
     return meta
-
-
-# ---------------------------------------------------------------- materialization
-
-
-def file_entry(
-    rel: str,
-    data: bytes,
-    kind: str = None,
-    pre_sha256: str = None,
-    backup: str = None,
-    mode: int = None,
-) -> dict:
-    e = {"rel": rel, "content_sha256": oaplib.sha256_hex(data), "bytes": data}
-    if kind:
-        e["kind"] = kind
-    if pre_sha256:
-        e["pre_sha256"] = pre_sha256
-    if backup:
-        e["backup"] = backup
-    if mode:
-        e["mode"] = mode
-    return e
-
-
-def _sha256(data: bytes) -> str:
-    import hashlib
-
-    return hashlib.sha256(data).hexdigest()
-
-
-def make_manifest_root(
-    tmp: Path,
-    entries: list,
-    dirs: list = None,
-    fifos: list = None,
-    manifest_sha256: dict = None,
-    previous_generated: dict = None,
-) -> Path:
-    cr = Path(tmp) / "content2"
-    for e in entries:
-        p = cr / e["rel"]
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_bytes(e.get("bytes", b""))
-    serializable = []
-    for e in entries:
-        f = {k: v for k, v in e.items() if k != "bytes"}
-        f["content_sha256"] = f.get("content_sha256") or _sha256(e.get("bytes", b""))
-        serializable.append(f)
-    man = {
-        "schema_version": 1,
-        "generation": "1",
-        "files": serializable,
-        "dirs": dirs or [],
-        "fifos": fifos or [],
-    }
-    if manifest_sha256:
-        man["manifest_sha256"] = manifest_sha256
-    if previous_generated:
-        man["previous_generated"] = previous_generated
-    (cr / ".oap-materialization.json").write_text(json.dumps(man, indent=1))
-    return cr
-
-
-def run_engine(
-    content_root,
-    repo,
-    home,
-    bootstrap,
-    apply: bool = False,
-    refresh: bool = False,
-    timeout: float = 90.0,
-):
-    args = [
-        "--content-root",
-        str(content_root),
-        "--repo",
-        str(repo),
-        "--strategic-home",
-        str(home),
-        "--bootstrap-root",
-        str(bootstrap),
-    ]
-    if refresh:
-        args.append("--refresh")
-    elif apply:
-        args.append("--apply")
-    args.append("--json")
-    return run_cli("oap_materialize.py", args, timeout=timeout, expect_json=True)
 
 
 # ---------------------------------------------------------------- snapshots
