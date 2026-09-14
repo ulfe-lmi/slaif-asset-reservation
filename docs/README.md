@@ -1,5 +1,11 @@
 # Project Documentation
 
+## Canonical entry points
+
+- [`INSTALL.md`](../INSTALL.md) — canonical installation and deployment document (root level).
+  Docker/Compose is the deployment path; `uv` is the development path.
+- [`deployment.md`](deployment.md) — deeper deployment reference and rationale.
+
 ## Strategic baseline
 
 - `discovery-brief.md` — product category, goals, scope, risks, and release gates.
@@ -26,6 +32,6 @@
 - `bootstrap/1/` — immutable conversion snapshots (inputs, previous bytes).
 - `repository-settings.md` — manual GitHub protection settings.
 - `roadmap.md` — work-order sequence and milestone language.
-- `project-handoff.md` — compact current strategic state; verify against GitHub.
+- `project-handoff.md` — historical strategic snapshot (see its header); live state is GitHub `main` + `oap/`.
 - `decisions/` — accepted architecture decision records.
 - `work-orders/` — issue-ready strategic task baselines.

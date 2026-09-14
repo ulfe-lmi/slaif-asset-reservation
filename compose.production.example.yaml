@@ -38,6 +38,15 @@ services:
     tmpfs:
       - /tmp
     user: "10001:10001"
+    healthcheck:
+      # Production settings set SECURE_SSL_REDIRECT and trust X-Forwarded-Proto;
+      # the header is what makes this same probe correct with or without a real
+      # TLS-terminating reverse proxy (the slim image has no curl).
+      test: ["CMD-SHELL", "python -c 'import urllib.request as u; u.urlopen(u.Request(\"http://127.0.0.1:8000/health/live\", headers={\"X-Forwarded-Proto\": \"https\"}), timeout=5)'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
 volumes:
   postgres-data:

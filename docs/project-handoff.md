@@ -1,7 +1,11 @@
-# Project Handoff
+# Project Handoff (HISTORICAL)
 
 **Snapshot date:** 2026-06-22
 **Purpose:** compact strategic continuity aid; verify against live GitHub before every work order
+
+> **Historical snapshot.** This document is a 2026-06-22 strategic snapshot with a 2026-09-13
+> conversion note; it is historical and superseded. It was not maintained after adoption of the
+> Concentrated OAP workflow. Live state: GitHub `main` plus `oap/orders/` and `oap/reports/`.
 
 ## Product goal
 

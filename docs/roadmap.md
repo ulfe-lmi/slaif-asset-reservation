@@ -174,7 +174,7 @@ Delivers:
 
 ### Work Order 0012 — internal alpha pilot preparation pack
 
-Status: current.
+Status: merged.
 
 Delivers:
 
@@ -186,7 +186,8 @@ Delivers:
 
 ### Work Order 0014 — concentrated OAP workflow conversion (reserved)
 
-Status: candidate materialized locally and inactive; adoption PR human-merged.
+Status: adopted. The one-time adoption was merged by the human, the Concentrated OAP workflow is
+operational, and objectives 015-a through 023-a have been implemented on `main` (see `oap/orders/`).
 
 Delivers:
 
@@ -205,9 +206,9 @@ Acceptance:
 
 Status: human-selected.
 
-The next implementation or remediation slice is not automatic. A human maintainer should choose
-whether to proceed with a real pilot-host decision, production identity decision, monitoring
-decision, resource-policy slice, or another narrow remediation discovered during preparation.
+Current human selection: the canonical installation/deployment documentation cleanup
+(objective 024-a, current), then the first real internal-alpha deployment, human-authorized and
+performed per `INSTALL.md`. The slice after that remains human-selected.
 
 ## Phase 4: operational beta
 
