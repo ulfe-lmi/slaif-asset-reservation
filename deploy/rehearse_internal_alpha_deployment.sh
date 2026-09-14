@@ -3,17 +3,34 @@ set -Eeuo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: deploy/rehearse_internal_alpha_deployment.sh [--config-only]
+Usage: deploy/rehearse_internal_alpha_deployment.sh [--config-only|--status|--cleanup-owned]
 
 Runs a disposable internal-alpha deployment rehearsal using compose.production.example.yaml.
 
 Modes:
+  (no flag)      Full rehearsal: build the image, start disposable PostgreSQL and the
+                 app, run smoke checks, then clean up. Refuses to start while
+                 rehearsal-owned residue from a previously crashed or abandoned run
+                 exists.
   --config-only  Create synthetic ignored production env files, render Compose config,
                  then clean up without building or starting containers.
+  --status       Read-only: list rehearsal-owned Compose projects with their containers
+                 (name, state, age). Never mutates Docker state.
+  --cleanup-owned  Remove only rehearsal-owned Compose projects (scoped
+                 down -v --remove-orphans per project), verify absence, and report
+                 cleanup=ok. Destructive and explicit; its own mode, never part of a
+                 full rehearsal run.
+
+Rehearsal-owned means a Compose container whose com.docker.compose.project label starts
+with slaif-alpha-rehearsal- (the default project name, and any SLAIF_REHEARSAL_PROJECT
+value the script uses, always starts with that prefix). Foreign projects are never
+touched, and the script never kills port occupants automatically.
 
 Environment overrides:
   SLAIF_REHEARSAL_PORT       Host port for the temporary app, default 18080.
   SLAIF_REHEARSAL_PROJECT    Compose project name, default includes the process id.
+                             Keep the slaif-alpha-rehearsal- prefix so residue stays
+                             discoverable by --status and removable by --cleanup-owned.
   SLAIF_REHEARSAL_IMAGE      Image tag, default slaif-asset-reservation:internal-alpha.
 
 The script writes only ignored temporary deployment files under deploy/ and a mktemp directory.
@@ -27,6 +44,12 @@ case "${1:-}" in
     ;;
   "--config-only")
     mode="config-only"
+    ;;
+  "--status")
+    mode="status"
+    ;;
+  "--cleanup-owned")
+    mode="cleanup-owned"
     ;;
   "-h" | "--help")
     usage
@@ -46,7 +69,8 @@ deploy_dir="$repo_root/deploy"
 env_file="$deploy_dir/env.production"
 secrets_dir="$deploy_dir/secrets"
 password_file="$secrets_dir/postgres_password"
-project="${SLAIF_REHEARSAL_PROJECT:-slaif-alpha-rehearsal-$$}"
+project_prefix="slaif-alpha-rehearsal-"
+project="${SLAIF_REHEARSAL_PROJECT:-${project_prefix}$$}"
 port="${SLAIF_REHEARSAL_PORT:-18080}"
 image="${SLAIF_REHEARSAL_IMAGE:-slaif-asset-reservation:internal-alpha}"
 tmp_dir=""
@@ -88,6 +112,190 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Rehearsal-owned residue helpers. A Compose container is rehearsal-owned iff its
+# com.docker.compose.project label starts with $project_prefix; the default project
+# name and any SLAIF_REHEARSAL_PROJECT value the script uses always do. A foreign
+# project that merely contains the substring elsewhere is not owned.
+
+list_compose_containers() {
+  docker ps -a \
+    --filter "label=com.docker.compose.project" \
+    --format '{{.ID}}|{{.Names}}|{{.State}}|{{.CreatedAt}}|{{.Label "com.docker.compose.project"}}'
+}
+
+scan_owned_projects() {
+  # Print rehearsal-owned Compose project names, one per line (may repeat per container).
+  local ps_out line cid name state created proj
+  ps_out="$(list_compose_containers)" \
+    || die "docker ps failed; cannot enumerate rehearsal-owned containers"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    IFS='|' read -r cid name state created proj <<< "$line"
+    if [[ "$proj" == "${project_prefix}"* ]]; then
+      printf '%s\n' "$proj"
+    fi
+  done <<< "$ps_out"
+}
+
+container_age() {
+  python3 - "$1" <<'PY'
+from datetime import datetime, timezone
+import sys
+
+raw = sys.argv[1].strip()
+parsed = None
+for fmt in (
+    "%Y-%m-%d %H:%M:%S %z %Z",
+    "%Y-%m-%d %H:%M:%S %z",
+    "%Y-%m-%dT%H:%M:%S.%f%z",
+    "%Y-%m-%dT%H:%M:%S%z",
+):
+    try:
+        parsed = datetime.strptime(raw, fmt)
+        break
+    except ValueError:
+        continue
+if parsed is None:
+    print("unknown")
+    raise SystemExit(0)
+if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=timezone.utc)
+age = max(0, int((datetime.now(timezone.utc) - parsed).total_seconds()))
+days, rem = divmod(age, 86400)
+hours, rem = divmod(rem, 3600)
+minutes, seconds = divmod(rem, 60)
+if days:
+    print(f"{days}d{hours}h")
+elif hours:
+    print(f"{hours}h{minutes}m")
+elif minutes:
+    print(f"{minutes}m{seconds}s")
+else:
+    print(f"{seconds}s")
+PY
+}
+
+status_mode() {
+  local ps_out line cid name state created proj found=0
+  ps_out="$(list_compose_containers)" \
+    || die "docker ps failed; cannot enumerate rehearsal-owned containers"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    IFS='|' read -r cid name state created proj <<< "$line"
+    if [[ "$proj" != "${project_prefix}"* ]]; then
+      continue
+    fi
+    found=1
+    printf 'rehearsal: owned project=%s container=%s state=%s age=%s\n' \
+      "$proj" "$name" "$state" "$(container_age "$created")"
+  done <<< "$ps_out"
+  if [[ "$found" == "1" ]]; then
+    printf 'rehearsal: residue=found remove=deploy/rehearse_internal_alpha_deployment.sh --cleanup-owned\n'
+  else
+    printf 'rehearsal: no rehearsal-owned projects found\n'
+  fi
+  exit 0
+}
+
+cleanup_owned_mode() {
+  local projects project after
+  projects="$(scan_owned_projects | sort -u)"
+  if [[ -z "$projects" ]]; then
+    printf 'rehearsal: no rehearsal-owned projects found\n'
+    exit 0
+  fi
+  while IFS= read -r project; do
+    [[ -n "$project" ]] || continue
+    log "removing owned project=$project"
+    docker compose -f "$compose_file" -p "$project" down -v --remove-orphans \
+      || die "removing rehearsal-owned project $project failed"
+    log "removed owned project=$project"
+  done <<< "$projects"
+  after="$(scan_owned_projects | sort -u)"
+  if [[ -n "$after" ]]; then
+    {
+      printf 'rehearsal: cleanup=incomplete residue remains:\n'
+      printf '%s\n' "$after" | sed 's/^/rehearsal:   project=/'
+    } >&2
+    exit 1
+  fi
+  printf 'rehearsal: cleanup=ok\n'
+  exit 0
+}
+
+startup_residue_scan() {
+  local projects
+  projects="$(scan_owned_projects | sort -u)"
+  if [[ -z "$projects" ]]; then
+    return 0
+  fi
+  {
+    printf 'rehearsal: rehearsal-owned residue from a previous crashed or abandoned run:\n'
+    printf '%s\n' "$projects" | sed 's/^/rehearsal:   project=/'
+    printf 'rehearsal: refusing to start; remove the residue first with:\n'
+    printf 'rehearsal:   deploy/rehearse_internal_alpha_deployment.sh --cleanup-owned\n'
+  } >&2
+  exit 1
+}
+
+port_publishes_host_port() {
+  python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+try:
+    ports = json.loads(sys.argv[1] or "null")
+except ValueError:
+    ports = None
+if not isinstance(ports, dict):
+    raise SystemExit(1)
+for binding in ports.values():
+    if not isinstance(binding, list):
+        continue
+    for item in binding:
+        if isinstance(item, dict) and str(item.get("HostPort", "")) == sys.argv[2]:
+            raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+port_precheck() {
+  local occupied ps_out line cid name state created proj ports
+  occupied="$(python3 - "$port" <<'PY'
+import socket
+import sys
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    sock.bind(("127.0.0.1", int(sys.argv[1])))
+except OSError:
+    print("occupied")
+else:
+    print("free")
+finally:
+    sock.close()
+PY
+)" || die "port precheck for SLAIF_REHEARSAL_PORT=$port failed"
+  if [[ "$occupied" == "free" ]]; then
+    return 0
+  fi
+  ps_out="$(list_compose_containers)" \
+    || die "docker ps failed during port precheck"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    IFS='|' read -r cid name state created proj <<< "$line"
+    if [[ "$proj" != "${project_prefix}"* ]]; then
+      continue
+    fi
+    ports="$(docker inspect "$cid" --format '{{json .NetworkSettings.Ports}}')" \
+      || continue
+    if port_publishes_host_port "$ports" "$port"; then
+      die "host port $port is occupied by rehearsal-owned container $name (project $proj); remove it with: deploy/rehearse_internal_alpha_deployment.sh --cleanup-owned"
+    fi
+  done <<< "$ps_out"
+  die "host port $port is in use by a non-rehearsal process; choose another SLAIF_REHEARSAL_PORT"
+}
+
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "$1 is required on PATH"
 }
@@ -99,6 +307,14 @@ require_command python3
 [[ -f "$compose_file" ]] || die "compose.production.example.yaml is missing"
 [[ -d "$deploy_dir" ]] || die "deploy directory is missing"
 [[ "$repo_root" != "/" ]] || die "refusing to run with filesystem root as repository root"
+
+if [[ "$mode" == "status" ]]; then
+  status_mode
+fi
+if [[ "$mode" == "cleanup-owned" ]]; then
+  cleanup_owned_mode
+fi
+
 [[ ! -e "$env_file" ]] || die "deploy/env.production already exists; refusing to overwrite a real deployment env file"
 [[ ! -e "$password_file" ]] || die "deploy/secrets/postgres_password already exists; refusing to overwrite a real secret file"
 [[ "$port" =~ ^[0-9]+$ ]] || die "SLAIF_REHEARSAL_PORT must be a TCP port number"
@@ -188,6 +404,8 @@ docker run --rm --entrypoint test "$image" -f /app/data/bootstrap/assets.yaml
 docker run --rm --entrypoint test "$image" -f /app/data/bootstrap/assets.schema.json
 log "image_assets=ok"
 
+startup_residue_scan
+
 log "starting disposable PostgreSQL"
 compose up -d db
 compose_started=1
@@ -203,6 +421,8 @@ compose run --rm app python manage.py operational_check
 
 log "validating OpenAPI"
 compose run --rm app python manage.py spectacular --file /tmp/rehearsal-openapi.yaml --validate --fail-on-warn
+
+port_precheck
 
 log "starting application"
 compose up -d app
