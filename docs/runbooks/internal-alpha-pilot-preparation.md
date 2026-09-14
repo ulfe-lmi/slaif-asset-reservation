@@ -32,7 +32,8 @@ selected.
 - `pilot_readiness_check --strict` passes after the pilot database has staff users, selected
   assets, ordinary pilot users, and active reservation policies configured.
 - Fresh migrations apply to disposable PostgreSQL.
-- Backup and restore wrapper behavior is understood, and an isolated restore drill is planned
+- Backup and restore wrapper behavior is understood, and the isolated restore drill is
+  codified as the `restore_drill` management command (see `docs/runbooks/backup-and-restore.md`)
   before any real pilot data is accepted.
 - Staff can configure reservation policies, create/deactivate a test blackout, inspect
   cross-user reservations, and export bounded audit records.
