@@ -70,6 +70,31 @@ For a quick Compose-only validation:
 deploy/rehearse_internal_alpha_deployment.sh --config-only
 ```
 
+## Rehearsal Residue And Port Recovery
+
+A rehearsal run that is killed or lost (for example SIGKILL, a crash, or power loss) can leave
+its disposable Compose project behind, named `slaif-alpha-rehearsal-<pid>`, including a live app
+container that keeps the rehearsal host port (default 18080) bound. The next full rehearsal
+refuses to start while such rehearsal-owned residue exists and prints the recovery command; it
+never removes residue automatically.
+
+Check what residue exists (read-only; never mutates Docker state):
+
+```bash
+deploy/rehearse_internal_alpha_deployment.sh --status
+```
+
+Remove only rehearsal-owned projects, scoped by the `slaif-alpha-rehearsal-` project-label
+prefix; foreign projects and processes are never touched:
+
+```bash
+deploy/rehearse_internal_alpha_deployment.sh --cleanup-owned
+```
+
+If the configured `SLAIF_REHEARSAL_PORT` is occupied by a non-rehearsal process, the rehearsal
+refuses to start and reports it; choose another `SLAIF_REHEARSAL_PORT`. The script never kills
+port occupants automatically.
+
 ## Database Readiness Command
 
 After preparing a disposable or intended pilot database, run the read-only readiness status command:
