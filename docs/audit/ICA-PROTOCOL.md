@@ -24,7 +24,8 @@ requires freshness assessment. Audit output is read-only by default: no implemen
 CRITICAL disposition or release approval. Human decides applicable judgments/target readiness and
 separately release/exposure/deployment. Independent audit never substitutes for that decision.
 
-Materialize templates/request drafts and a complete initial matrix from specifications/REQUIREMENTS.json.
+Materialize templates/request drafts and a complete initial matrix from the
+ARCHITECTURE.md SAR requirement index (SAR-001 through SAR-038).
 M-CONVERSION includes preservation and role/protocol/authority constraints; M-LOCAL-PILOT-EVIDENCE
 includes all applicable product boundaries. Do not invent accepted targets, measured results,
 independent identities or future revisions in inactive audit drafts.

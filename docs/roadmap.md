@@ -187,7 +187,7 @@ Delivers:
 ### Work Order 0014 — concentrated OAP workflow conversion (reserved)
 
 Status: adopted. The one-time adoption was merged by the human, the Concentrated OAP workflow is
-operational, and objectives 015-a through 023-a have been implemented on `main` (see `oap/orders/`).
+operational, and objectives 015-a through 024-a have been implemented on `main` (see `oap/orders/`).
 
 Delivers:
 
@@ -206,8 +206,11 @@ Acceptance:
 
 Status: human-selected.
 
-Current human selection: the canonical installation/deployment documentation cleanup
-(objective 024-a, current), then the first real internal-alpha deployment, human-authorized and
+Current human selection (2026-09-17): objective 024-a (the canonical
+installation/deployment documentation cleanup) is complete; the current
+selection is deployment qualification for the first controlled internal-alpha
+Docker deployment (objective 025-a and the independent closure audit that
+follows), then the first real internal-alpha deployment, human-authorized and
 performed per `INSTALL.md`. The slice after that remains human-selected.
 
 ## Phase 4: operational beta

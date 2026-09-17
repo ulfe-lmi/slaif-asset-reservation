@@ -9,7 +9,7 @@ The initial deployment targets scattered Linux compute machines and their GPUs. 
 **CI-green, production-shaped internal-alpha candidate. Not production-ready; a real deployment has not yet been evidenced.**
 
 - The Codex-only Concentrated OAP conversion (WO0014) is **adopted and operational**:
-  the one-time adoption was merged by the human, and OAP objectives 015-a through 023-a
+  the one-time adoption was merged by the human, and OAP objectives 015-a through 024-a
   were executed on `main` since. Live orders and reports live under `oap/orders/` and
   `oap/reports/`; workflow references are `docs/oap-workflow.md`, `docs/OAP-RUNBOOK.md`,
   and `docs/BOOTSTRAP-SOURCES.md`. The accepted pre-conversion architecture snapshot is

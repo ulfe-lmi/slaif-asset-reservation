@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17
+    image: postgres:17@sha256:d13db94ae661d517c5ed57c509a578d5ea64aae639871ba25294f4f42d83de28
     restart: unless-stopped
     environment:
       POSTGRES_DB: slaif_reservation

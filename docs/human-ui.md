@@ -1,6 +1,6 @@
 # Human UI Requirements
 
-**Status:** internal pre-alpha human MVP implemented; visual polish remains deferred
+**Status:** internal-alpha human MVP implemented; visual polish remains deferred
 
 ## 1. UX goals
 

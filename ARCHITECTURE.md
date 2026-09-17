@@ -63,7 +63,7 @@ be broadened to copy private control-plane homes, tokens, logs, FIFOs or install
 ## A-03. Stack and topology
 
 The declared stack at this revision is Python `>=3.13,<3.14`, Django `>=5.2,<5.3`, DRF
-`>=3.16,<3.17`, PostgreSQL17, uv with a committed lockfile, psycopg, Gunicorn, WhiteNoise,
+`>=3.16,<3.18`, PostgreSQL17, uv with a committed lockfile, psycopg, Gunicorn, WhiteNoise,
 PyYAML/jsonschema, drf-spectacular plus its local sidecar. Tests use pytest/pytest-django,
 Playwright, coverage, Ruff, mypy/django-stubs and pip-audit. These are observed constraints, not a
 request to upgrade dependencies. Exact resolved versions come from the preserved uv.lock.
@@ -523,7 +523,7 @@ Initial independent-closure classification: **UNPROVEN**.
 
 ### SAR-022 — Reproducible monolith
 
-Preserve Python3.13, Django5.2, DRF3.16, PostgreSQL17, uv.lock, Gunicorn, WhiteNoise, local Swagger sidecar and server-rendered views. Add no production dependency or alternate stack without ordered justification/accepted decision.
+Preserve Python3.13, Django5.2, DRF3.17, PostgreSQL17, uv.lock, Gunicorn, WhiteNoise, local Swagger sidecar and server-rendered views. Add no production dependency or alternate stack without ordered justification/accepted decision.
 
 Source: AGENTS.md accepted baseline; pyproject.toml.
 

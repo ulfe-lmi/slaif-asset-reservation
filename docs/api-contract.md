@@ -1,6 +1,6 @@
 # API v1 Design Contract
 
-**Status:** pre-alpha implementation contract. Staff asset list/detail endpoints, bearer `/me`,
+**Status:** internal-alpha implementation contract. Staff asset list/detail endpoints, bearer `/me`,
 bearer advisory availability, and bearer owner reservation endpoints are implemented. Token
 lifecycle APIs, administrative APIs, projects, memberships, resource restrictions, and API
 throttling remain deferred.
