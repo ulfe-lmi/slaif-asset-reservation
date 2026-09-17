@@ -1,0 +1,12 @@
+name: deployment-rehearsal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deployment-rehearsal:
+    name: deployment-rehearsal
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: deploy/rehearse_internal_alpha_deployment.sh

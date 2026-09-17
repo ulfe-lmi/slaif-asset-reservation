@@ -4,7 +4,6 @@ on:
   pull_request:
   push:
     branches: [main]
-  workflow_dispatch:
 
 jobs:
   quality:
@@ -132,10 +131,3 @@ jobs:
       - run: docker run --rm --entrypoint test slaif-asset-reservation:ci -f /app/staticfiles/drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js
       - run: docker run --rm --entrypoint test slaif-asset-reservation:ci -f /app/data/bootstrap/assets.yaml
       - run: docker run --rm --entrypoint test slaif-asset-reservation:ci -f /app/data/bootstrap/assets.schema.json
-  deployment-rehearsal:
-    name: deployment-rehearsal
-    if: github.event == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - run: deploy/rehearse_internal_alpha_deployment.sh
