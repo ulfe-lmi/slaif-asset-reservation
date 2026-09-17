@@ -53,11 +53,11 @@ required after separately authorized adoption.
 
 ## P-03. Architectural commitments
 
-Preserve the modular Django monolith, Python3.13, Django5.2/DRF3.16, PostgreSQL17, uv/uv.lock,
+Preserve the modular Django monolith, Python3.13, Django5.2/DRF3.17, PostgreSQL17, uv/uv.lock,
 server-rendered templates, Gunicorn/WhiteNoise, local OpenAPI UI assets and Docker Compose.
 Business services own policy, locking, lifecycle and audited writes; adapters own input and output.
 PostgreSQL GiST range exclusion remains the final same-asset conflict arbiter. The full canonical
-architecture and SAR requirement index are in ARCHITECTURE.md and specifications/REQUIREMENTS.json.
+architecture and SAR requirement index are in ARCHITECTURE.md (SAR index, SAR-001 through SAR-038).
 No model-backed decision-making enters the product runtime merely because its development is agentic.
 
 Keep opaque UUID identities, half-open UTC effective-end semantics, explicit timezone display,

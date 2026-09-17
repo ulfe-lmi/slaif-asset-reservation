@@ -2,7 +2,7 @@
 
 ## Project status
 
-The project is in pre-alpha/bootstrap stage and is not approved for production use.
+The project is in internal-alpha stage and is not approved for production use.
 
 ## Reporting a vulnerability
 

@@ -33,9 +33,15 @@ clients (browsers, API agents)
 What this deployment actually requires:
 
 - A Linux host.
+- Supported host architecture: Linux, x86_64 (amd64) only. The application
+  runtime image is built from `python:3.13-slim`, pinned to a linux/amd64
+  digest in the `Dockerfile`, and the PostgreSQL service image is pinned to a
+  linux/amd64 digest in the Compose files; other architectures (for example
+  arm64) are not supported or verified for the documented deployment path.
 - Docker Engine with the Docker Compose v2 plugin.
 - Outbound connectivity to pull `python:3.13-slim` (pinned by digest in the
-  `Dockerfile`) and `postgres:17`.
+  `Dockerfile`) and the PostgreSQL service image (pinned by digest in the
+  Compose files).
 - Persistent disk for the Compose `postgres-data` volume. All reservation
   state lives in that volume.
 - For real HTTPS: a DNS name resolving to the host and a TLS plan (Caddy
