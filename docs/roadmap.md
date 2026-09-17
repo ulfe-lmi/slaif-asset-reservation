@@ -187,7 +187,7 @@ Delivers:
 ### Work Order 0014 — concentrated OAP workflow conversion (reserved)
 
 Status: adopted. The one-time adoption was merged by the human, the Concentrated OAP workflow is
-operational, and objectives 015-a through 024-a have been implemented on `main` (see `oap/orders/`).
+operational, and objectives 015-a through 027-a have been implemented on `main` (see `oap/orders/`).
 
 Delivers:
 
@@ -206,12 +206,21 @@ Acceptance:
 
 Status: human-selected.
 
-Current human selection (2026-09-17): objective 024-a (the canonical
-installation/deployment documentation cleanup) is complete; the current
-selection is deployment qualification for the first controlled internal-alpha
-Docker deployment (objective 025-a and the independent closure audit that
-follows), then the first real internal-alpha deployment, human-authorized and
-performed per `INSTALL.md`. The slice after that remains human-selected.
+Current human selection (2026-09-17): deployment qualification for the first
+controlled internal-alpha Docker deployment. Completed since that selection:
+024-a (canonical installation/deployment documentation), 025-a/b/c
+(deployment-qualification docs, image reproducibility, and the post-merge
+full-rehearsal CI workflow), 026-a (materialized M-LOCAL-PILOT-EVIDENCE ICA
+request at merged main 21f6204), and 027-a (ICA findings F-001/F-002
+doc-drift fix). The Independent Closure Audit was executed 2026-09-17 in a
+fresh isolated context at product revision 21f6204 (report:
+`docs/audit/reports/M-LOCAL-PILOT-EVIDENCE-21f6204.md`; 37 IMPLEMENTED / 1
+PARTIAL / 0 ABSENT / 0 UNPROVEN; no in-target blockers; the single PARTIAL
+row's drift was corrected by 027-a, with the protocol re-audit scheduled at
+the next milestone-closure attempt). The next slice is the first real
+internal-alpha deployment, human-authorized and performed per `INSTALL.md`
+(deployment-gate brief presented 2026-09-17; a real deployment has not yet
+been evidenced). The slice after that remains human-selected.
 
 ## Phase 4: operational beta
 
