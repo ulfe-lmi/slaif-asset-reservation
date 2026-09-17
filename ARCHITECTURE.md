@@ -2,7 +2,7 @@
 
 **New consolidated canonical edition for workflow conversion.** This is not a byte-identical copy
 of a previously approved root architecture: no root ARCHITECTURE.md existed in the inspected tree.
-The accepted `docs/architecture.md` is preserved unchanged in `sources/repository/docs-architecture.md`
+The accepted `docs/architecture.md` is preserved unchanged in `docs/bootstrap/1/previous/docs-architecture.md`
 (Git blob `246870a7771452ce3878c228b9ad7ffd8e71eda0`). This edition consolidates that design with
 implemented Work Orders 0001–0013 and explicitly labels future scope and proof gaps. It changes no
 application behavior. Its adoption is part of the conversion review, not retrospective approval.
