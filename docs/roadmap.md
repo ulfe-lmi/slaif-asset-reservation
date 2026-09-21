@@ -211,16 +211,22 @@ controlled internal-alpha Docker deployment. Completed since that selection:
 024-a (canonical installation/deployment documentation), 025-a/b/c
 (deployment-qualification docs, image reproducibility, and the post-merge
 full-rehearsal CI workflow), 026-a (materialized M-LOCAL-PILOT-EVIDENCE ICA
-request at merged main 21f6204), and 027-a (ICA findings F-001/F-002
-doc-drift fix). The Independent Closure Audit was executed 2026-09-17 in a
+request at merged main 21f6204), 027-a (ICA findings F-001/F-002
+doc-drift fix), and 028-a (post-027 current-state documentation
+correction). The Independent Closure Audit was executed 2026-09-17 in a
 fresh isolated context at product revision 21f6204 (report:
 `docs/audit/reports/M-LOCAL-PILOT-EVIDENCE-21f6204.md`; 37 IMPLEMENTED / 1
 PARTIAL / 0 ABSENT / 0 UNPROVEN; no in-target blockers; the single PARTIAL
-row's drift was corrected by 027-a, with the protocol re-audit scheduled at
-the next milestone-closure attempt). The next slice is the first real
+row's drift was corrected by 027-a). The protocol re-audit required after
+remediation was executed 2026-09-22 in a fresh isolated context at current
+main a9c3133 (report:
+`docs/audit/reports/M-LOCAL-PILOT-EVIDENCE-a9c3133.md`; 38 IMPLEMENTED / 0
+PARTIAL / 0 ABSENT / 0 UNPROVEN; no in-target blockers; product-runtime
+bytes unchanged since 21f6204). The next slice is the first real
 internal-alpha deployment, human-authorized and performed per `INSTALL.md`
-(deployment-gate brief presented 2026-09-17; a real deployment has not yet
-been evidenced). The slice after that remains human-selected.
+(deployment-gate brief presented 2026-09-17 against 21f6204, regenerated
+2026-09-22 against a9c3133; a real deployment has not yet been
+evidenced). The slice after that remains human-selected.
 
 ## Phase 4: operational beta
 
