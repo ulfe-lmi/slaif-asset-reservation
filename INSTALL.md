@@ -1,12 +1,13 @@
-# INSTALL — Canonical Installation and Deployment
+# INSTALL — Installation and Deployment
 
-**Status:** CI-green, production-shaped internal-alpha candidate; a real
-deployment has not yet been evidenced.
+**Status:** controlled internal-alpha deployment path; a real deployment has
+not yet been evidenced.
 
-This is the single canonical installation and deployment document for SLAIF
-Asset Reservation. Docker/Compose is the deployment path. The `uv` workflow is
-the development path. Deeper configuration reference and rationale:
-`docs/deployment.md`. Operator checklists and gates: `docs/runbooks/`.
+This is the operator guide for SLAIF Asset Reservation. Docker/Compose is
+the deployment path; the `uv` workflow is the development path. For the
+shortest local evaluation, see [QUICKSTART.md](QUICKSTART.md). Deeper
+configuration reference and rationale: `docs/deployment.md`. Operator
+checklists and gates: `docs/runbooks/`.
 
 ## 1. Supported deployment shape
 
@@ -24,6 +25,12 @@ clients (browsers, API agents)
   reachable only from the private Compose network.
 - The production-shaped image runs as non-root user `10001:10001` with a
   read-only root filesystem.
+- The supported host is a single Linux host on **`x86_64` (amd64)**: the
+  application runtime image is built from `python:3.13-slim` pinned to a
+  `linux/amd64` digest in the `Dockerfile`, and the PostgreSQL service image
+  is pinned to a `linux/amd64` digest in the Compose files. Other
+  architectures are not supported or verified on the documented deployment
+  path.
 - The repository is a single-host Compose stack. There is no
   Kubernetes/Swarm/Helm/Terraform/Ansible path, no image registry, and no
   automated deployment.
@@ -32,12 +39,7 @@ clients (browsers, API agents)
 
 What this deployment actually requires:
 
-- A Linux host.
-- Supported host architecture: Linux, x86_64 (amd64) only. The application
-  runtime image is built from `python:3.13-slim`, pinned to a linux/amd64
-  digest in the `Dockerfile`, and the PostgreSQL service image is pinned to a
-  linux/amd64 digest in the Compose files; other architectures (for example
-  arm64) are not supported or verified for the documented deployment path.
+- A Linux host (`x86_64`/amd64, see section 1).
 - Docker Engine with the Docker Compose v2 plugin.
 - Outbound connectivity to pull `python:3.13-slim` (pinned by digest in the
   `Dockerfile`) and the PostgreSQL service image (pinned by digest in the
@@ -46,6 +48,8 @@ What this deployment actually requires:
   state lives in that volume.
 - For real HTTPS: a DNS name resolving to the host and a TLS plan (Caddy
   automatic TLS, or institutionally managed certificates).
+- A protected secret store or host-only protected secret files for the
+  values in sections 5.2 and 5.3.
 - The database role that runs migrations must be able to create the
   `btree_gist` extension in the application database. The Compose defaults
   satisfy this: the `postgres:17` image grants the initial `POSTGRES_USER`
@@ -55,44 +59,47 @@ No other requirements are invented by this document.
 
 ## 3. Fast local evaluation (Docker, loopback only)
 
-The shortest truthful Docker path to a running instance, using the committed
-development `compose.yaml` (loopback-only bindings, development secrets):
+The shortest truthful Docker path to a running instance is
+[QUICKSTART.md](QUICKSTART.md). In brief, it uses the committed development
+`compose.yaml` (loopback-only bindings, development settings and
+development secrets) under a dedicated evaluation Compose project
+(`-p slaif-eval`), so its data volume (`slaif-eval_postgres-data`) can never
+collide with a normal development stack:
 
 ```bash
-# 1. Start PostgreSQL 17 (published on 127.0.0.1:5432 only)
-docker compose up -d db
-
-# 2. Build and start the application (waits for the db to be healthy)
-docker compose up --build app
-
-# 3. Migrations are a deliberate command, never hidden in app startup
-docker compose exec app python manage.py migrate --noinput
-
-# 4. Optional: import the sanitized bootstrap asset inventory
-docker compose exec app python manage.py import_bootstrap_assets \
-  --input data/bootstrap/assets.yaml --apply
-
-# 5. Accounts are administrator-created; create the first administrator
-docker compose exec app python manage.py createsuperuser
-# non-interactive alternative:
-docker compose exec -e DJANGO_SUPERUSER_PASSWORD=<password> app \
-  python manage.py createsuperuser --noinput --email admin@example.org
+docker compose -p slaif-eval up -d --build app     # start detached (db + app)
+docker compose -p slaif-eval ps                     # wait for db healthy, app running
+docker compose -p slaif-eval exec app python manage.py migrate --noinput
 ```
 
-Then log in at `http://127.0.0.1:8000/login/` and check
+Then, optionally, import the sanitized bootstrap inventory (dry run first,
+then `--apply`) and create the first administrator:
+
+```bash
+docker compose -p slaif-eval exec app \
+  python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml \
+  --apply
+docker compose -p slaif-eval exec app python manage.py createsuperuser
+```
+
+Log in at `http://127.0.0.1:8000/login/` and check
 `http://127.0.0.1:8000/health/live` and `http://127.0.0.1:8000/health/ready`.
 
-Member UI after login: `/` dashboard; `/assets/` and `/assets/<uuid>/` (detail with
-privacy-safe advisory availability); `/assets/<uuid>/reserve/`; `/reservations/` and
-`/reservations/<uuid>/`; `/tokens/` and `/tokens/new/` (one-time plaintext display);
-`/profile/` (display name and timezone). Staff-only: `/manage/` (policies, blackouts,
-cross-user reservations, audit review/export) and `/admin/`. Accounts are
-administrator-created only; service accounts cannot log into the human UI.
+Member UI after login: `/` dashboard; `/assets/` and `/assets/<uuid>/`
+(detail with privacy-safe advisory availability); `/assets/<uuid>/reserve/`;
+`/reservations/` and `/reservations/<uuid>/`; `/tokens/` and `/tokens/new/`
+(one-time plaintext display); `/profile/` (display name and timezone).
+Staff-only: `/manage/` (policies, blackouts, cross-user reservations, audit
+review/export) and `/admin/`. Accounts are administrator-created only;
+service accounts cannot log into the human UI.
 
-Required steps: 1, 2, 3, 5. Step 4 is optional: the application runs without
-the bootstrap inventory, it simply has no imported asset set. This stack is
+Required steps: start, migrate, administrator. The import is optional: the
+application runs without it, it simply has no imported asset set. Reservations
+additionally need an active policy (see QUICKSTART step 7). This stack is
 for local evaluation and development, not long-running service deployment.
-Tear it down (including its local data volume) with `docker compose down -v`.
+Tearing it down preserves its data by default; the only destructive step is
+`docker compose -p slaif-eval down -v`, which deletes the evaluation
+database.
 
 ## 4. Development installation (uv — development path)
 
@@ -138,16 +145,28 @@ Every command below corresponds to current repository behavior.
    cp deploy/env.production.example deploy/env.production
    ```
 
-   Replace every placeholder in the git-ignored `deploy/env.production` from
-   a protected secret store — never commit it:
+   Replace every placeholder in the git-ignored `deploy/env.production`
+   from a protected secret store — never commit it:
 
    - `SLAIF_DJANGO_SECRET_KEY` (at least 32 bytes);
-   - `SLAIF_ALLOWED_HOSTS` and `SLAIF_CSRF_TRUSTED_ORIGINS` (your real
-     hostname, `https://` origin);
+   - `SLAIF_ALLOWED_HOSTS` — **both** the real public hostname **and**
+     `127.0.0.1`. The public hostname serves browser/API traffic through
+     the proxy; `127.0.0.1` is required because the Compose app
+     healthcheck probes `http://127.0.0.1:8000/health/live` from inside
+     the application container, and Django rejects a host not in
+     `ALLOWED_HOSTS`. Omitting `127.0.0.1` leaves the app container
+     permanently unhealthy.
+   - `SLAIF_CSRF_TRUSTED_ORIGINS` (your real hostname, `https://` origin);
    - `SLAIF_API_TOKEN_PEPPER` (at least 32 bytes, distinct from
      `SLAIF_DJANGO_SECRET_KEY`);
    - `DATABASE_URL` — the database password here **must match** the secret
      file from step 3.
+
+   Do not weaken `SLAIF_SECURE_SSL_REDIRECT` or the proxy-header trust to
+   make the healthcheck pass: the probe sends `X-Forwarded-Proto: https`,
+   which the production settings already trust via
+   `SECURE_PROXY_SSL_HEADER`, so it works with or without a real
+   TLS-terminating proxy.
 
 3. **Create the PostgreSQL secret file.**
 
@@ -165,8 +184,8 @@ Every command below corresponds to current repository behavior.
    `deploy/env.production`. If the two do not match, the app cannot start.
 
 4. **Build the image at the reviewed commit.** The production Compose
-   example expects the tag `slaif-asset-reservation:internal-alpha`, which is
-   a mutable tag: build it at the reviewed commit, and keep a
+   example expects the tag `slaif-asset-reservation:internal-alpha`, which
+   is a mutable tag: build it at the reviewed commit, and keep a
    commit-addressable copy for application rollback.
 
    ```bash
@@ -178,7 +197,9 @@ Every command below corresponds to current repository behavior.
    There is no release platform or registry; the image is built on the
    deployment host from the reviewed commit.
 
-5. **Render and validate the configuration.**
+5. **Render and validate the configuration.** This is a quiet check: it
+   renders the resolved Compose configuration for review without printing
+   the secret-file contents and without starting anything.
 
    ```bash
    docker compose -f compose.production.example.yaml config
@@ -231,7 +252,8 @@ Every command below corresponds to current repository behavior.
       python manage.py createsuperuser
     ```
 
-    Non-interactive alternative:
+    Non-interactive alternative (the account's email address is its login
+    identifier):
 
     ```bash
     docker compose -f compose.production.example.yaml run --rm \
@@ -263,7 +285,13 @@ Every command below corresponds to current repository behavior.
     current).
 
 16. **`/login/`** returns HTTP 200; sign in with the administrator. `/manage/`
-    is active-staff-only and redirects safely for everyone else.
+    is active-staff-only and redirects safely for everyone else. And an
+    unauthenticated API probe fails safely:
+
+    ```bash
+    curl -fsS -o /dev/null -w '%{http_code}\n' https://<your-hostname>/api/v1/me/
+    # 401 with a safe problem-details body; no credential, no stack detail
+    ```
 
 17. **Once the pilot database is prepared** (assets, staff, users, and
     policies configured), run the pilot readiness gate:
@@ -285,14 +313,22 @@ synthetic-value, production-shaped rehearsal on this machine:
   (checking the `10001:10001` runtime user and bundled static/bootstrap
   assets);
 - starts a disposable PostgreSQL and the app under a unique Compose project
-  on a loopback port;
+  on a loopback port (default 18080; `SLAIF_REHEARSAL_PORT` overrides it);
+  a port occupied by a non-rehearsal process is never killed — the script
+  refuses to start and asks for another port;
 - applies migrations, validates the bootstrap import, runs
   `operational_check`, validates OpenAPI, and smokes
   `/health/live`, `/health/ready`, `/login/`, anonymous `/manage/` redirect,
   and unauthenticated `/api/v1/me/` failure;
 - removes its own env/secret files, containers, and volume on success.
-  A killed run can leave rehearsal-owned residue; inspect with
-  `--status` and remove it with `--cleanup-owned` (never automatic).
+  A killed run can leave rehearsal-owned residue; inspect with `--status`
+  and remove it with `--cleanup-owned` (never automatic). Only
+  rehearsal-owned projects (label prefix `slaif-alpha-rehearsal-`) are ever
+  touched; foreign projects are never affected.
+
+An opt-in `.github/workflows/deployment-rehearsal.yml` workflow (manual
+`workflow_dispatch`) runs the same rehearsal in CI, separately from the four
+standard jobs.
 
 The rehearsal proves that the documented deployment procedure coheres with
 synthetic disposable resources. It is not a deployment: it uses no real DNS,
@@ -301,7 +337,7 @@ three evidence levels:
 
 1. **CI** renders the production Compose config, builds the production
    image, and checks the runtime user and bundled assets. CI deliberately
-   does not bring up the production-shaped stack.
+   does not bring up the production-shaped stack in the standard jobs.
 2. **Full local rehearsal** (this script, no flag) runs the production-shaped
    stack with synthetic values. Local evidence only.
 3. **A real deployment** is a human-authorized host with real DNS/TLS and
@@ -357,12 +393,13 @@ The repository also provides tested wrappers around the same
 the codified isolated round-trip drill `python manage.py restore_drill`
 (dry-run by default; the drill target database must not exist yet). Those
 run where the pg client tools and a `DATABASE_URL` are both available
-(host-side or development environments). Full procedure and refusal
-semantics: `docs/runbooks/backup-and-restore.md`.
+(host-side or development environments), not inside the app container. Full
+procedure and refusal semantics: `docs/runbooks/backup-and-restore.md`.
 
 An untested backup is not sufficient. Until a restore into an isolated
 target has been verified (`restore_drill` or an equivalent drill), treat
-backups as unverified.
+backups as unverified. Scheduled, off-host backup remains an
+operator-owned responsibility; the repository provides no scheduler.
 
 ## 9. Upgrading to a new reviewed revision (manual alpha procedure)
 
@@ -454,9 +491,12 @@ docker compose -f compose.production.example.yaml restart app
   it does not run jobs or allocate/enforce GPU usage.
 - No automatic SmartScheduling cutover; the migration tooling is
   synthetic-fixture only and human-supervised.
-- No production monitoring stack or alert routing; the operator owns
-  proxy, health, database, and backup monitoring.
-- No API rate limiting or throttling.
+- No production monitoring stack or alert routing; the operator owns proxy,
+  health, database, and backup monitoring, and scheduled off-host backup.
+- No API rate limiting or throttling, and no login throttling.
+- Shared privileged PostgreSQL role: the application, migrations, and
+  backups all run as the same database role (`slaif`, a superuser under the
+  Compose defaults). Role separation is a known operational limitation.
 - No project/group authorization: every active human account may browse
   active assets and request any active, reservable, exclusive asset with an
   effective policy. This is temporary internal-alpha behavior, not the final
@@ -464,6 +504,7 @@ docker compose -f compose.production.example.yaml restart app
 
 ## 13. Documentation map
 
+- [QUICKSTART.md](QUICKSTART.md) — shortest local Docker evaluation path.
 - `docs/deployment.md` — deeper deployment reference and rationale
   (configuration reference, container image facts, proxy/TLS, logging and
   monitoring, scheduled work, release process, rollback, readiness gates,
@@ -472,4 +513,4 @@ docker compose -f compose.production.example.yaml restart app
   checklist, pilot readiness gates, pilot preparation pack, backup and
   restore.
 - `docs/api-contract.md`, `docs/human-ui.md`, `docs/security-model.md` —
-  product contract, UI, and security references.
+  implemented API contract, UI, and security references.
