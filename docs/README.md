@@ -69,7 +69,7 @@ Specialist and historical material, not installation instructions:
 - [PLAN.md](../PLAN.md) — the canonical product plan.
 - [ARCHITECTURE-for-agents.md](../ARCHITECTURE-for-agents.md) — the compact
   executor projection of the canonical architecture.
-- [CRITICAL.md](../CRITICAL.md) — the critical-invariants register.
+- [CRITICAL.md](../CRITICAL.md) — the deferred human adjudication register.
 - [READINESS.md](READINESS.md) — initial-conversion readiness baseline
   (governance baseline, not part of the current operator path).
 - [oap-workflow.md](oap-workflow.md) — the adopted and operational
@@ -82,7 +82,7 @@ Specialist and historical material, not installation instructions:
   control-plane runtime limits.
 - [repository-settings.md](repository-settings.md) — manual GitHub
   protection settings.
-- [audit/](audit/) — independent code-audit protocol, request and report
+- [audit/](audit/) — independent closure-audit protocol, request and report
   templates, and audit reports (immutable evidence records).
 - [oap/README.md](../oap/README.md) — the local OAP control plane layout
   (orders, reports, pointer).

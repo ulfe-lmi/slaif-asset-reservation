@@ -43,6 +43,7 @@ What this deployment actually requires:
 
 - A Linux host (`x86_64`/amd64, see section 1).
 - Docker Engine with the Docker Compose v2 plugin.
+- Git, curl, and Bash for the commands below.
 - Outbound connectivity to pull `python:3.13-slim` (pinned by digest in the
   `Dockerfile`) and the PostgreSQL service image (pinned by digest in the
   Compose files).
@@ -235,10 +236,13 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
     secure cookies). Nginx remains acceptable if already operated
     institutionally; see `docs/deployment.md` section 8.
 
-13. **Verify HTTPS end to end** from outside the host:
+13. **Verify HTTPS end to end** from outside the host. Enter the approved
+    service hostname (without a scheme or path); reuse it for the checks
+    below in the same shell:
 
     ```bash
-    curl -fsS https://<your-hostname>/health/live
+    read -r -p "Approved service hostname: " SAR_SERVICE_HOST
+    curl -fsS "https://${SAR_SERVICE_HOST}/health/live"
     ```
 
 14. **`/health/live`** returns HTTP 200 (liveness; no database dependency).
@@ -253,7 +257,7 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
     401 as a curl failure):
 
     ```bash
-    curl -sS -o /dev/null -w '%{http_code}\n' https://<your-hostname>/api/v1/me/
+    curl -sS -o /dev/null -w '%{http_code}\n' "https://${SAR_SERVICE_HOST}/api/v1/me/"
     # expected: 401 (body intentionally not captured here)
     ```
 
@@ -344,16 +348,17 @@ routine operation. The application is stopped first and must not be
 restarted after a failed restore:
 
 ```bash
-docker compose -f compose.production.example.yaml stop app
+# Replace YYYYMMDD with the date of the selected, verified backup.
+# Each command runs only if the preceding command succeeded.
+docker compose -f compose.production.example.yaml stop app &&
 docker compose -f compose.production.example.yaml cp \
-  /backups/slaif-YYYYMMDD.dump db:/tmp/slaif-YYYYMMDD.dump
+  /backups/slaif-YYYYMMDD.dump db:/tmp/slaif-YYYYMMDD.dump &&
 docker compose -f compose.production.example.yaml exec db \
   pg_restore -U slaif -d slaif_reservation \
-  --clean --if-exists --exit-on-error /tmp/slaif-YYYYMMDD.dump
-# Only if the restore command exited 0:
-docker compose -f compose.production.example.yaml start app
+  --clean --if-exists --exit-on-error /tmp/slaif-YYYYMMDD.dump &&
 docker compose -f compose.production.example.yaml run --rm app \
-  python manage.py operational_check
+  python manage.py operational_check &&
+docker compose -f compose.production.example.yaml start app
 ```
 
 `--exit-on-error` (present in the pinned PostgreSQL 17 image's
@@ -422,13 +427,13 @@ with the older code. Database rollback means restoring from backup
 (section 8). Both are explicit human decisions.
 
 ```bash
-# Retag the recorded previous-commit image to the example tag
-docker tag slaif-asset-reservation:<previous-commit-short-sha> \
-  slaif-asset-reservation:internal-alpha
-# Restart the application on the previous image
-docker compose -f compose.production.example.yaml up -d app
-# Verify: readiness through the proxy, then the operational check
-curl -fsS https://<your-hostname>/health/ready
+read -r -p "Recorded previous image tag (slaif-asset-reservation:commit): " SAR_PREVIOUS_IMAGE
+read -r -p "Approved service hostname: " SAR_SERVICE_HOST
+# Verify the image exists before changing the application tag.
+docker image inspect "$SAR_PREVIOUS_IMAGE" --format '{{.Id}}' &&
+docker tag "$SAR_PREVIOUS_IMAGE" slaif-asset-reservation:internal-alpha &&
+docker compose -f compose.production.example.yaml up -d app &&
+curl -fsS "https://${SAR_SERVICE_HOST}/health/ready" &&
 docker compose -f compose.production.example.yaml run --rm app \
   python manage.py operational_check
 ```
