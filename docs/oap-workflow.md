@@ -1,8 +1,9 @@
 # OAP Workflow — Concentrated OAP conversion profile
 
-**Status:** candidate process description, part of the inactive conversion at bootstrap
-generation 1. The legacy human/strategic-model/Codex PR loop remains in force until
-human adoption; this document describes the new profile it is being converted to.
+**Status:** adopted and operational. The one-time human-merged conversion
+adoption (WO0014) put this profile into force, and objectives from 015-a
+onward have executed on `main` under it; this document describes the live
+workflow.
 
 ## Roles and authority
 
@@ -34,6 +35,9 @@ launcher is part of this profile.
 4. Strategy reviews the exact report head, required CI, DHA registration and combined
    risk; only strategy may perform an authorized development merge under separately
    attributable scoped delegation. Release and production remain human.
+   An objective PR uses `Closes #<issue>` only when it fully satisfies that
+   issue. After the merge, strategy verifies the closure; a satisfied issue
+   that remains open is reconciled with a factual merged-PR closeout.
 
 ## Adoption
 

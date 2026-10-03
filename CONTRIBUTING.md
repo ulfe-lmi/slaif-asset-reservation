@@ -1,53 +1,100 @@
 # Contributing
 
-This repository uses an Orchestrated Agentic Programming workflow. A Codex-only Concentrated OAP conversion candidate (bootstrap generation 1) is materialized locally and inactive: until its one-time human-merged adoption (WO0014, see `docs/decisions/0014-concentrated-oap-workflow-conversion.md` and `docs/OAP-RUNBOOK.md`), the legacy human-per-merge workflow below remains in force.
+A bounded change is one pull request from a feature branch against a
+verified current `main`. Before starting: read the linked issue, the
+relevant parts of [ARCHITECTURE.md](ARCHITECTURE.md),
+[docs/security-model.md](docs/security-model.md) and
+[TESTING.md](TESTING.md), verify current `main` and existing open PRs,
+and do not begin from an unapproved broad feature description.
 
-## Before implementation
+## Prerequisites
 
-- Read `AGENTS.md`.
-- Read the linked work-order issue and relevant architecture documents.
-- Verify current `main` and existing open PRs.
-- Do not begin from an unapproved broad feature description.
-
-## Work units
-
-One approved work order should normally produce one pull request. The issue must state:
-
-- verified current state;
-- goal;
-- scope;
-- explicit non-goals;
-- acceptance criteria;
-- tests and documentation required;
-- security or migration constraints.
-
-## Branches
-
-Use:
-
-```text
-codex/<issue-number>-<short-name>
-```
-
-Human-authored branches may use another clear prefix. Never commit directly to `main`.
-
-## Commits and pull requests
-
-- Keep commits scoped and reviewable.
-- Link the work-order issue.
-- Use `.github/PULL_REQUEST_TEMPLATE.md`.
-- Report exact test commands and outcomes.
-- Do not report skipped or unrun checks as passed.
-- Do not merge your own PR.
-
-## Architecture changes
-
-An architectural, security-boundary, persistence, authentication, or deployment change requires an ADR under `docs/decisions/`. A feature PR must not smuggle in such a decision without review.
-
-## Secrets and personal data
-
-Do not place credentials, browser cookies, anti-forgery tokens, API tokens, private client exports, appointment details, or production data in commits, issues, PRs, fixtures, screenshots, or logs.
+- A Linux host with **Docker Engine** (Compose v2 plugin) for the
+  development PostgreSQL 17 container.
+- **Python 3.13** managed by `uv` with the committed `uv.lock` (never
+  edited by hand).
+- The required test tooling for the full verification suite — including
+  the Playwright Chromium build for the browser/UI suite — is documented
+  in [TESTING.md](TESTING.md); install routine test tools in your owned
+  environment and record what you installed.
 
 ## Development environment
 
-The executable development workflow is established by Work Order 0001. Until then, this repository contains architecture, governance, and sanitized bootstrap data only.
+The executable workflow (PostgreSQL 17 through the committed development
+Compose file, loopback-only, development settings):
+
+```bash
+git clone https://github.com/ulfe-lmi/slaif-asset-reservation.git slaif-asset-reservation
+cd slaif-asset-reservation
+docker compose up -d db                 # development PostgreSQL on 127.0.0.1:5432
+uv sync --locked --all-groups           # locked dependencies
+cp .env.example .env                    # host-side placeholders; do not commit a real .env
+uv run --env-file .env python manage.py migrate
+uv run --env-file .env python manage.py runserver
+```
+
+Notes:
+
+- Django does not load `.env` automatically; host-side commands pass it
+  explicitly with `uv run --env-file .env`. Its `DATABASE_URL` points at the
+  loopback-published development database.
+- Keep your working tree disposable-safe: run test and rehearsal commands in
+  an owned disposable checkout with a synthetic `.env`, never in a valuable
+  tree that holds real secrets. See [TESTING.md](TESTING.md).
+- The committed Compose file is development-only; deployment uses the
+  production-shaped example described in [INSTALL.md](INSTALL.md).
+
+## Verification
+
+The standard command set (exact variants and evidence rules in
+[TESTING.md](TESTING.md)):
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src
+uv run --env-file .env python manage.py check
+uv run --env-file .env python manage.py makemigrations --check --dry-run
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test
+uv run pip-audit
+git diff --check
+```
+
+Report passed, failed, skipped, and unrun checks separately — a skipped or
+unrun check is not a pass. API changes also require OpenAPI schema
+validation; browser/UI boundaries use the explicit Chromium suite documented
+in `TESTING.md`.
+
+## Pull requests
+
+- Keep scope and non-goals explicit; explain any operational impact.
+- Use `.github/PULL_REQUEST_TEMPLATE.md`, including the verification table
+  with exact commands and outcomes.
+- Use `Closes #<issue>` when the PR fully satisfies that issue; leave
+  incomplete issues open. The workflow's post-merge verification is
+  documented in [docs/oap-workflow.md](docs/oap-workflow.md).
+- Update user documentation, tests, and behavior together when they change.
+- New dependencies need a stated purpose and a reviewed, locked version.
+
+## Architecture changes
+
+An architectural, security-boundary, persistence, authentication, or
+deployment change requires an ADR under [docs/decisions/](docs/decisions/). A
+feature PR must not smuggle in such a decision without review.
+
+## Secrets and personal data
+
+Do not place credentials, browser cookies, anti-forgery tokens, API tokens,
+peppers, private client exports, reservation details, or production data in
+commits, issues, PRs, fixtures, screenshots, or logs. The sanitized bootstrap
+inventory under `data/bootstrap/` is the only legacy-derived data set the
+repository carries, and it stays sanitized.
+
+## Agent contributions
+
+Agent development runs through the repository's OAP workflow
+([docs/oap-workflow.md](docs/oap-workflow.md)): the role router is
+[AGENTS.md](AGENTS.md), the active order under `oap/active` defines the
+exact scope, and the coding role never merges, self-approves, or
+adjudicates its own work. Agent roles follow the AGENTS.md instructions
+instead of this human developer path.
