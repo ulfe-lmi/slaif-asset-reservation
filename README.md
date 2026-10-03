@@ -31,8 +31,8 @@ reservation accepted by the system is:
   API token);
 - **auditable** — every lifecycle transition is recorded atomically with its
   domain mutation;
-- **reducible** — owner or permitted staff can cancel or release it through
-  explicit, audited transitions.
+- **cancellable or releasable** — the owner or permitted staff can cancel
+  or release it through explicit, audited transitions.
 
 ## Get started
 
@@ -89,6 +89,7 @@ that is the boundary of a future, separate execution gateway.
 
 | Topic | Document |
 | --- | --- |
+| Canonical architecture | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Local Docker evaluation | [QUICKSTART.md](QUICKSTART.md) |
 | Installation and deployment (operator) | [INSTALL.md](INSTALL.md) |
 | API contract (`/api/v1/`) | [docs/api-contract.md](docs/api-contract.md) |
@@ -97,6 +98,7 @@ that is the boundary of a future, separate execution gateway.
 | Deployment reference | [docs/deployment.md](docs/deployment.md) |
 | Security model | [docs/security-model.md](docs/security-model.md) |
 | Testing and verification | [TESTING.md](TESTING.md) |
+| OpenAPI schema and Swagger UI | `/api/schema/` and `/api/docs/`, enabled by `SLAIF_ENABLE_API_DOCS` (disabled by default in production; staff-only there when enabled) — [docs/deployment.md](docs/deployment.md#4-configuration) |
 | Operator runbooks and readiness gates | [docs/runbooks/](docs/runbooks/) |
 | Architecture decision records | [docs/decisions/](docs/decisions/) |
 | Full documentation index | [docs/README.md](docs/README.md) |

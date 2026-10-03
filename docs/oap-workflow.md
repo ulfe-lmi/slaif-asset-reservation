@@ -35,9 +35,9 @@ launcher is part of this profile.
 4. Strategy reviews the exact report head, required CI, DHA registration and combined
    risk; only strategy may perform an authorized development merge under separately
    attributable scoped delegation. Release and production remain human.
-   An objective PR uses `Closes #<issue>` when it fully satisfies that
-   issue; otherwise the issue stays open, and strategy reconciles the linked
-   issue after verifying the merge.
+   An objective PR uses `Closes #<issue>` only when it fully satisfies that
+   issue. After the merge, strategy verifies the closure; a satisfied issue
+   that remains open is reconciled with a factual merged-PR closeout.
 
 ## Adoption
 

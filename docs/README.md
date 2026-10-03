@@ -2,19 +2,22 @@
 
 ## Start here
 
+- [README.md](../README.md) — product overview, capabilities, and the
+  documentation map.
 - [QUICKSTART.md](../QUICKSTART.md) — the essential Docker path to a running
   local evaluation instance (loopback-only, development settings).
 - [INSTALL.md](../INSTALL.md) — the full operator installation and deployment
   guide (production-shaped Compose, protected secrets, proxy, backup/restore,
   upgrades, rollback).
-- [README.md](../README.md) — product overview, capabilities, and the
-  documentation map.
+- [ARCHITECTURE.md](../ARCHITECTURE.md) — the canonical system architecture.
 
 ## Users and API clients
 
 - [api-contract.md](api-contract.md) — the implemented `/api/v1/` contract:
-  authentication and scopes, idempotency, problem details, and every
-  endpoint.
+  [authentication and scopes](api-contract.md#authentication-and-scopes),
+  idempotency, problem details, and every endpoint.
+- [security-model.md](security-model.md#5-api-token-design) — API token
+  design: creation, verification, revocation and rotation.
 - [human-ui.md](human-ui.md) — browser workflows: member navigation, core
   screens, accessibility baseline.
 - [domain-model.md](domain-model.md) — entities, reservation lifecycle,
@@ -30,8 +33,17 @@
   checklist, pilot preparation and readiness gates, backup and restore,
   database-unavailable response, token/pepper incidents, blackouts,
   idempotency cleanup, SmartScheduling migration.
-- [READINESS.md](READINESS.md) — readiness as separate dimensions, not a
-  single green flag.
+- [runbooks/internal-alpha-pilot-preparation.md](runbooks/internal-alpha-pilot-preparation.md) —
+  pilot preparation pack.
+- [runbooks/internal-alpha-pilot-readiness.md](runbooks/internal-alpha-pilot-readiness.md) —
+  pilot readiness gates.
+- [runbooks/backup-and-restore.md](runbooks/backup-and-restore.md) — backup
+  and restore runbook.
+- [runbooks/smartscheduling-migration.md](runbooks/smartscheduling-migration.md) —
+  SmartScheduling migration runbook (the real private cutover remains
+  separate and human-supervised).
+- [security-model.md](security-model.md) — security model: protected assets,
+  trust boundaries, threats and controls, token design, privacy and logging.
 - [SECURITY.md](../SECURITY.md) — project security posture and vulnerability
   reporting.
 
@@ -45,14 +57,21 @@
   security rules, pull requests.
 - [security-model.md](security-model.md) — protected assets, trust
   boundaries, threats and controls, token design, privacy and logging.
-- [decisions/](decisions/) — accepted architecture decision records (ADRs).
-- [ARCHITECTURE.md](../ARCHITECTURE.md) — the canonical system architecture;
-  [architecture.md](architecture.md) is a compatibility pointer to it.
+- [decisions/](decisions/) — accepted architecture decision records (ADRs);
+  [architecture.md](architecture.md) is a compatibility pointer to the
+  canonical [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## Governance and history
 
 Specialist and historical material, not installation instructions:
 
+- [AGENTS.md](../AGENTS.md) — the root role router.
+- [PLAN.md](../PLAN.md) — the canonical product plan.
+- [ARCHITECTURE-for-agents.md](../ARCHITECTURE-for-agents.md) — the compact
+  executor projection of the canonical architecture.
+- [CRITICAL.md](../CRITICAL.md) — the critical-invariants register.
+- [READINESS.md](READINESS.md) — initial-conversion readiness baseline
+  (governance baseline, not part of the current operator path).
 - [oap-workflow.md](oap-workflow.md) — the adopted and operational
   Concentrated OAP workflow (roles, publication, reporting).
 - [OAP-RUNBOOK.md](OAP-RUNBOOK.md) — setup, operation, and adoption runbook.

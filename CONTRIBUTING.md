@@ -1,18 +1,31 @@
 # Contributing
 
-A bounded change is one pull request against a verified current `main`.
-Before starting: read [AGENTS.md](AGENTS.md), read the linked issue and the
-relevant architecture documents, verify current `main` and existing open PRs,
+A bounded change is one pull request from a feature branch against a
+verified current `main`. Before starting: read the linked issue, the
+relevant parts of [ARCHITECTURE.md](ARCHITECTURE.md),
+[docs/security-model.md](docs/security-model.md) and
+[TESTING.md](TESTING.md), verify current `main` and existing open PRs,
 and do not begin from an unapproved broad feature description.
+
+## Prerequisites
+
+- A Linux host with **Docker Engine** (Compose v2 plugin) for the
+  development PostgreSQL 17 container.
+- **Python 3.13** managed by `uv` with the committed `uv.lock` (never
+  edited by hand).
+- The required test tooling for the full verification suite — including
+  the Playwright Chromium build for the browser/UI suite — is documented
+  in [TESTING.md](TESTING.md); install routine test tools in your owned
+  environment and record what you installed.
 
 ## Development environment
 
-The executable workflow: Python 3.13 managed by `uv` with the committed
-`uv.lock` (never edited by hand), and PostgreSQL 17 through the committed
-development Compose file (loopback-only, development settings):
+The executable workflow (PostgreSQL 17 through the committed development
+Compose file, loopback-only, development settings):
 
 ```bash
-git clone <private-repo-url> slaif-asset-reservation && cd slaif-asset-reservation
+git clone https://github.com/ulfe-lmi/slaif-asset-reservation.git slaif-asset-reservation
+cd slaif-asset-reservation
 docker compose up -d db                 # development PostgreSQL on 127.0.0.1:5432
 uv sync --locked --all-groups           # locked dependencies
 cp .env.example .env                    # host-side placeholders; do not commit a real .env
@@ -79,7 +92,9 @@ repository carries, and it stays sanitized.
 
 ## Agent contributions
 
-Development runs through the repository's OAP workflow
+Agent development runs through the repository's OAP workflow
 ([docs/oap-workflow.md](docs/oap-workflow.md)): the role router is
-[AGENTS.md](AGENTS.md), the active order defines the exact scope, and the
-coding role never merges, self-approves, or adjudicates its own work.
+[AGENTS.md](AGENTS.md), the active order under `oap/active` defines the
+exact scope, and the coding role never merges, self-approves, or
+adjudicates its own work. Agent roles follow the AGENTS.md instructions
+instead of this human developer path.
