@@ -28,7 +28,11 @@ Include:
 - explicit trusted-proxy-peer boundary: only configured peers
   (`SLAIF_TRUSTED_PROXY_PEERS`) may forward TLS/client identity, with
   overwrite-not-append forwarding; every other peer is a direct client
-  with all forwarding headers stripped;
+  pinned to the plain transport; ALL forwarding headers are stripped in
+  both branches, the original socket peer is preserved separately from
+  the normalized client identity, and the edge default `Referrer-Policy`
+  is deferred so stricter per-view policies (one-time token page)
+  survive the proxy;
 - safe logs and error responses: raw request lines, headers, bodies and
   arbitrary exception state are never retained in logs or echoed back to
   clients;

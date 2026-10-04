@@ -132,7 +132,11 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
      healthcheck probes `http://127.0.0.1:8000/health/live` from inside
      the application container, and Django rejects a host not in
      `ALLOWED_HOSTS`. Omitting `127.0.0.1` leaves the app container
-     permanently unhealthy.
+     permanently unhealthy. Entries are validated fail-closed at settings
+     load: explicit bare hostnames, IPv4/IPv6 literals, or Django dotted
+     subdomain wildcards (`.example.org`) only — schemes, ports, userinfo,
+     whitespace, and malformed entries are rejected without echoing the
+     configured value, and the bare `*` wildcard is unsafe and refused.
    - `SLAIF_CSRF_TRUSTED_ORIGINS` (the approved service hostname,
      `https://` origin);
    - `SLAIF_API_TOKEN_PEPPER` (at least 32 bytes, distinct from
@@ -261,19 +265,28 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
 
 12. **Configure the reverse proxy** from `deploy/Caddyfile.example`
     (qualified with Caddy v2.11.6): replace the placeholder hostname and
-    email. The example overwrites (never appends) `X-Forwarded-Proto` and
+    remove the placeholder email (ACME is not part of this contract). The
+    example overwrites (never appends) `X-Forwarded-Proto` and
     `X-Forwarded-For` from the actual client connection, caps body size and
-    read/idle time, and drops the `Server` identity header. Set
+    read/idle time, drops the `Server` and `Via` identity headers, and
+    applies its `Referrer-Policy` edge policy as a **deferred default**
+    (Caddy `?` modifier) so stricter per-view policies — in particular the
+    one-time token page's `no-referrer` / `no-store, private` contract —
+    pass through the proxy unchanged. Set
     `SLAIF_TRUSTED_PROXY_PEERS` to the source peer the application actually
     sees from the proxy — `127.0.0.1` for a host-side proxy dialing the
     published loopback port, plus the Docker bridge gateway IP if the proxy
-    runs in a Docker network (discovery in step 2): the application honors
-    that peer's forwarding and treats every other peer as a direct client
-    with all forwarding headers stripped. Browser POSTs must present an
-    `Origin` exactly matching the `SLAIF_CSRF_TRUSTED_ORIGINS` entry.
-    Nginx remains acceptable if already operated institutionally; it must
-    implement the same overwrite-not-append forwarding and peer allowlist.
-    Full contract: `docs/deployment.md` section 8.
+    dials the published loopback port (discovery in step 2): the application
+    honors that peer's forwarding and treats every other peer as a direct
+    client. In both cases the application strips every forwarding header it
+    does not consume (trusted and untrusted alike), keeps the original
+    socket peer separately from the normalized client identity
+    (`request.client_ip`), and logs only the safe normalized client in its
+    request log. Browser POSTs must present an `Origin` exactly matching
+    the `SLAIF_CSRF_TRUSTED_ORIGINS` entry. Nginx remains acceptable if
+    already operated institutionally; it must implement the same
+    overwrite-not-append forwarding, peer allowlist, and deferred-default
+    header semantics. Full contract: `docs/deployment.md` section 8.
 
 13. **Verify HTTPS end to end** from outside the host. Enter the approved
     service hostname (without a scheme or path); reuse it for the checks
@@ -508,11 +521,15 @@ docker compose -f compose.production.example.yaml restart app
   `SLAIF_ALLOWED_HOSTS`, `SLAIF_CSRF_TRUSTED_ORIGINS`,
   `SLAIF_TRUSTED_PROXY_PEERS`, `DATABASE_URL`, and
   `SLAIF_API_TOKEN_PEPPER` are all required, the pepper must be distinct and
-  at least 32 bytes, and `SLAIF_DEBUG` is rejected. Trusted proxy peers
-  must be explicit IP addresses or point-to-point networks (broad ranges
-  are rejected); only those peers may supply TLS/client-identity
-  forwarding, every other peer is a direct client with all forwarding
-  headers stripped. Secure session/CSRF
+  at least 32 bytes, and `SLAIF_DEBUG` is rejected. `SLAIF_ALLOWED_HOSTS`
+  entries must be explicit bare hosts (hostnames, IP literals, or Django
+  dotted subdomain wildcards); out-of-contract HSTS combinations are
+  rejected (a non-zero `SLAIF_SECURE_HSTS_SECONDS` requires the SSL redirect
+  enabled; the subdomain/preload flags require a non-zero max-age). Trusted
+  proxy peers must be explicit IP addresses or point-to-point networks
+  (broad ranges are rejected); only those peers may supply
+  TLS/client-identity forwarding, every other peer is a direct client with
+  all forwarding headers stripped. Secure session/CSRF
   cookies and SSL redirect are on by default; HSTS stays disabled until the
   final HTTPS hostname is verified, then must be enabled explicitly.
 - Local Django accounts, created by administrators, are acceptable for the

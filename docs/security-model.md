@@ -22,9 +22,14 @@ The application must not store machine SSH private keys, SmartScheduling credent
 2. Reverse proxy to application: only the explicitly configured trusted
    proxy peers (`SLAIF_TRUSTED_PROXY_PEERS`) may supply
    `X-Forwarded-Proto`/single-value `X-Forwarded-For`; the proxy must
-   overwrite (never append) those headers, and every other peer is a
-   direct client with all forwarding headers stripped (see
-   `deployment.md` section 8 and ADR 0015).
+   overwrite (never append) those headers. EVERY peer - trusted or not -
+   has all forwarding headers (`Forwarded`, every `X-Forwarded-*`
+   variant, `X-Real-IP`) consumed once and stripped, so no downstream
+   code can re-interpret them; an untrusted peer is a direct client
+   pinned to the plain transport, and the original socket peer is kept
+   separately (`request.remote_peer`) from the normalized one-hop client
+   identity (`request.client_ip`, the source of the safe `client` field
+   in request logs) - see `deployment.md` section 8 and ADR 0015.
 3. Browser session and CSRF boundary to Django web views.
 4. Bearer-token client to DRF API.
 5. Application process to PostgreSQL.
@@ -319,14 +324,26 @@ Reverse proxy and app must set or support:
 - `X-Content-Type-Options: nosniff`;
 - frame-ancestor/Clickjacking protection (`X-Frame-Options: DENY`);
 - a Content Security Policy appropriate to local assets;
-- `Referrer-Policy: strict-origin-when-cross-origin`;
-- request body and header limits (layered edge buffer/cap plus the
-  application's `DATA_UPLOAD_MAX_MEMORY_SIZE`, see `deployment.md`
-  section 8);
+- `Referrer-Policy: strict-origin-when-cross-origin` as a DEFERRED edge
+  default (Caddy `?` semantics): the edge policy applies only when the
+  application response sets none, so stricter per-view policies - in
+  particular the one-time token page's `no-referrer` / `no-store,
+  private` - survive the proxy unchanged; `Server` and Caddy's default
+  `Via` hop header are removed;
+- request body and header limits (verified layered contract: edge
+  10MB whole-body cap 413 for bodies the application reads -
+  Content-Length and chunked alike; early application 400 for form
+  bodies above `DATA_UPLOAD_MAX_MEMORY_SIZE` (2.5 MiB) without the body
+  being read; bounded-not-rejected 200 for bodies the application never
+  reads; `read_body 60s` and `read_body_idle 30s 1024` cutting stalled/trickling bodies,
+  the cut surfacing to the client as 499; 1MB header-size bound via Go
+  `net/http`, oversized headers get 431) - see `deployment.md` section
+  8;
 - proxy trust limited to `SLAIF_TRUSTED_PROXY_PEERS` with
-  overwrite-not-append `X-Forwarded-Proto`/`X-Forwarded-For`, all
-  other forwarding stripped, and underscore wire headers dropped at
-  the parser (`--header-map drop`);
+  overwrite-not-append `X-Forwarded-Proto`/`X-Forwarded-For`, total
+  forwarding-header stripping in BOTH the trusted and untrusted
+  branches (original peer preserved as `request.remote_peer`), and
+  underscore wire headers dropped at the parser (`--header-map drop`);
 - CORS disabled by default or explicitly allowlisted for approved machine clients; ordinary non-browser agents do not require CORS.
 
 ## 11. Development and CI boundary

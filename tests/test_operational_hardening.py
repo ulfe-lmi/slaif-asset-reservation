@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
 import re
 import socket
 import subprocess
+import uuid
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
@@ -24,6 +26,7 @@ from slaif_reservation.config.logging import JsonLogFormatter
 from slaif_reservation.config.middleware import (
     UNMATCHED_ROUTE,
     SafeRequestLogMiddleware,
+    TrustedProxyForwardingMiddleware,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +51,110 @@ def token_for(owner: User):
 FAKE_DOCKER_SCRIPT = r"""#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$SLAIF_FAKE_DOCKER_LOG"
 args="$*"
+
+# ---- state helpers -------------------------------------------------------
+# Container rows: cid|name|state|created|project|ports_json|service|volume
+state_file="${SLAIF_FAKE_DOCKER_STATE:-}"
+volume_file="${SLAIF_FAKE_DOCKER_VOLUMES:-${SLAIF_FAKE_DOCKER_LOG}.volumes}"
+
+# The state file in effect right now: with ps phases, row lookups and
+# creations follow the most recent ps invocation (same phase rule as the
+# ps handler); before any ps call the base state applies.
+current_state() {
+  if [[ -n "${SLAIF_FAKE_DOCKER_PS_PHASES:-}" ]]; then
+    count_file="${SLAIF_FAKE_DOCKER_PS_COUNT_FILE:-}"
+    n=0
+    if [[ -n "$count_file" && -f "$count_file" ]]; then
+      n="$(cat "$count_file")"
+    fi
+    if [[ "$n" -gt 0 ]]; then
+      IFS=':' read -r -a phases <<< "$SLAIF_FAKE_DOCKER_PS_PHASES"
+      idx=$((n - 1))
+      if (( idx >= ${#phases[@]} )); then
+        idx=$(( ${#phases[@]} - 1 ))
+      fi
+      printf '%s' "${phases[$idx]}"
+      return 0
+    fi
+  fi
+  printf '%s' "$state_file"
+}
+
+find_row_in() {
+  local file="$1" want="$2" by_name="$3"
+  local f_cid f_name f_state f_created f_proj f_ports f_service f_volume
+  [[ -n "$file" && -f "$file" ]] || return 1
+  while IFS='|' read -r f_cid f_name f_state f_created f_proj f_ports f_service f_volume; do
+    [[ -n "$f_cid" ]] || continue
+    if [[ "$by_name" == "name" && "$f_name" == "$want" ]] \
+      || [[ "$by_name" == "cid" && "$f_cid" == "$want" ]]; then
+      printf '%s|%s|%s|%s|%s|%s|%s|%s\n' \
+        "$f_cid" "$f_name" "$f_state" "$f_created" \
+        "$f_proj" "$f_ports" "${f_service:-}" "${f_volume:-}"
+      return 0
+    fi
+  done < "$file"
+  return 1
+}
+
+find_row_by_name() {
+  find_row_in "$(current_state)" "$1" "name"
+}
+
+find_row_by_cid() {
+  find_row_in "$(current_state)" "$1" "cid"
+}
+
+add_row() {
+  local file
+  file="$(current_state)"
+  [[ -n "$file" ]] || return 0
+  printf '%s\n' "$1" >> "$file"
+}
+
+add_volume() {
+  [[ -n "$volume_file" ]] || return 0
+  if ! grep -qx "$1" "$volume_file" 2>/dev/null; then
+    printf '%s\n' "$1" >> "$volume_file"
+  fi
+}
+
+remove_project_rows() {
+  local proj="$1" kept file f_cid f_name f_state f_created f_proj f_ports f_service f_volume
+  file="$(current_state)"
+  [[ -n "$file" && -f "$file" ]] || return 0
+  kept="$(mktemp)"
+  while IFS='|' read -r f_cid f_name f_state f_created f_proj f_ports f_service f_volume; do
+    [[ -n "$f_cid" ]] || continue
+    if [[ "$f_proj" != "$proj" ]]; then
+      printf '%s|%s|%s|%s|%s|%s|%s|%s\n' \
+        "$f_cid" "$f_name" "$f_state" "$f_created" \
+        "$f_proj" "$f_ports" "${f_service:-}" "${f_volume:-}" >> "$kept"
+    fi
+  done < "$state_file"
+  mv "$kept" "$state_file"
+  if [[ -n "$volume_file" && -f "$volume_file" ]]; then
+    kept="$(mktemp)"
+    grep -v "^${proj}_" "$volume_file" > "$kept" || true
+    mv "$kept" "$volume_file"
+  fi
+}
+
+compose_project() {
+  # last -p value in the current args
+  local project="" prev=""
+  for tok in $args; do
+    if [[ "$prev" == "-p" ]]; then
+      project="$tok"
+    fi
+    prev="$tok"
+  done
+  printf '%s' "$project"
+}
+
+created_at="2026-09-14 02:00:00 +0200 CEST"
+
+# ---- dispatch ------------------------------------------------------------
 if [[ "$args" == *"compose"* && "$args" == *"config"* && "$args" == *"--format json"* ]]; then
   port="${SLAIF_APP_HOST_PORT:-8000}"
   printf '%s' '{"services":{"app":{"ports":[{"host_ip":"127.0.0.1","published":"' \
@@ -55,12 +162,73 @@ if [[ "$args" == *"compose"* && "$args" == *"config"* && "$args" == *"--format j
   printf '%s' "$port" | tee -a "$SLAIF_FAKE_DOCKER_RENDERED_CONFIG"
   printf '%s\n' '","target":8000,"protocol":"tcp"}]}}}' \
     | tee -a "$SLAIF_FAKE_DOCKER_RENDERED_CONFIG"
+  exit 0
 fi
+
+if [[ "$args" == *"compose"* && "$args" == *"up -d"* ]]; then
+  set -- $args
+  project=""
+  svc=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -p)
+        project="$2"
+        shift 2
+        ;;
+      up)
+        shift
+        ;;
+      -d)
+        shift
+        ;;
+      db|app)
+        svc="$1"
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  name="${project}-${svc}-1"
+  # Creation race simulation: if the race file is armed for this service,
+  # a foreign actor claims the name at create time and the create fails,
+  # exactly like a real name conflict.
+  race_file="${SLAIF_FAKE_DOCKER_RACE_FILE:-}"
+  race_svc="${SLAIF_FAKE_DOCKER_RACE_SVC:-}"
+  conflict="Error response from daemon: Conflict. The container name \"/%s\" is already in use"
+  if [[ -n "$race_file" && -f "$race_file" && ( -z "$race_svc" || "$race_svc" == "$svc" ) ]]; then
+    add_row "$(cat "$race_file")"
+    printf "$conflict\n" "$name" >&2
+    exit 1
+  fi
+  row="$(find_row_by_name "$name")" || true
+  if [[ -n "$row" ]]; then
+    printf "$conflict\n" "$name" >&2
+    exit 1
+  fi
+  cid="faKE$(printf '%s' "$name" | cksum | cut -d' ' -f1)"
+  volume=""
+  ports='{}'
+  if [[ "$svc" == "db" ]]; then
+    volume="${project}_postgres-data"
+    ports='{"5432/tcp": null}'
+    add_volume "$volume"
+  else
+    ports='{"8000/tcp": null}'
+  fi
+  add_row "${cid}|${name}|running|${created_at}|${project}|${ports}|${svc}|${volume}"
+  printf "%s|%s\n" "$cid" "$SLAIF_REHEARSAL_OWNER_NONCE" >> "${SLAIF_FAKE_DOCKER_LOG}.owners"
+  exit 0
+fi
+
 if [[ "$args" == *"image inspect"* ]]; then
   printf '%s\n' "${SLAIF_FAKE_DOCKER_IMAGE_USER:-10001:10001}"
+  exit 0
 fi
+
 if [[ "$args" == "ps -a --filter "* ]]; then
-  state_file="${SLAIF_FAKE_DOCKER_STATE:-}"
+  local_state="$state_file"
   if [[ -n "${SLAIF_FAKE_DOCKER_PS_PHASES:-}" ]]; then
     count_file="${SLAIF_FAKE_DOCKER_PS_COUNT_FILE:-}"
     n=0
@@ -76,59 +244,112 @@ if [[ "$args" == "ps -a --filter "* ]]; then
     if (( idx >= ${#phases[@]} )); then
       idx=$(( ${#phases[@]} - 1 ))
     fi
-    state_file="${phases[$idx]}"
+    local_state="${phases[$idx]}"
   fi
-  if [[ -n "$state_file" && -f "$state_file" ]]; then
-    while IFS='|' read -r f_cid f_name f_state f_created f_proj f_ports; do
+  if [[ -n "$local_state" && -f "$local_state" ]]; then
+    while IFS='|' read -r f_cid f_name f_state f_created f_proj f_ports f_service f_volume; do
       [[ -n "$f_cid" ]] || continue
       printf '%s|%s|%s|%s|%s\n' "$f_cid" "$f_name" "$f_state" "$f_created" "$f_proj"
-    done < "$state_file"
+    done < "$local_state"
   fi
   exit 0
 fi
-if [[ "$args" == *"--format {{json .NetworkSettings.Ports}}"* ]]; then
-  rest="${args#*inspect }"
-  cid="${rest%% *}"
-  state_file="${SLAIF_FAKE_DOCKER_STATE:-}"
-  if [[ -n "${SLAIF_FAKE_DOCKER_PS_PHASES:-}" ]]; then
-    IFS=':' read -r -a phases <<< "$SLAIF_FAKE_DOCKER_PS_PHASES"
-    state_file="${phases[$(( ${#phases[@]} - 1 ))]}"
+
+if [[ "$args" == "volume create "* ]]; then
+  vol="${!#}"
+  if ! grep -qx "$vol" "$volume_file" 2>/dev/null; then
+    add_volume "$vol"
+    printf '%s|%s\n' "$vol" "$SLAIF_REHEARSAL_OWNER_NONCE" >> "${volume_file}.owners"
   fi
-  if [[ -n "$state_file" && -f "$state_file" ]]; then
-    while IFS='|' read -r f_cid f_name f_state f_created f_proj f_ports; do
-      if [[ "$f_cid" == "$cid" ]]; then
-        printf '%s\n' "$f_ports"
-        break
-      fi
-    done < "$state_file"
+  printf '%s\n' "$vol"
+  exit 0
+fi
+if [[ "$args" == "volume inspect "* ]]; then
+  raw="${args#volume inspect }"; vol="${raw%% --format*}"
+  if ! grep -qx "$vol" "$volume_file" 2>/dev/null; then exit 1; fi
+  case "$raw" in
+    *".CreatedAt"*) printf '%s\n' "$created_at" ;;
+    *"slaif.qualification.owner"*)
+      grep "^${vol}|" "${volume_file}.owners" 2>/dev/null | cut -d'|' -f2
+      ;;
+  esac
+  exit 0
+fi
+if [[ "$args" == "volume rm "* ]]; then
+  vol="${!#}"; kept="$(mktemp)"
+  grep -vx "$vol" "$volume_file" > "$kept" || true
+  mv "$kept" "$volume_file"
+  exit 0
+fi
+if [[ "$args" == "rm -f "* ]]; then
+  target="${!#}"; kept="$(mktemp)"; current="$(current_state)"
+  awk -F'|' -v id="$target" '$1 != id' "$current" > "$kept"
+  mv "$kept" "$current"
+  exit 0
+fi
+
+if [[ "$args" == *"down -v --remove-orphans"* ]]; then
+  project="$(compose_project)"
+  remove_project_rows "$project"
+  exit 0
+fi
+
+if [[ "$args" == "run "* ]]; then
+  # run_fail models a failing one-shot management command (the
+  # `run --rm --network ... --env-file ...` shape), not the image
+  # asset checks (`run --rm --entrypoint test ...`).
+  if [[ -n "${SLAIF_FAKE_DOCKER_RUN_FAIL:-}" && "$args" == *"--network"* ]]; then
+    exit 1
   fi
   exit 0
 fi
-if [[ "$args" == *"compose"* && "$args" == *down* ]]; then
-  set -- $args
-  project=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      -p)
-        project="$2"
-        shift 2
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
-  if [[ -n "$project" && -n "${SLAIF_FAKE_DOCKER_STATE:-}" && -f "$SLAIF_FAKE_DOCKER_STATE" ]]; then
-    kept="$(mktemp)"
-    while IFS='|' read -r f_cid f_name f_state f_created f_proj f_ports; do
-      [[ -n "$f_cid" ]] || continue
-      if [[ "$f_proj" != "$project" ]]; then
-        printf '%s|%s|%s|%s|%s|%s\n' \
-          "$f_cid" "$f_name" "$f_state" "$f_created" "$f_proj" "$f_ports" >> "$kept"
-      fi
-    done < "$SLAIF_FAKE_DOCKER_STATE"
-    mv "$kept" "$SLAIF_FAKE_DOCKER_STATE"
+
+# docker inspect <name-or-cid> --format <fmt>
+if [[ "$args" == "inspect "* ]]; then
+  # No word splitting: the --format template contains spaces and quotes.
+  raw="${args#inspect }"
+  if [[ "$raw" == *" --format "* ]]; then
+    target="${raw%% --format*}"
+    fmt="${raw#* --format }"
+  else
+    target="$raw"
+    fmt=""
   fi
+  row="$(find_row_by_name "$target" || find_row_by_cid "$target" || true)"
+  if [[ -z "$row" ]]; then
+    printf 'Error: No such object: %s\n' "$target" >&2
+    exit 1
+  fi
+  IFS='|' read -r f_cid f_name f_state f_created f_proj f_ports f_service f_volume <<< "$row"
+  if [[ -z "$fmt" ]]; then
+    exit 0
+  fi
+  case "$fmt" in
+    *"slaif.qualification.owner"*)
+      grep "^${f_cid}|" "${SLAIF_FAKE_DOCKER_LOG}.owners" 2>/dev/null | cut -d'|' -f2
+      ;;
+    *".Id"*)
+      printf '%s\n' "$f_cid"
+      ;;
+    *"compose.project"*)
+      printf '%s\n' "$f_proj"
+      ;;
+    *"compose.service"*)
+      printf '%s\n' "${f_service:-}"
+      ;;
+    *".Mounts"*)
+      printf '%s' "${f_volume:-}"
+      ;;
+    *".State.Health"*)
+      printf '%s\n' "healthy"
+      ;;
+    *"NetworkSettings.Ports"*)
+      printf '%s\n' "$f_ports"
+      ;;
+    *)
+      exit 0
+      ;;
+  esac
   exit 0
 fi
 exit 0
@@ -141,6 +362,10 @@ def fake_docker(
     state_file: Path | None = None,
     ps_phases: list[str] | None = None,
     runtime_user: str = "10001:10001",
+    volumes: list[str] | None = None,
+    race_row: str | None = None,
+    race_svc: str | None = None,
+    run_fail: bool = False,
 ) -> dict[str, str]:
     """PATH-shimmed fake docker used by the rehearsal tests.
 
@@ -148,13 +373,22 @@ def fake_docker(
     fake only renders the Compose config, exactly as before. Optionally it can
     simulate a pre-existing container inventory for the recovery modes:
 
-    - state_file: rows "cid|name|state|created|project|ports_json"; `docker ps -a
-      --filter label=com.docker.compose.project` prints the first five fields,
-      `docker inspect <cid>` prints ports_json, and a compose `down -p <project>`
-      removes exactly that project's rows.
+    - state_file: rows "cid|name|state|created|project|ports_json|service|volume";
+      `docker ps -a --filter label=com.docker.compose.project` prints the first
+      five fields, `docker inspect <name-or-cid> --format <fmt>` resolves rows by
+      name first then cid, `docker inspect <name>` (no format) reports existence,
+      `docker volume inspect` consults the volumes file, a compose `up -d <svc>`
+      creates the project-scoped row (and the db volume) unless a name conflict
+      or armed race says otherwise, and a compose `down -p <project>` removes
+      exactly that project's rows and volumes.
     - ps_phases: per-`ps`-invocation state files (first invocation is the startup
       scan, second is the port precheck, later invocations reuse the last phase).
     - runtime_user: value `docker image inspect --format {{.Config.User}}` prints.
+    - volumes: names pre-existing in the simulated volume inventory.
+    - race_row/race_svc: when set, the next `compose up -d <race_svc>` first
+      appends race_row (a foreign creator winning a name race) and then fails
+      with a name conflict, like a real concurrent create.
+    - run_fail: make `docker run` invocations fail (one-shot stop).
     """
     log_path = tmp_path / "docker.log"
     rendered_config_path = tmp_path / "rendered-compose.json"
@@ -168,6 +402,17 @@ def fake_docker(
     env["SLAIF_FAKE_DOCKER_IMAGE_USER"] = runtime_user
     if state_file is not None:
         env["SLAIF_FAKE_DOCKER_STATE"] = str(state_file)
+    if volumes is not None:
+        volume_path = tmp_path / "fake-docker-volumes"
+        volume_path.write_text("".join(name + "\n" for name in volumes), encoding="utf-8")
+        env["SLAIF_FAKE_DOCKER_VOLUMES"] = str(volume_path)
+    if race_row is not None:
+        race_path = tmp_path / "fake-docker-race"
+        race_path.write_text(race_row + "\n", encoding="utf-8")
+        env["SLAIF_FAKE_DOCKER_RACE_FILE"] = str(race_path)
+        env["SLAIF_FAKE_DOCKER_RACE_SVC"] = race_svc or ""
+    if run_fail:
+        env["SLAIF_FAKE_DOCKER_RUN_FAIL"] = "1"
     if ps_phases is not None:
         env["SLAIF_FAKE_DOCKER_PS_PHASES"] = ":".join(ps_phases)
         env["SLAIF_FAKE_DOCKER_PS_COUNT_FILE"] = str(tmp_path / "fake-docker-pscount")
@@ -269,9 +514,16 @@ CLEANUP_COMMAND = "deploy/rehearse_internal_alpha_deployment.sh --cleanup-owned"
 
 
 def _container_row(
-    cid: str, name: str, state: str, created: str, project: str, ports_json: str
+    cid: str,
+    name: str,
+    state: str,
+    created: str,
+    project: str,
+    ports_json: str,
+    service: str = "",
+    volume: str = "",
 ) -> str:
-    return f"{cid}|{name}|{state}|{created}|{project}|{ports_json}"
+    return f"{cid}|{name}|{state}|{created}|{project}|{ports_json}|{service}|{volume}"
 
 
 def _owned_app_row(host_port: int) -> str:
@@ -282,6 +534,7 @@ def _owned_app_row(host_port: int) -> str:
         REHEARSAL_CREATED_AT,
         OWNED_PROJECT,
         f'{{"8000/tcp": [{{"HostIp": "127.0.0.1", "HostPort": "{host_port}"}}]}}',
+        service="app",
     )
 
 
@@ -293,6 +546,8 @@ def _owned_db_row() -> str:
         REHEARSAL_CREATED_AT,
         OWNED_PROJECT,
         '{"5432/tcp": null}',
+        service="db",
+        volume=f"{OWNED_PROJECT}_postgres-data",
     )
 
 
@@ -498,6 +753,172 @@ def test_rehearsal_port_precheck_refuses_foreign_occupant(tmp_path: Path) -> Non
     assert " up -d app" not in _docker_log(tmp_path)
 
 
+RCE_TEST_PROJECT = "slaif-alpha-rehearsal-rctest"
+
+
+def _run_full_rehearsal(tmp_path: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return _run_rehearsal([], env)
+
+
+def test_rehearsal_snapshot_excludes_ignored_sentinels(tmp_path: Path) -> None:
+    # Sentinels in git-ignored locations (owned by this test, refused if
+    # pre-existing, removed exactly as created) must be proven absent from
+    # the build snapshot. The fake docker stops the run at the first
+    # one-shot management command; the snapshot proof is already logged.
+    sentinel_dir = REPO_ROOT / "private_exports"
+    sentinel = sentinel_dir / f"oap033b-snapshot-sentinel-{uuid.uuid4().hex[:12]}.txt"
+    if sentinel_dir.exists() or sentinel.exists():
+        pytest.skip("private_exports present in checkout; refusing to touch")
+    port = _free_loopback_port()
+    state = _write_state(tmp_path, "state", [])
+    try:
+        sentinel_dir.mkdir(parents=True)
+        sentinel.write_text("sentinel-content-not-for-builds", encoding="utf-8")
+        env = fake_docker(tmp_path, state_file=state, run_fail=True)
+        env["SLAIF_REHEARSAL_PROJECT"] = RCE_TEST_PROJECT
+        env["SLAIF_REHEARSAL_PORT"] = str(port)
+
+        result = _run_full_rehearsal(tmp_path, env)
+
+        assert result.returncode == 1, result.stderr  # stopped at the one-shot
+        assert "snapshot-ignored-absent=private_exports" in result.stdout
+        assert "snapshot-leak" not in result.stdout
+        assert " up -d app" not in _docker_log(tmp_path)
+        assert not REHEARSAL_ENV.exists()
+        assert not REHEARSAL_PASSWORD.exists()
+    finally:
+        sentinel.unlink(missing_ok=True)
+        if sentinel_dir.exists() and not any(sentinel_dir.iterdir()):
+            sentinel_dir.rmdir()
+
+
+def test_rehearsal_refuses_foreign_container_holding_owned_name(tmp_path: Path) -> None:
+    # A foreign container already holding an expected owned name must be
+    # refused before any create; it must be left untouched (sentinel row
+    # intact) and no project-scoped down may run.
+    foreign_db = _container_row(
+        "beef00000009",
+        f"{RCE_TEST_PROJECT}-db-1",
+        "running",
+        REHEARSAL_CREATED_AT,
+        FOREIGN_PROJECT,
+        '{"5432/tcp": null}',
+        service="db",
+    )
+    state = _write_state(tmp_path, "state", [foreign_db])
+    env = fake_docker(tmp_path, state_file=state)
+    env["SLAIF_REHEARSAL_PROJECT"] = RCE_TEST_PROJECT
+    env["SLAIF_REHEARSAL_PORT"] = str(_free_loopback_port())
+
+    result = _run_full_rehearsal(tmp_path, env)
+
+    assert result.returncode == 1
+    assert "refusing to adopt" in result.stderr
+    docker_log = _docker_log(tmp_path)
+    assert " up -d" not in docker_log
+    assert "down" not in docker_log
+    assert state.read_text(encoding="utf-8") == foreign_db + "\n"
+    assert not REHEARSAL_ENV.exists()
+    assert not REHEARSAL_PASSWORD.exists()
+
+
+def test_rehearsal_refuses_foreign_volume(tmp_path: Path) -> None:
+    foreign_volume = f"{RCE_TEST_PROJECT}_postgres-data"
+    state = _write_state(tmp_path, "state", [])
+    env = fake_docker(tmp_path, state_file=state, volumes=[foreign_volume])
+    env["SLAIF_REHEARSAL_PROJECT"] = RCE_TEST_PROJECT
+    env["SLAIF_REHEARSAL_PORT"] = str(_free_loopback_port())
+
+    result = _run_full_rehearsal(tmp_path, env)
+
+    assert result.returncode == 1
+    assert "refusing to adopt" in result.stderr
+    docker_log = _docker_log(tmp_path)
+    assert " up -d" not in docker_log
+    assert "down" not in docker_log
+    assert (tmp_path / "fake-docker-volumes").read_text(encoding="utf-8") == (foreign_volume + "\n")
+
+
+def test_rehearsal_creation_race_leaves_foreign_untouched(tmp_path: Path) -> None:
+    # The pre-creation check passes (name free), then a foreign creator
+    # wins the name at create time: the failed create must exit non-zero
+    # and leave the foreign resource untouched, with no project down.
+    foreign_db = _container_row(
+        "beef0000000a",
+        f"{RCE_TEST_PROJECT}-db-1",
+        "running",
+        REHEARSAL_CREATED_AT,
+        FOREIGN_PROJECT,
+        '{"5432/tcp": null}',
+        service="db",
+    )
+    state = _write_state(tmp_path, "state", [])
+    env = fake_docker(tmp_path, state_file=state, race_row=foreign_db, race_svc="db")
+    env["SLAIF_REHEARSAL_PROJECT"] = RCE_TEST_PROJECT
+    env["SLAIF_REHEARSAL_PORT"] = str(_free_loopback_port())
+
+    result = _run_full_rehearsal(tmp_path, env)
+
+    assert result.returncode == 1
+    assert "already in use" in result.stderr
+    docker_log = _docker_log(tmp_path)
+    assert " up -d db" in docker_log
+    assert " up -d app" not in docker_log
+    assert "down" not in docker_log
+    # The foreign row is the only content: untouched, not adopted, not
+    # removed by cleanup.
+    assert state.read_text(encoding="utf-8") == foreign_db + "\n"
+    assert not REHEARSAL_ENV.exists()
+    assert not REHEARSAL_PASSWORD.exists()
+
+
+def test_rehearsal_partial_create_failure_cleanup_removes_owned_only(
+    tmp_path: Path,
+) -> None:
+    # db is created and verified owned, then a foreign creator claims the
+    # app name at create time: the run fails, cleanup removes the owned db
+    # container and project volume only, and the foreign app row survives.
+    foreign_app = _container_row(
+        "beef0000000b",
+        f"{RCE_TEST_PROJECT}-app-1",
+        "running",
+        REHEARSAL_CREATED_AT,
+        FOREIGN_PROJECT,
+        '{"8000/tcp": null}',
+        service="app",
+    )
+    state = _write_state(tmp_path, "state", [])
+    env = fake_docker(
+        tmp_path,
+        state_file=state,
+        volumes=[],
+        race_row=foreign_app,
+        race_svc="app",
+    )
+    env["SLAIF_REHEARSAL_PROJECT"] = RCE_TEST_PROJECT
+    env["SLAIF_REHEARSAL_PORT"] = str(_free_loopback_port())
+
+    result = _run_full_rehearsal(tmp_path, env)
+
+    assert result.returncode == 1
+    assert "app container create failed" in result.stderr
+    docker_log = _docker_log(tmp_path)
+    # The one-shot children ran with the explicit minimal synthetic env on
+    # the project network - no `compose run`, no inherited host environment.
+    assert f"run --rm --network {RCE_TEST_PROJECT}_default --env-file " in docker_log
+    assert "compose run" not in docker_log
+    # Cleanup targets verified immutable IDs, never a project-wide delete.
+    assert "rm -f faKE" in docker_log
+    assert f"volume rm {RCE_TEST_PROJECT}_postgres-data" in docker_log
+    assert "down -v --remove-orphans" not in docker_log
+    # Owned db container and project volume are gone; the foreign app row
+    # (the untouched sentinel) is the only remaining state.
+    assert state.read_text(encoding="utf-8") == foreign_app + "\n"
+    assert (tmp_path / "fake-docker-volumes").read_text(encoding="utf-8") == ""
+    assert not REHEARSAL_ENV.exists()
+    assert not REHEARSAL_PASSWORD.exists()
+
+
 def idempotency_record(*, owner: User, expires_at: timezone.datetime) -> IdempotencyRecord:
     api_token = token_for(owner)
     return IdempotencyRecord.objects.create(
@@ -598,6 +1019,92 @@ def test_request_logging_middleware_never_logs_raw_unmatched_path(caplog) -> Non
     formatted = JsonLogFormatter().format(record)
     assert "zz-canary-unmatched-path" not in formatted
     assert "PRIVATE-QUERY-VALUE" not in formatted
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Authorization: Bearer not-a-sar-token-but-still-secret",
+        "Authorization: Basic YWJjOnNlY3JldC1wYXNzd29yZA==",
+        "authorization=basic other-secret-value",
+        "GET /api/ HTTP/1.1 authorization: bearer tail-secret",
+    ],
+)
+def test_json_log_formatter_redacts_generic_bearer_and_basic(settings, message: str) -> None:
+    # Regression: AUTHORIZATION_RE was broken by doubled backslashes and
+    # never matched, so any Bearer/Basic value that is not a sar_ API
+    # token passed straight through to the log line.
+    settings.API_TOKEN_PEPPER = "test-pepper-value-that-must-not-log"
+    record = logging.makeLogRecord(
+        {
+            "name": "slaif_reservation.test",
+            "levelno": logging.INFO,
+            "levelname": "INFO",
+            "msg": message,
+        }
+    )
+    rendered = JsonLogFormatter().format(record)
+    for secret in (
+        "not-a-sar-token-but-still-secret",
+        "YWJjOnNlY3JldC1wYXNzd29yZA==",
+        "other-secret-value",
+        "tail-secret",
+    ):
+        assert secret not in rendered
+    assert "[redacted]" in rendered
+
+
+def test_request_log_carries_normalized_peer_for_untrusted_spoof(caplog) -> None:
+    # Full middleware chain: the safe request log must carry the normalized
+    # one-hop client identity (the peer, for an untrusted spoofing client),
+    # never the spoofed X-Forwarded-For value.
+    request = RequestFactory().get(
+        "/health/live",
+        REMOTE_ADDR="203.0.113.7",
+        HTTP_X_FORWARDED_FOR="198.51.100.66",
+        SERVER_NAME="reservation.example.test",
+    )
+    request.resolver_match = SimpleNamespace(route="health/live")  # noqa: S105
+
+    def app(_request):
+        from django.http import JsonResponse
+
+        return JsonResponse({"ok": True})
+
+    caplog.set_level(logging.INFO, logger="slaif_reservation.request")
+    response = TrustedProxyForwardingMiddleware(SafeRequestLogMiddleware(app))(request)
+
+    assert response.status_code == 200
+    [record] = [item for item in caplog.records if item.name == "slaif_reservation.request"]
+    assert record.client == "203.0.113.7"
+    formatted = JsonLogFormatter().format(record)
+    assert "198.51.100.66" not in formatted
+
+
+@override_settings(TRUSTED_PROXY_PEERS=[ipaddress.ip_network("172.17.0.1")])
+def test_request_log_carries_one_hop_client_for_trusted_proxy(caplog) -> None:
+    # Trusted one-hop proxy: the log client is the normalized XFF value,
+    # the original peer stays available only on request.remote_peer and is
+    # never a log field.
+    request = RequestFactory().get(
+        "/health/live",
+        REMOTE_ADDR="172.17.0.1",
+        HTTP_X_FORWARDED_FOR="198.51.100.25",
+        SERVER_NAME="reservation.example.test",
+    )
+    request.resolver_match = SimpleNamespace(route="health/live")  # noqa: S105
+
+    def app(_request):
+        from django.http import JsonResponse
+
+        return JsonResponse({"ok": True})
+
+    caplog.set_level(logging.INFO, logger="slaif_reservation.request")
+    response = TrustedProxyForwardingMiddleware(SafeRequestLogMiddleware(app))(request)
+
+    assert response.status_code == 200
+    [record] = [item for item in caplog.records if item.name == "slaif_reservation.request"]
+    assert record.client == "198.51.100.25"
 
 
 @pytest.mark.django_db

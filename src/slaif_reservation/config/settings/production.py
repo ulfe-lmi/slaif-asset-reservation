@@ -12,6 +12,7 @@ from slaif_reservation.config.env import (
     env_non_negative_int,
     env_required,
     env_trusted_proxy_peers,
+    validate_allowed_host_entry,
     validate_csrf_origin,
     validate_production_secret_key,
 )
@@ -32,6 +33,10 @@ if not ALLOWED_HOSTS:
 if "*" in ALLOWED_HOSTS:
     msg = "SLAIF_ALLOWED_HOSTS must list explicit hosts; the wildcard '*' is unsafe"
     raise ImproperlyConfigured(msg)
+# Each configured host must be an explicit bare host (hostname, IP literal,
+# or Django dotted subdomain wildcard); scheme, port, userinfo and malformed
+# entries fail closed without echoing the raw value.
+ALLOWED_HOSTS = [validate_allowed_host_entry(entry) for entry in ALLOWED_HOSTS]
 
 CSRF_TRUSTED_ORIGINS = [
     validate_csrf_origin(origin) for origin in env_list("SLAIF_CSRF_TRUSTED_ORIGINS")
@@ -61,6 +66,19 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
     default=False,
 )
 SECURE_HSTS_PRELOAD = env_bool("SLAIF_SECURE_HSTS_PRELOAD", default=False)
+# The supported explicit HTTPS contract: HSTS is only meaningful with the
+# SSL redirect on (every legitimate origin is https and plain-transport
+# requests are bounced), and the subdomain/preload flags are only meaningful
+# with a non-zero max-age. Out-of-contract combinations fail closed.
+if SECURE_HSTS_SECONDS > 0 and not SECURE_SSL_REDIRECT:
+    msg = "SLAIF_SECURE_HSTS_SECONDS is only supported while SLAIF_SECURE_SSL_REDIRECT is enabled"
+    raise ImproperlyConfigured(msg)
+if (SECURE_HSTS_INCLUDE_SUBDOMAINS or SECURE_HSTS_PRELOAD) and SECURE_HSTS_SECONDS == 0:
+    msg = (
+        "SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS/SLAIF_SECURE_HSTS_PRELOAD require "
+        "a non-zero SLAIF_SECURE_HSTS_SECONDS"
+    )
+    raise ImproperlyConfigured(msg)
 
 # TLS/client-identity forwarding is gated on an explicit, strictly validated
 # peer list by TrustedProxyForwardingMiddleware (see middleware.py). The

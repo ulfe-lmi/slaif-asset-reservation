@@ -77,6 +77,57 @@ against the actual pinned toolchain.
   (HTTP 499 at the bound). The supported contract uses the server-level
   form; revisit if a future Caddy release fixes the route form.
 
+## Revision 2 (OAP 033-b) — corrected defects, retained findings
+
+The 033-a round's independent real-Caddy probe exposed that the shipped
+response-header block **replaced** the one-time token page's
+`Referrer-Policy: no-referrer` with the edge default (an unconditional
+`set` semantics), contradicting the preserved token-secrecy contract at
+the proxy boundary. Findings A and B above remain valid history; the
+decisions they drove are unchanged. This revision records the corrected
+contract, qualified again end to end against Caddy v2.11.6:
+
+1. **Deferred edge header defaults.** The edge `Referrer-Policy` default
+   uses Caddy's `?` (apply-only-when-absent) semantics, so stricter
+   per-view policies - in particular the token page's `no-referrer` and
+   `no-store, private` - survive the proxy unchanged (asserted against
+   the REAL token response, secret handled in memory only). Caddy's
+   default `Via: 1.0 Caddy` hop header is removed (`-Via`); `Server`
+   removal and nosniff are retained. (The 033-a report's interpretation
+   of criterion 1 as COMPLETE on header preservation is superseded by
+   this correction; the 033-a report itself is immutable.)
+2. **Total forwarding stripping in BOTH branches.** A trusted peer's
+   request also carries every forwarding header (`Forwarded`,
+   `X-Forwarded-Host/-Port/-Prefix`, scheme variants, `X-Real-IP`)
+   consumed once and stripped - previously only the untrusted branch
+   stripped - and the original socket peer is preserved as
+   `request.remote_peer`, separately from the normalized
+   `request.client_ip` (the safe request-log `client` field and the
+   intended limiter source).
+3. **Total and idle body bounds.** `read_body 60s` bounds total request
+   consumption, including an above-rate sender. `read_body_idle 30s 1024`
+   bounds stalls and enforces a 1,024-byte/second average minimum. The
+   previous draft misinterpreted the minimum-rate unit; its transfer-time
+   calculations do not describe the implemented contract. The rehearsal
+   exercises the shipped idle/rate values and an explicitly shortened
+   total deadline. Oversized request headers receive 431.
+4. **Qualified actual operator path.** The rehearsal now exercises the
+   supported shape end to end: host TLS Caddy (pinned, loopback-only,
+   admin/ACME off) -> Docker loopback-published non-root production
+   image -> private PG17, with the bridge gateway explicitly discovered
+   and configured as the `/32` trusted peer (one of the two possible
+   original peers behind the published port, depending on host NAT mode
+   - loopback or bridge gateway; both are trusted), the CSRF origin
+   including the
+   fixture port, and the configuration DERIVED from the shipped example
+   with narrow, asserted substitutions.
+5. **Fail-closed configuration.** `ALLOWED_HOSTS` entries must be bare
+   explicit hostnames/IP literals (scheme, port, userinfo
+   and malformed entries fail closed without echoing the raw value), and
+   out-of-contract HSTS combinations (non-zero max-age without the SSL
+   redirect; subdomain/preload with zero max-age) are rejected at
+   settings load.
+
 ## Consequences
 
 - Operators must allowlist the exact proxy peer they see (loopback for a

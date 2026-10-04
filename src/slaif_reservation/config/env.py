@@ -205,6 +205,73 @@ def peer_in_trusted_networks(peer: str | None, networks: list[PeerNetwork]) -> b
     return any(address in network for network in networks)
 
 
+def validate_allowed_host_entry(entry: str) -> str:
+    """Validate one configured ALLOWED_HOSTS entry for the supported target.
+
+    Accepted: explicit bare hostnames, IPv4 addresses, bare or bracketed
+    IPv6 addresses. Wildcards, schemes, ports, userinfo, whitespace, paths, queries
+    and fragments are rejected fail-closed. Error messages are category-only
+    and never echo the configured value.
+    """
+    value = entry.strip()
+    if not value:
+        msg = "SLAIF_ALLOWED_HOSTS entries must be non-empty"
+        raise ImproperlyConfigured(msg)
+    if any(ch.isspace() for ch in value):
+        msg = "SLAIF_ALLOWED_HOSTS entries must be bare hosts without whitespace"
+        raise ImproperlyConfigured(msg)
+    if "://" in value or value.startswith("//"):
+        msg = "SLAIF_ALLOWED_HOSTS entries must not include a scheme"
+        raise ImproperlyConfigured(msg)
+    if "@" in value:
+        msg = "SLAIF_ALLOWED_HOSTS entries must not include userinfo"
+        raise ImproperlyConfigured(msg)
+    if value.startswith("."):
+        msg = "SLAIF_ALLOWED_HOSTS must list explicit hosts without wildcards"
+        raise ImproperlyConfigured(msg)
+    if value.startswith("["):
+        if not value.endswith("]"):
+            msg = "SLAIF_ALLOWED_HOSTS entries must use a valid IP literal"
+            raise ImproperlyConfigured(msg)
+        literal = value[1:-1]
+    else:
+        literal = value
+    try:
+        address = ipaddress.ip_address(literal)
+        if isinstance(address, ipaddress.IPv6Address):
+            return f"[{address}]"
+        return value
+    except ValueError:
+        pass
+    if ":" in value:
+        msg = "SLAIF_ALLOWED_HOSTS entries must not include ports"
+        raise ImproperlyConfigured(msg)
+    if not _is_hostname(value):
+        msg = "SLAIF_ALLOWED_HOSTS entries must be valid hostnames or IP addresses"
+        raise ImproperlyConfigured(msg)
+    return value
+
+
+def _is_hostname(candidate: str) -> bool:
+    parts = candidate.split(".")
+    if len(parts) > 64 or parts == ["*"] or any(part.startswith("*") for part in parts):
+        return False
+    if not any(ch.isalpha() for ch in parts[-1]):
+        # A numeric-only top label is an IP-form artifact (for example
+        # "10.0.0.1"), not a hostname TLD; IP literals take the IP path.
+        return False
+    return (
+        all(
+            0 < len(part) <= 63
+            and part[0].isalnum()
+            and part[-1].isalnum()
+            and all(ch.isascii() and (ch.isalnum() or ch == "-") for ch in part)
+            for part in parts
+        )
+        and len(candidate) <= 253
+    )
+
+
 def validate_csrf_origin(origin: str) -> str:
     """Validate one explicit CSRF trusted origin (scheme://host[:port]).
 

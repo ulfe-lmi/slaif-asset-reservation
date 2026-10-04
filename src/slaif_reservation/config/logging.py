@@ -15,7 +15,7 @@ from django.conf import settings
 
 REDACTED = "[redacted]"
 TOKEN_VALUE_RE = re.compile(r"sar_[0-9a-fA-F]{32}_[A-Za-z0-9_-]{32,128}")
-AUTHORIZATION_RE = re.compile(r"(?i)(authorization\\s*[:=]\\s*)(bearer|basic)\\s+[^\\s,;]+")
+AUTHORIZATION_RE = re.compile(r"(?i)(authorization\s*[:=]\s*)(bearer|basic)\s+[^\s,;]+")
 
 FORBIDDEN_FIELD_NAMES = frozenset(
     {
@@ -69,7 +69,7 @@ def redact_log_value(value: Any, *, field_name: str | None = None) -> Any:
         return value
 
     text = TOKEN_VALUE_RE.sub(REDACTED, value)
-    text = AUTHORIZATION_RE.sub(r"\\1" + REDACTED, text)
+    text = AUTHORIZATION_RE.sub(r"\1" + REDACTED, text)
     for setting_name in ("API_TOKEN_PEPPER", "SECRET_KEY"):
         configured = getattr(settings, setting_name, "")
         if configured and isinstance(configured, str):

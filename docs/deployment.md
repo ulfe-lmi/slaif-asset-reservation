@@ -379,19 +379,47 @@ connection, never append: `deploy/Caddyfile.example` sets
 client-supplied values — including spoofed proto headers and ambiguous
 chains — are replaced before they reach the app.
 
-From an **untrusted peer**, `TrustedProxyForwardingMiddleware` strips all
-forwarding headers (`Forwarded`, `X-Forwarded-For/Host/Prefix/Protocol/
-Proto/Ssl`, including the standard and variant spellings that survive the
-parser), pins `wsgi.url_scheme` to the real plain-HTTP transport, and uses
-the peer address as the client identity. A server-derived `https` scheme
-therefore cannot bypass the trust list, and a spoofed
-`X-Forwarded-Proto: https` from a non-listed peer changes nothing. Other
-forwarding headers are never used for trust decisions. The normalized
-one-hop client identity is available as `request.client_ip`.
+In **both branches** every forwarding header is consumed at most once and
+then removed from the WSGI environment — `Forwarded`,
+`X-Forwarded-For/Host/Port/Prefix`, the `X-Forwarded-Protocol`/
+`X-Forwarded-Ssl` scheme variants, and `X-Real-IP` — so no downstream code
+can re-interpret raw forwarding values (including in the trusted branch,
+where the supported proxy supplies nothing but the canonical pair and only
+client-sent noise could remain). Underscore wire-header variants never
+reach the application at all: Gunicorn runs `--header-map drop`, which
+rejects them at the parser boundary before any normalization.
+
+From an **untrusted peer** the middleware pins `wsgi.url_scheme` to the
+real plain-HTTP transport and uses the peer address as the client
+identity. A server-derived `https` scheme therefore cannot bypass the
+trust list, and a spoofed `X-Forwarded-Proto: https` from a non-listed
+peer changes nothing (the request is a 301 to HTTPS instead).
+
+The original socket peer is preserved separately as
+`request.remote_peer` (diagnostics and trust checks only); the normalized
+one-hop client identity is `request.client_ip`, written back to
+`REMOTE_ADDR` so downstream code sees a single canonical value, and it is
+the source for the safe `client` field in application request logs (an IP
+address, never a credential; there is no diagnostic endpoint that exposes
+identities). It is the intended single source for the next limiter
+objective.
 
 Ambiguous forwarding from a trusted peer (a chain instead of a single IP,
 or a non-`http(s)` proto) falls back to the safe value with a
 category-only warning (`proxy-ambiguity`), never raw header content.
+
+**Residual (documented, qualified):** with the app behind the published
+loopback port, the Docker bridge gateway is itself a trusted peer, so a
+process on the operator host that dials the published port directly is
+behind that trusted peer and can present forwarding headers. The
+supported contract accepts this residual: the app is non-root,
+loopback-published only, and authentication is by credentials, never by
+client address. A direct peer from the bridge network that is NOT the
+gateway (container-to-container) is untrusted and is handled by the
+stripping/redirect contract above (proved by the rehearsal's probe
+container, which gets 301, its own bridge IP as the original socket peer
+of the rejected request in the Gunicorn access line, and no spoofed value
+in any captured log).
 
 ### Body-size contract (layered)
 
@@ -403,17 +431,26 @@ category-only warning (`proxy-ambiguity`), never raw header content.
   not full-body protection.
 - **Edge whole-body cap:** `request_body { max_size 10MB }` rejects with
   413 bodies that downstream handlers actually read once the read passes
-  10MB (for example multipart file uploads, which the application reads
-  fully before responding).
-- **Application cap:** form content types are capped by Django's
-  `DATA_UPLOAD_MAX_MEMORY_SIZE` (2.5 MiB), enforced before the body is
-  read (Content-Length pre-check) or one byte past the limit; oversized
-  form bodies get 400 from the application.
-- **Unread bodies:** bodies the application never reads (for example
-  `application/octet-stream` to a form endpoint) cannot be measured at the
-  edge and are ignored by the application; the edge memory stays bounded
-  by the buffer above. The combined effect is bounded memory and
-  responsiveness for every oversized-client shape.
+  the cap (for example multipart file uploads, which the application
+  reads fully before responding). In Caddy v2.11.6 `10MB` is the
+  **decimal** value 10,000,000 bytes. The cap holds for
+  `Transfer-Encoding: chunked` (unknown Content-Length) bodies as well.
+- **Application cap (form content types):** urlencoded form bodies whose
+  `Content-Length` exceeds Django's `DATA_UPLOAD_MAX_MEMORY_SIZE`
+  (2.5 MiB) are rejected with 400 from the application **early** (before
+  view logic, well under five seconds in the qualification rehearsal) -
+  and the body is **never read**: Django's Content-Length pre-check means
+  the edge's read-time cap above cannot fire on form bodies at all.
+  (Oversized multipart *memory fields* hit the same application cap once
+  read; oversized multipart *file fields* stream to disk and are governed
+  by the edge cap instead.)
+- **Unread bodies — bounded, NOT rejected:** bodies the application never
+  reads (for example `application/octet-stream` to a form endpoint)
+  cannot be measured at the edge and are ignored by the application: the
+  response is 200 and the edge memory stays bounded by the buffer above.
+  This is honestly labeled a bounded-unread outcome, **not** a whole-body
+  rejection; the combined effect is bounded memory and responsiveness for
+  every oversized-client shape.
 
 ### Incoming deadlines
 
@@ -425,27 +462,28 @@ omitted):
 {
     servers {
         timeouts {
-            read_header 60s      # default 60s: slow header reads
-            read_body_idle 30s 1024  # default 60s: stalled/trickling bodies
-            write_idle 30s       # default 60s: stalled response writes
-            idle 5m              # default 5m: keep-alive connection life
+            read_header 60s       # slow header reads
+            read_body 60s         # total body-read deadline
+            read_body_idle 30s 1024  # idle bound and minimum bytes/second
+            write_idle 30s        # default 60s: stalled response writes
+            idle 5m               # default 5m: keep-alive connection life
         }
     }
 }
 ```
 
-`read_body_idle` cuts a request-body read after 30s of inactivity; the
-optional second argument is a minimum sustained rate (bytes/s) so a
-trickle that never idles is still cut. These are the deadlines the
-supported contract relies on for slow/stalled clients; Gunicorn's
-`--timeout 30` is a worker-liveness timeout, not a per-request deadline,
-and worker threads alone do not close stalled header reads.
+`read_body 60s` bounds the total time spent reading a request body, including
+a client that continues sending above the minimum rate. `read_body_idle 30s
+1024` additionally cuts stalled uploads and enforces an average minimum of
+1,024 bytes per second; the second value is a rate, not bytes per timeout
+window. Qualification exercises the shipped idle/rate pair and a declared
+60s-to-3s total-deadline substitution against an above-rate sender. Healthy
+requests remain responsive during and after the cut.
 
-**Do not rely on the route-level `timeouts` directive** in v2.11.6: its
-read/write deadlines were observed not to take effect on stalled body
-reads (a stalled body was not cut while the identical server-level
-deadline was). If a future Caddy release fixes this, revisit and prefer
-the narrower route-scoped form.
+Gunicorn's `--timeout 30` checks worker liveness; it is not a request-read
+deadline. Header size is separately bounded by Go's request-header limit;
+the oversized-header regression receives 431. The shipped server-level
+timeouts provide the incoming request boundary.
 
 The upstream transport timeouts in the example (`dial_timeout`,
 `response_header_timeout`, `read_timeout`, `write_timeout`, `keepalive`)
@@ -453,20 +491,48 @@ bound the proxy-to-app direction; `keepalive 3s` stays below the app's
 Gunicorn `--keep-alive 5` so the proxy discards idle upstream connections
 first.
 
+The global JSON log filter removes the `request` object from proxy error
+records. Disabling site access logs alone does not protect request headers
+or query strings when an upstream connection fails; the regression also
+exercises that 502 path with a private-URI canary.
+
+Trusting a Docker bridge gateway also trusts processes on the application
+host that can reach its loopback listener. The service host must be under
+operator control, without untrusted local tenants. Peer-IP allowlisting
+does not authenticate a particular proxy process.
+
 ### Headers and HSTS
 
-The example sets `X-Content-Type-Options: nosniff`,
-`Referrer-Policy: strict-origin-when-cross-origin`, and removes the
-`Server` header. Django contributes `X-Frame-Options: DENY` and secure
-cookies; with `SLAIF_SECURE_SSL_REDIRECT` enabled the app answers
-301 for plain-transport requests that have not been normalized by a
-trusted peer. HSTS remains disabled (`SLAIF_SECURE_HSTS_SECONDS` = 0)
-until the final HTTPS hostname, redirects, and subdomain ownership are
-verified; enable it only after that, and ramp `SLAIF_SECURE_HSTS_SECONDS`
-gradually.
+The example sets `X-Content-Type-Options: nosniff` and removes the
+`Server` and `Via` headers (Caddy adds `Via: 1.0 Caddy` to proxied
+responses by default; the supported contract exposes no hop identity).
+`Referrer-Policy` uses Caddy's **deferred default** (`?` modifier): the
+edge policy `strict-origin-when-cross-origin` is applied **only when the
+application response does not set its own**. This preserves stricter
+per-view policies through the proxy — in particular the one-time token
+display page, whose `Referrer-Policy: no-referrer` /
+`Cache-Control: no-store, private` / `Pragma: no-cache` contract (SAR-015)
+must survive the edge unchanged. An unconditional set here would replace
+the application's value (a reproduced, verified defect in the pre-033-b
+example); the precedence is asserted end to end on the real token
+response in the qualification rehearsal. Django contributes
+`X-Frame-Options: DENY` and secure cookies; with
+`SLAIF_SECURE_SSL_REDIRECT` enabled the app answers 301 for
+plain-transport requests that have not been normalized by a trusted
+peer. HSTS remains disabled (`SLAIF_SECURE_HSTS_SECONDS` = 0) until the
+final HTTPS hostname, redirects, and subdomain ownership are verified;
+enable it only after that, and ramp `SLAIF_SECURE_HSTS_SECONDS`
+gradually. Out-of-contract HSTS combinations fail closed at settings
+load: a non-zero max-age requires `SLAIF_SECURE_SSL_REDIRECT` enabled,
+and `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`/`SLAIF_SECURE_HSTS_PRELOAD`
+require a non-zero max-age.
 
 The production settings no longer use `SECURE_PROXY_SSL_HEADER`; the
 trusted-peer middleware (above) is the only scheme-trust mechanism.
+`SLAIF_ALLOWED_HOSTS` entries are validated fail-closed (explicit bare
+hostnames, IPv4/IPv6 literals, or Django dotted subdomain wildcards only;
+schemes, ports, userinfo, and malformed entries are rejected without
+echoing the configured value).
 
 ## 9. Logging and monitoring
 

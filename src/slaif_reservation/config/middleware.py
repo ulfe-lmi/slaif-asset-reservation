@@ -25,10 +25,12 @@ FORWARDING_ENV_KEYS = (
     "HTTP_FORWARDED",
     "HTTP_X_FORWARDED_FOR",
     "HTTP_X_FORWARDED_HOST",
+    "HTTP_X_FORWARDED_PORT",
     "HTTP_X_FORWARDED_PREFIX",
     "HTTP_X_FORWARDED_PROTOCOL",
     "HTTP_X_FORWARDED_PROTO",
     "HTTP_X_FORWARDED_SSL",
+    "HTTP_X_REAL_IP",
 )
 
 UNMATCHED_ROUTE = "unmatched-route"
@@ -53,14 +55,20 @@ class TrustedProxyForwardingMiddleware:
       single valid IP (the one-hop value the supported proxy overwrites from
       the real client address). Ambiguous chains or values fall back to the
       peer address with a safe category-only warning;
-    - other forwarding headers (``Forwarded``, ``X-Forwarded-Host``, ``X-Forwarded-Prefix`` and the
-      ``X-Forwarded-Protocol``/``X-Forwarded-Ssl`` scheme variants) are never
-      used for trust decisions and are stripped.
+    - in BOTH branches every forwarding header (``Forwarded``,
+      ``X-Forwarded-For``/``-Host``/``-Port``/``-Prefix``, the
+      ``X-Forwarded-Protocol``/``X-Forwarded-Ssl`` scheme variants and
+      ``X-Real-IP``) is consumed at most once and then removed from the
+      environment, so no downstream code can re-interpret raw forwarding
+      values (including the trusted branch, where the supported proxy does
+      not supply them and only client-sent noise could remain).
 
-    The normalized one-hop client identity is exposed as
-    ``request.client_ip`` and written back to ``REMOTE_ADDR`` so downstream
-    code sees a single canonical value; it is the intended source for the
-    next limiter objective, not another raw header interpretation.
+    The original socket peer is preserved as ``request.remote_peer`` for
+    diagnostics and trust checks; the normalized one-hop client identity is
+    exposed as ``request.client_ip`` and written back to ``REMOTE_ADDR`` so
+    downstream code sees a single canonical value. ``client_ip`` is the
+    intended source for the next limiter objective, not another raw header
+    interpretation.
     """
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
@@ -72,6 +80,7 @@ class TrustedProxyForwardingMiddleware:
     def __call__(self, request: HttpRequest) -> HttpResponse:
         environ = cast("dict[str, str]", request.META)
         peer = environ.get("REMOTE_ADDR") or ""
+        request.remote_peer = peer  # type: ignore[attr-defined]
         if peer_in_trusted_networks(peer, self.trusted_networks):
             client_ip, xff_ambiguous = self._one_hop_client_ip(
                 peer, environ.get("HTTP_X_FORWARDED_FOR")
@@ -91,13 +100,18 @@ class TrustedProxyForwardingMiddleware:
             environ["REMOTE_ADDR"] = client_ip
             request.client_ip = client_ip  # type: ignore[attr-defined]
         else:
-            for key in FORWARDING_ENV_KEYS:
-                environ.pop(key, None)
             # The plain-HTTP transport to Gunicorn is the only scheme an
             # untrusted peer can establish; a server-derived https scheme
             # must not bypass the trust list.
             environ["wsgi.url_scheme"] = "http"
             request.client_ip = peer  # type: ignore[attr-defined]
+        # Strip every forwarding header in both branches once consumed: a
+        # trusted peer may legitimately carry only XFF/XFP, and anything
+        # else (Forwarded, X-Forwarded-Host/-Port/-Prefix, scheme variants,
+        # X-Real-IP, or client-sent noise) must not survive to downstream
+        # code, where it could be re-interpreted as identity.
+        for key in FORWARDING_ENV_KEYS:
+            environ.pop(key, None)
         return self.get_response(request)
 
     @staticmethod
@@ -105,7 +119,7 @@ class TrustedProxyForwardingMiddleware:
         if raw_xff is None:
             return peer, False
         entries = [entry.strip() for entry in raw_xff.split(",")]
-        if len(entries) != 1 or not entries[0]:
+        if len(entries) != 1 or not entries[0] or "%" in entries[0]:
             return peer, True
         try:
             return str(ipaddress.ip_address(entries[0])), False
@@ -127,7 +141,10 @@ class SafeRequestLogMiddleware:
 
     The logged path is the resolved route template when URL resolution
     matched, and a fixed unmatched marker otherwise: raw request paths
-    (which may be hostile or private) are never retained.
+    (which may be hostile or private) are never retained. The ``client``
+    field carries the normalized one-hop client identity set by
+    :class:`TrustedProxyForwardingMiddleware` (an IP address, never a
+    credential).
     """
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
@@ -137,6 +154,7 @@ class SafeRequestLogMiddleware:
         started = time.perf_counter()
         response = self.get_response(request)
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        client_ip = getattr(request, "client_ip", None)
         logger.info(
             "request",
             extra={
@@ -144,6 +162,11 @@ class SafeRequestLogMiddleware:
                 "path": _safe_route(request),
                 "status_code": response.status_code,
                 "duration_ms": duration_ms,
+                # Normalized one-hop client identity (TrustedProxyForwarding
+                # Middleware): the canonical value for the next limiter
+                # objective. Safe log field: an IP address, never a
+                # credential or private text.
+                "client": str(client_ip) if client_ip else "",
                 "request_id": _safe_request_id(request.headers.get("X-Request-ID")),
             },
         )

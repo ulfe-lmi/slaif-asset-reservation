@@ -15,6 +15,7 @@ from slaif_reservation.config.env import (
     env_bool,
     env_non_negative_int,
     postgres_database_from_url,
+    validate_allowed_host_entry,
 )
 
 TEST_PRODUCTION_API_TOKEN_PEPPER = "valid-production-test-api-token-pepper-32-bytes"
@@ -554,3 +555,122 @@ def test_production_settings_do_not_reintroduce_blanket_proxy_header_trust() -> 
     payload = json.loads(result.stdout)
     assert payload["proxy_ssl_header"] is None
     assert payload["referrer_policy"] == "strict-origin-when-cross-origin"
+
+
+# ---------------------------------------------------------------------------
+# ALLOWED_HOSTS entry validation (explicit bare hosts only)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "reservation.example.test",
+        "127.0.0.1",
+        "192.168.4.10",
+        "::1",
+        "2001:db8::5",
+        "[2001:db8::5]",
+        "a-b.example.test",
+    ],
+)
+def test_allowed_host_entry_accepts_explicit_bare_hosts(entry: str) -> None:
+    expected = f"[{entry}]" if ":" in entry and not entry.startswith("[") else entry
+    assert validate_allowed_host_entry(entry) == expected
+
+
+@pytest.mark.parametrize(
+    "entry,category",
+    [
+        ("https://reservation.example.test", "scheme"),
+        ("//cdn.example.test", "scheme"),
+        ("reservation.example.test:8443", "ports"),
+        ("[2001:db8::5]:8443", "IP literal"),
+        ("user:pass@reservation.example.test", "userinfo"),
+        ("res ervation.example.test", "whitespace"),
+        ("reservation.example.test/path", "hostnames or IP"),
+        ("reservation.example.test?x=1", "hostnames or IP"),
+        ("reservation.example.test#frag", "hostnames or IP"),
+        ("*.example.org", "hostnames or IP"),
+        ("example.org*", "hostnames or IP"),
+        ("*.*.example.org", "hostnames or IP"),
+        (".example.org", "without wildcards"),
+        (".example.org:8443", "without wildcards"),
+        (".10.0.0.1", "without wildcards"),
+        ("a..b.example.test", "hostnames or IP"),
+        ("-bad.example.test", "hostnames or IP"),
+        ("bad-.example.test", "hostnames or IP"),
+        ("a" * 64 + ".example.test", "hostnames or IP"),
+    ],
+)
+def test_allowed_host_entry_rejects_malformed_fail_closed(entry: str, category: str) -> None:
+    with pytest.raises(ImproperlyConfigured, match=category):
+        validate_allowed_host_entry(entry)
+
+
+@pytest.mark.parametrize(
+    "hosts,needle",
+    [
+        ("https://reservation.example.test", "scheme"),
+        ("reservation.example.test:8443", "ports"),
+        ("user:pass@reservation.example.test", "userinfo"),
+        ("res ervation.example.test", "whitespace"),
+        ("*.example.org", "hostnames or IP"),
+    ],
+)
+def test_production_settings_reject_malformed_allowed_hosts(hosts: str, needle: str) -> None:
+    env = production_settings_env() | {"SLAIF_ALLOWED_HOSTS": hosts}
+    result = run_django_setup(env)
+    assert result.returncode != 0
+    assert needle in result.stderr
+    # Fail-closed without echoing the raw configured value.
+    assert hosts not in result.stderr
+
+
+def test_production_settings_accept_valid_allowed_hosts() -> None:
+    env = production_settings_env() | {
+        "SLAIF_ALLOWED_HOSTS": "reservation.example.test,127.0.0.1,[2001:db8::5]"
+    }
+    result = run_django_setup(env)
+    assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# HSTS combination contract (supported explicit HTTPS contract)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "extra,needle",
+    [
+        (
+            {"SLAIF_SECURE_SSL_REDIRECT": "false", "SLAIF_SECURE_HSTS_SECONDS": "3600"},
+            "only supported while",
+        ),
+        (
+            {"SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS": "true"},
+            "require a non-zero",
+        ),
+        ({"SLAIF_SECURE_HSTS_PRELOAD": "true"}, "require a non-zero"),
+        (
+            {"SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS": "true", "SLAIF_SECURE_HSTS_PRELOAD": "true"},
+            "require a non-zero",
+        ),
+    ],
+)
+def test_production_settings_reject_out_of_contract_hsts_combinations(
+    extra: dict[str, str], needle: str
+) -> None:
+    result = run_django_setup(production_settings_env() | extra)
+    assert result.returncode != 0
+    assert needle in result.stderr
+
+
+def test_production_settings_accept_in_contract_hsts_combination() -> None:
+    extra = {
+        "SLAIF_SECURE_HSTS_SECONDS": "31536000",
+        "SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS": "true",
+        "SLAIF_SECURE_HSTS_PRELOAD": "true",
+    }
+    result = run_django_setup(production_settings_env() | extra)
+    assert result.returncode == 0, result.stderr

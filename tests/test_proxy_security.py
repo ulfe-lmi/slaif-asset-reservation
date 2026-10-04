@@ -274,6 +274,104 @@ def test_untrusted_peer_forwarding_stripped_and_scheme_pinned(production_proxy_s
     assert request.client_ip == UNTRUSTED_PEER
 
 
+ALL_FORWARDING_KEYS = (
+    "HTTP_FORWARDED",
+    "HTTP_X_FORWARDED_FOR",
+    "HTTP_X_FORWARDED_HOST",
+    "HTTP_X_FORWARDED_PORT",
+    "HTTP_X_FORWARDED_PREFIX",
+    "HTTP_X_FORWARDED_PROTO",
+    "HTTP_X_FORWARDED_PROTOCOL",
+    "HTTP_X_FORWARDED_SSL",
+    "HTTP_X_REAL_IP",
+)
+
+
+@pytest.mark.django_db
+def test_untrusted_peer_strips_every_forwarding_variant(production_proxy_settings) -> None:
+    # The contract is total: every forwarding header a client can send is
+    # consumed and removed in the untrusted branch, including X-Real-IP and
+    # X-Forwarded-Port which the supported proxy never supplies.
+    request = _make_request(
+        {
+            "REMOTE_ADDR": UNTRUSTED_PEER,
+            "HTTP_FORWARDED": "for=198.51.100.25;proto=https",
+            "HTTP_X_FORWARDED_FOR": "198.51.100.25",
+            "HTTP_X_FORWARDED_HOST": "evil.example",
+            "HTTP_X_FORWARDED_PORT": "8443",
+            "HTTP_X_FORWARDED_PREFIX": "/evil",
+            "HTTP_X_FORWARDED_PROTO": "https",
+            "HTTP_X_FORWARDED_PROTOCOL": "https",
+            "HTTP_X_FORWARDED_SSL": "on",
+            "HTTP_X_REAL_IP": "198.51.100.25",
+        }
+    )
+    _run_middleware(request)
+    assert request.environ["wsgi.url_scheme"] == "http"
+    for key in ALL_FORWARDING_KEYS:
+        assert key not in request.environ, key
+    assert request.environ["REMOTE_ADDR"] == UNTRUSTED_PEER
+    assert request.client_ip == UNTRUSTED_PEER
+
+
+@pytest.mark.django_db
+def test_trusted_peer_strips_unconsumed_forwarding_headers(production_proxy_settings) -> None:
+    # Trusted branch: XFF is the only identity input (consumed and then
+    # stripped), XFP the only scheme input; everything else a client can
+    # still inject (X-Real-IP, X-Forwarded-Port/-Host/-Prefix, Forwarded)
+    # must not survive to downstream code.
+    import ipaddress
+
+    production_proxy_settings.TRUSTED_PROXY_PEERS = [ipaddress.ip_network("172.17.0.1")]
+    request = _make_request(
+        {
+            "REMOTE_ADDR": "172.17.0.1",
+            "HTTP_X_FORWARDED_FOR": "198.51.100.25",
+            "HTTP_X_FORWARDED_PROTO": "https",
+            "HTTP_X_FORWARDED_PORT": "8443",
+            "HTTP_X_FORWARDED_HOST": "evil.example",
+            "HTTP_X_FORWARDED_PREFIX": "/evil",
+            "HTTP_X_FORWARDED_PROTOCOL": "https",
+            "HTTP_X_FORWARDED_SSL": "on",
+            "HTTP_FORWARDED": "for=198.51.100.25;proto=https",
+            "HTTP_X_REAL_IP": "198.51.100.25",
+        }
+    )
+    _run_middleware(request)
+    assert request.environ["wsgi.url_scheme"] == "https"
+    for key in ALL_FORWARDING_KEYS:
+        assert key not in request.environ, key
+    assert request.environ["REMOTE_ADDR"] == "198.51.100.25"
+    assert request.client_ip == "198.51.100.25"
+
+
+@pytest.mark.django_db
+def test_trusted_peer_keeps_original_peer_separate_from_client(
+    production_proxy_settings,
+) -> None:
+    import ipaddress
+
+    production_proxy_settings.TRUSTED_PROXY_PEERS = [ipaddress.ip_network("172.17.0.1")]
+    request = _make_request({"REMOTE_ADDR": "172.17.0.1", "HTTP_X_FORWARDED_FOR": "198.51.100.25"})
+    _run_middleware(request)
+    assert request.remote_peer == "172.17.0.1"
+    assert request.client_ip == "198.51.100.25"
+    assert request.environ["REMOTE_ADDR"] == "198.51.100.25"
+
+
+@pytest.mark.django_db
+def test_untrusted_peer_keeps_original_peer_separate_from_client(
+    production_proxy_settings,
+) -> None:
+    request = _make_request(
+        {"REMOTE_ADDR": UNTRUSTED_PEER, "HTTP_X_FORWARDED_FOR": "198.51.100.25"}
+    )
+    _run_middleware(request)
+    assert request.remote_peer == UNTRUSTED_PEER
+    assert request.client_ip == UNTRUSTED_PEER
+    assert request.environ["REMOTE_ADDR"] == UNTRUSTED_PEER
+
+
 @pytest.mark.django_db
 def test_server_derived_https_scheme_cannot_bypass_trust(production_proxy_settings) -> None:
     request = _make_request(
@@ -617,3 +715,13 @@ def test_anonymous_management_and_member_routes_do_not_disclose(
     guessed = uuid.uuid4()
     response = client.get(f"/reservations/{guessed}/", **https)
     assert response.status_code in (302, 303, 404)
+
+
+def test_scoped_ipv6_forwarding_cannot_choose_a_client_identity() -> None:
+    from slaif_reservation.config.middleware import TrustedProxyForwardingMiddleware
+
+    client, ambiguous = TrustedProxyForwardingMiddleware._one_hop_client_ip(
+        "127.0.0.1", "fe80::1%injected-zone"
+    )
+    assert ambiguous
+    assert client == "127.0.0.1"

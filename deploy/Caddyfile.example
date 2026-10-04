@@ -11,18 +11,23 @@
 #   (127.0.0.1:8000 or the published loopback port).
 {
 	email admin@example.org
-	# Server-level incoming/outgoing deadlines (verified working in
-	# v2.11.6; see docs/deployment.md section 8). read_body_idle cuts a
-	# stalled or trickling request body: 30s of inactivity, or a
-	# sustained rate below 1KiB/s. read_header bounds slow header reads;
-	# idle is the keep-alive connection lifetime. Defaults when omitted:
-	# read_header 60s, read_body_idle 60s, write_idle 60s, idle 5m.
-	# NOTE: the ROUTE-level `timeouts` directive's read/write deadlines
-	# were observed NOT to take effect in v2.11.6 (stalled bodies were
-	# not cut); do not rely on it for protection.
+	# Upstream failures are logged even without site access logging. Remove
+	# the request object so error logs cannot retain headers or query text.
+	log {
+		format filter {
+			wrap json
+			fields {
+				request delete
+			}
+		}
+	}
+	# Bound header reads and the TOTAL body-read duration. The idle timeout
+	# and minimum rate (bytes/second) also cut stalls and slow trickles.
+	# The total deadline remains effective when a client exceeds that rate.
 	servers {
 		timeouts {
 			read_header 60s
+			read_body 60s
 			read_body_idle 30s 1024
 			write_idle 30s
 			idle 5m
@@ -35,8 +40,18 @@ reservation.example.org {
 
 	header {
 		X-Content-Type-Options nosniff
-		Referrer-Policy strict-origin-when-cross-origin
+		# Deferred default (Caddy `?` modifier): the edge policy is applied
+		# ONLY when the application response does not set its own
+		# Referrer-Policy. This preserves stricter per-view policies through
+		# the proxy - in particular the one-time token display page, whose
+		# no-referrer / no-store / private contract (SAR-015) must survive
+		# the edge unchanged. An unconditional set here would replace the
+		# app's value (verified against v2.11.6).
+		?Referrer-Policy strict-origin-when-cross-origin
 		-Server
+		# Caddy adds `Via: 1.0 Caddy` to proxied responses by default; the
+		# supported contract exposes no server identity or hop information.
+		-Via
 	}
 
 	# Whole-body cap for bodies that downstream handlers actually read
