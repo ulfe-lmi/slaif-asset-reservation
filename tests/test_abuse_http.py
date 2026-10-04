@@ -68,6 +68,8 @@ def server(tmp: Path, *, workers: int = 3, rates: dict[str, int] | None = None, 
     # and middleware remain the real production implementation.
     module = tmp / "fixture_wsgi.py"
     module.write_text("""import os
+from django.conf import settings
+settings.STATIC_ROOT = os.environ["FIXTURE_STATIC_ROOT"]
 from slaif_reservation.config.wsgi import application as real
 
 def application(environ, start_response):
@@ -85,10 +87,26 @@ def application(environ, start_response):
         "SLAIF_ALLOWED_HOSTS": "localhost,127.0.0.1",
         "SLAIF_CSRF_TRUSTED_ORIGINS": origin,
         "SLAIF_TRUSTED_PROXY_PEERS": "127.0.0.1",
+        "FIXTURE_STATIC_ROOT": str(tmp / "staticfiles"),
         "SLAIF_LOGIN_WINDOW_SECONDS": "3600",
         "SLAIF_API_WINDOW_SECONDS": "3600",
     }
     env.update({key: str(value) for key, value in (rates or {}).items()})
+    collect = """import os, django
+from django.conf import settings
+settings.STATIC_ROOT = os.environ['FIXTURE_STATIC_ROOT']
+django.setup()
+from django.core.management import call_command
+call_command('collectstatic', verbosity=0, interactive=False)
+"""
+    subprocess.run(
+        [sys.executable, "-c", collect],
+        env=env,
+        cwd=ROOT,
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     log = (tmp / "server.log").open("wb")
     proc = subprocess.Popen(
         [

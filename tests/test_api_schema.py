@@ -11,6 +11,7 @@ from django.test import override_settings
 from slaif_reservation.accounts.models import User
 
 
+@pytest.mark.django_db
 def test_api_v1_namespace_exists(client) -> None:
     response = client.get("/api/v1/")
 
@@ -122,6 +123,7 @@ def test_swagger_ui_uses_local_sidecar_static_assets(settings) -> None:
     assert finders.find("drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js")
 
 
+@pytest.mark.django_db
 def test_token_lifecycle_routes_are_not_exposed_as_api(client) -> None:
     root_response = client.get("/api/v1/")
     assert root_response.status_code == 200
