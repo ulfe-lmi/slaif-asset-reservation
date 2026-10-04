@@ -60,5 +60,9 @@ def required_management_commands_present() -> bool:
     commands = get_commands()
     return all(
         name in commands
-        for name in ("purge_expired_idempotency_records", "purge_expired_abuse_buckets")
+        for name in (
+            "purge_expired_idempotency_records",
+            "purge_expired_abuse_buckets",
+            "initialize_default_policy",
+        )
     )

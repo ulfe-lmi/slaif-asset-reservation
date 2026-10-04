@@ -86,6 +86,7 @@ jobs:
           pg_restore --version
       - run: uv run playwright install --with-deps chromium
       - run: uv run python manage.py migrate --noinput
+      - run: uv run python manage.py initialize_default_policy
       - run: uv run python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
       - run: uv run python manage.py operational_check
       - run: uv run python manage.py purge_expired_idempotency_records

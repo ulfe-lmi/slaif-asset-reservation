@@ -38,6 +38,7 @@ uv run --env-file .env python manage.py check
 uv run --env-file .env python manage.py makemigrations --check --dry-run
 uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test
 uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test --browser chromium tests/browser
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test tests/test_default_policy.py -v
 uv run pip-audit
 git diff --check
 uv run --env-file .env python manage.py spectacular --file build/openapi/schema.yaml --validate --fail-on-warn

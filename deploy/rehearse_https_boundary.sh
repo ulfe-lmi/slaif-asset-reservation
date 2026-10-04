@@ -583,6 +583,8 @@ run_one_shot() {
 
 run_one_shot migrate --noinput || fail "db-migrate"
 log "migrations=ok"
+run_one_shot initialize_default_policy || fail "policy-init"
+log "policy-init=ok"
 run_one_shot import_bootstrap_assets --input data/bootstrap/assets.yaml \
   || fail "bootstrap-import"
 log "bootstrap-import=ok"

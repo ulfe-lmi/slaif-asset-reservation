@@ -64,6 +64,18 @@ docker compose -p slaif-eval exec app python manage.py migrate --noinput
 This installs the `btree_gist` extension and the
 `reservation_no_overlap_per_asset` exclusion constraint.
 
+Then initialize the fresh-install default policy, deliberately and
+immediately after migrations:
+
+```bash
+docker compose -p slaif-eval exec app python manage.py initialize_default_policy
+```
+
+On a fresh database this creates the active global fallback policy
+`default` (step 7 documents its values); on a database that already has
+any policy row it is a no-op. Migrations and application startup never
+run it implicitly.
+
 ## 4. Optional: import the sanitized bootstrap asset inventory
 
 The repository ships a **sanitized** bootstrap asset inventory. It is a
@@ -112,12 +124,31 @@ The command is interactive: it prompts for `Email`, then `Password`
    cross-user reservations, audit) and `/admin/`. Service accounts cannot
    log in to the human UI.
 
-## 7. Configure a policy before booking
+## 7. The default policy (fresh installs)
 
-A reservation is only accepted when an **active policy** resolves for the
+The step 3 initializer created the active global fallback policy
+`default` because this fresh database had no policy rows. Its chosen,
+explicit defaults are:
+
+- minimum duration 1 minute; maximum duration 2880 minutes (48 hours /
+  2 days);
+- booking horizon 7 days by reservation START; minimum lead 0;
+  cancellation cutoff 0;
+- purpose optional; no restricted operating-hour window;
+- per principal, across all assets and that principal's API tokens: up to
+  50 upcoming reservations, and a new booking requires fewer than 8
+  existing blocking records intersecting the proposed interval (8 or more
+  existing intersecting records rejects it; the new record would be the
+  8th). This is a count of records intersecting the proposed interval, not
+  a maximum simultaneous-occupancy sweep.
+
+A reservation is accepted only when an **active policy** resolves for the
 asset (exact asset, then parent machine, then global); a missing or
-ambiguous policy fails closed. Before the first booking, staff create an
-active policy in `/manage/`.
+ambiguous policy fails closed. On an existing installation, re-running
+`initialize_default_policy` changes nothing: any prior policy
+configuration — including deliberate inactive or asset-specific rows — is
+preserved, with no writes and no audit for it. Staff view and manage all
+policies through the existing audited services in `/manage/`.
 
 ## 8. Stop and teardown (data-preserving by default)
 
@@ -149,7 +180,7 @@ but keeps the `slaif-eval_postgres-data` volume.
 | `app` crashes or restarts | `docker compose -p slaif-eval logs app`; confirm step 3 ran against this project's database. |
 | Login rejected | Different project's database or administrator (steps 2 and 5 must use the same project name). |
 | No assets listed | Step 4 was optional; apply the bootstrap import if you want the sanitized set. |
-| No reservation accepted | No active policy resolves for the asset; see step 7. |
+| No reservation accepted | No unambiguous active policy resolves for the asset — the system fails closed. A fresh install initialized in step 3 has the `default` global policy (step 7); otherwise configure a policy in `/manage/`. |
 
 ## Next
 
