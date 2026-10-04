@@ -4,8 +4,10 @@ import threading
 import uuid
 from datetime import timedelta
 from io import StringIO
+from typing import Any
 
 import pytest
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.core.management import call_command, get_commands
 from django.db import IntegrityError
 from django.utils import timezone
@@ -353,34 +355,94 @@ def test_race_initialization_vs_configured_specific_insertion() -> None:
         assert created_by_actor[policy.id] is None
 
 
+GLOBAL_POLICY_CONSTRAINT = "reservation_policy_one_active_global"
+
+
+def _assert_expected_outcome(
+    results: dict[str, tuple[str, BaseException | None]], key: str, expected: str
+) -> BaseException | None:
+    """Bounded worker contract: an unexpected worker error is re-raised on
+    the main thread; otherwise the recorded outcome must equal ``expected``.
+    No worker exception may be dropped silently."""
+    outcome, exc = results[key]
+    if outcome == "unexpected-error":
+        assert exc is not None
+        raise exc
+    assert outcome == expected, f"{key} worker: expected {expected!r}, got {outcome!r}"
+    return exc
+
+
+def _assert_active_global_validation_error(exc: ValidationError) -> None:
+    """Only the expected full_clean duplicate-active-global rejection.
+
+    ``create_policy`` runs ``full_clean`` (including ``validate_constraints``)
+    before saving, so once the active global policy is visible the duplicate
+    is rejected as a non-field constraint violation.  Any other validation
+    error shape is an unexpected error and fails the test.
+    """
+    message_dict = exc.message_dict
+    assert list(message_dict) == [NON_FIELD_ERRORS]
+    messages = message_dict[NON_FIELD_ERRORS]
+    assert len(messages) == 1
+    assert GLOBAL_POLICY_CONSTRAINT in messages[0]
+
+
+def _assert_active_global_integrity_error(exc: IntegrityError) -> None:
+    """Only the expected final-save duplicate-active-global rejection.
+
+    When the duplicate appears between validation and save, the insert loses
+    to the named active-global unique constraint.  Unrelated integrity
+    failures are unexpected and fail the test.
+    """
+    cause = getattr(exc, "__cause__", None)
+    constraint_name = getattr(getattr(cause, "diag", None), "constraint_name", None)
+    assert constraint_name == GLOBAL_POLICY_CONSTRAINT
+
+
+def _start_and_join_bounded(threads: list[threading.Thread]) -> None:
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+        assert not thread.is_alive(), f"worker {thread.name!r} did not finish in time"
+
+
 @pytest.mark.django_db(transaction=True)
-def test_race_initialization_vs_active_global_insertion() -> None:
+def test_race_initializer_first_writer_rejected_by_full_clean() -> None:
+    """Deterministic initializer-first schedule.
+
+    The configured global writer starts only after the initializer has
+    committed, so the writer's ``full_clean`` sees the existing active
+    global policy and the duplicate is rejected before any insert.
+    """
     admin = staff()
-    outcomes: dict[str, str] = {}
+    initialized = threading.Event()
+    results: dict[str, tuple[str, BaseException | None]] = {}
     lock = threading.Lock()
-    barrier = threading.Barrier(2)
+
+    def record(key: str, outcome: str, exc: BaseException | None = None) -> None:
+        with lock:
+            results[key] = (outcome, exc)
 
     def initializer() -> None:
         from django.db import close_old_connections
 
         close_old_connections()
         try:
-            barrier.wait(timeout=15)
             result = initialize_default_policy()
-            outcome = "created" if result.created else "skipped"
-        except Exception:
-            outcome = "error"
+            record("initializer", "created" if result.created else "skipped")
+        except BaseException as exc:
+            record("initializer", "unexpected-error", exc)
         finally:
             close_old_connections()
-        with lock:
-            outcomes["initializer"] = outcome
+            initialized.set()
 
     def global_insertion() -> None:
         from django.db import close_old_connections
 
         close_old_connections()
         try:
-            barrier.wait(timeout=15)
+            assert initialized.wait(timeout=30), "initializer did not finish in time"
             services.create_policy(
                 actor_user=admin,
                 name="operator-global",
@@ -390,38 +452,207 @@ def test_race_initialization_vs_active_global_insertion() -> None:
                 max_upcoming_per_principal=3,
                 max_concurrent_per_principal=3,
             )
-            outcome = "committed"
-        except IntegrityError:
-            outcome = "unique-conflict"
+            record("global", "committed")
+        except ValidationError as exc:
+            record("global", "validation-rejected", exc)
+        except BaseException as exc:
+            record("global", "unexpected-error", exc)
         finally:
             close_old_connections()
-        with lock:
-            outcomes["global"] = outcome
 
-    threads = [threading.Thread(target=initializer), threading.Thread(target=global_insertion)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=30)
-        assert not thread.is_alive()
+    _start_and_join_bounded(
+        [
+            threading.Thread(target=initializer, name="race-initializer"),
+            threading.Thread(target=global_insertion, name="race-global-writer"),
+        ]
+    )
 
-    assert outcomes["initializer"] in ("created", "skipped")
-    assert outcomes["global"] in ("committed", "unique-conflict")
-    assert outcomes["initializer"] == "created" or outcomes["global"] == "committed"
+    assert _assert_expected_outcome(results, "initializer", "created") is None
+    exc = _assert_expected_outcome(results, "global", "validation-rejected")
+    _assert_active_global_validation_error(exc)
 
     policies = list(ReservationPolicy.objects.all())
     assert len(policies) == 1
-    assert policies[0].asset_id is None
-    assert policies[0].active is True
+    assert_default_policy_values(policies[0])
     events = list(AuditEvent.objects.all())
     assert len(events) == 1
+    assert events[0].action == AuditEvent.ACTION_POLICY_CREATED
     assert events[0].target_id == policies[0].id
-    if policies[0].name == "default":
-        assert_default_policy_values(policies[0])
-        assert events[0].actor_user_id is None
-    else:
-        assert policies[0].name == "operator-global"
-        assert events[0].actor_user_id == admin.id
+    assert events[0].actor_user_id is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_race_initializer_first_writer_rejected_by_unique_constraint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deterministic interleaving, initializer-first on save.
+
+    The writer validates while no policy exists, the initializer then
+    commits the default policy, and the writer's final insert loses to the
+    named active-global unique constraint.  Event gating holds the writer
+    between validation and save; no fixed sleeps.
+    """
+    admin = staff()
+    validation_reached = threading.Event()
+    release_validation = threading.Event()
+    initializer_finished = threading.Event()
+    results: dict[str, tuple[str, BaseException | None]] = {}
+    lock = threading.Lock()
+
+    def record(key: str, outcome: str, exc: BaseException | None = None) -> None:
+        with lock:
+            results[key] = (outcome, exc)
+
+    original_full_clean = ReservationPolicy.full_clean
+
+    def gated_full_clean(self: Any, *args: Any, **kwargs: Any) -> None:
+        original_full_clean(self, *args, **kwargs)
+        if threading.current_thread().name == "race-global-writer":
+            validation_reached.set()
+            assert release_validation.wait(timeout=30), "validation release missed"
+
+    monkeypatch.setattr(ReservationPolicy, "full_clean", gated_full_clean)
+
+    def initializer() -> None:
+        from django.db import close_old_connections
+
+        close_old_connections()
+        try:
+            result = initialize_default_policy()
+            record("initializer", "created" if result.created else "skipped")
+        except BaseException as exc:
+            record("initializer", "unexpected-error", exc)
+        finally:
+            close_old_connections()
+            initializer_finished.set()
+
+    def global_insertion() -> None:
+        from django.db import close_old_connections
+
+        close_old_connections()
+        try:
+            services.create_policy(
+                actor_user=admin,
+                name="operator-global",
+                min_duration_minutes=20,
+                max_duration_minutes=200,
+                booking_horizon_days=2,
+                max_upcoming_per_principal=3,
+                max_concurrent_per_principal=3,
+            )
+            record("global", "committed")
+        except IntegrityError as exc:
+            record("global", "unique-conflict", exc)
+        except BaseException as exc:
+            record("global", "unexpected-error", exc)
+        finally:
+            close_old_connections()
+
+    writer = threading.Thread(target=global_insertion, name="race-global-writer")
+    writer.start()
+    assert validation_reached.wait(timeout=30), "writer validation did not complete in time"
+    initializer_thread = threading.Thread(target=initializer, name="race-initializer")
+    initializer_thread.start()
+    assert initializer_finished.wait(timeout=30), "initializer did not finish in time"
+    release_validation.set()
+    for thread in (writer, initializer_thread):
+        thread.join(timeout=30)
+        assert not thread.is_alive(), f"worker {thread.name!r} did not finish in time"
+
+    assert _assert_expected_outcome(results, "initializer", "created") is None
+    exc = _assert_expected_outcome(results, "global", "unique-conflict")
+    _assert_active_global_integrity_error(exc)
+
+    policies = list(ReservationPolicy.objects.all())
+    assert len(policies) == 1
+    assert_default_policy_values(policies[0])
+    events = list(AuditEvent.objects.all())
+    assert len(events) == 1
+    assert events[0].action == AuditEvent.ACTION_POLICY_CREATED
+    assert events[0].target_id == policies[0].id
+    assert events[0].actor_user_id is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_race_configured_writer_first_initializer_preserved() -> None:
+    """Deterministic configured-writer-first schedule.
+
+    The initializer starts only after the operator-global policy has
+    committed, so it must be a no-op: the configured row and its single
+    coupled creation audit are preserved, with no default row written.
+    """
+    admin = staff()
+    writer_finished = threading.Event()
+    results: dict[str, tuple[str, BaseException | None]] = {}
+    lock = threading.Lock()
+
+    def record(key: str, outcome: str, exc: BaseException | None = None) -> None:
+        with lock:
+            results[key] = (outcome, exc)
+
+    def initializer() -> None:
+        from django.db import close_old_connections
+
+        close_old_connections()
+        try:
+            assert writer_finished.wait(timeout=30), "writer did not finish in time"
+            result = initialize_default_policy()
+            record("initializer", "created" if result.created else "skipped")
+        except BaseException as exc:
+            record("initializer", "unexpected-error", exc)
+        finally:
+            close_old_connections()
+
+    def global_insertion() -> None:
+        from django.db import close_old_connections
+
+        close_old_connections()
+        try:
+            services.create_policy(
+                actor_user=admin,
+                name="operator-global",
+                min_duration_minutes=20,
+                max_duration_minutes=200,
+                booking_horizon_days=2,
+                max_upcoming_per_principal=3,
+                max_concurrent_per_principal=3,
+            )
+            record("global", "committed")
+        except BaseException as exc:
+            record("global", "unexpected-error", exc)
+        finally:
+            close_old_connections()
+            writer_finished.set()
+
+    _start_and_join_bounded(
+        [
+            threading.Thread(target=initializer, name="race-initializer"),
+            threading.Thread(target=global_insertion, name="race-global-writer"),
+        ]
+    )
+
+    assert _assert_expected_outcome(results, "global", "committed") is None
+    assert _assert_expected_outcome(results, "initializer", "skipped") is None
+
+    policies = list(ReservationPolicy.objects.all())
+    assert len(policies) == 1
+    policy = policies[0]
+    assert policy.name == "operator-global"
+    assert policy.asset_id is None
+    assert policy.active is True
+    assert policy.min_duration_minutes == 20
+    assert policy.max_duration_minutes == 200
+    assert policy.booking_horizon_days == 2
+    assert policy.min_lead_minutes == 0
+    assert policy.cancellation_cutoff_minutes == 0
+    assert policy.max_upcoming_per_principal == 3
+    assert policy.max_concurrent_per_principal == 3
+    assert policy.purpose_required is False
+    events = list(AuditEvent.objects.all())
+    assert len(events) == 1
+    assert events[0].action == AuditEvent.ACTION_POLICY_CREATED
+    assert events[0].target_id == policy.id
+    assert events[0].actor_user_id == admin.id
 
 
 @pytest.mark.django_db

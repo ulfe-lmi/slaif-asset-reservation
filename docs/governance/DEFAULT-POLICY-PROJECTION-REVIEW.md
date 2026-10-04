@@ -57,7 +57,7 @@ clause remains a faithful condensation.
   development evidence, not ICA, and the fresh isolated all-47 ICA at the
   exact merged revision remains required.
 - Projection: clause-level replacement of the single SAR-041 line plus the
-  header full-source digest; all other 47 clauses and sections are
+  header full-source digest; the other 46 clauses and sections are
   byte-identical to the pre-order projection
   (`26d26dac79043ed6b7b1e2ce4e134c5e6ccd6e9504f41f65339c76672bf59483`).
 - No new mandatory full-source reads: the routine coding read set remains the

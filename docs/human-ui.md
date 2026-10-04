@@ -101,10 +101,12 @@ Behavior:
   explicit defaults: minimum 1 minute, maximum 2880 minutes (48 hours /
   2 days), 7-day horizon by reservation START, zero lead and cancellation
   cutoff, purpose optional, no operating-hour window, and per principal
-  (across assets and that principal's API tokens) 50 upcoming reservations
-  with at most 8 existing blocking records intersecting a proposed
-  interval (an overlap count of intersecting records, not a maximum
-  simultaneous-occupancy sweep);
+  (across assets and that principal's API tokens) 50 upcoming reservations,
+  and a new booking requires fewer than 8 existing blocking records
+  intersecting the proposed interval (8 or more existing intersecting
+  records rejects it; the new record would be the 8th). This is a count of
+  records intersecting the proposed interval, not a maximum
+  simultaneous-occupancy sweep;
 - on conflict, preserve input and suggest available alternatives where feasible;
 - prevent accidental duplicate submit, but still rely on server correctness;
 - confirmation shows asset, start, end, timezone, and reservation ID.

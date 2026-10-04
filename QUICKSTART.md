@@ -136,9 +136,11 @@ explicit defaults are:
   cancellation cutoff 0;
 - purpose optional; no restricted operating-hour window;
 - per principal, across all assets and that principal's API tokens: up to
-  50 upcoming reservations, and no more than 8 existing blocking records
-  may intersect a proposed interval (an overlap count of intersecting
-  records, not a maximum simultaneous-occupancy sweep).
+  50 upcoming reservations, and a new booking requires fewer than 8
+  existing blocking records intersecting the proposed interval (8 or more
+  existing intersecting records rejects it; the new record would be the
+  8th). This is a count of records intersecting the proposed interval, not
+  a maximum simultaneous-occupancy sweep.
 
 A reservation is accepted only when an **active policy** resolves for the
 asset (exact asset, then parent machine, then global); a missing or

@@ -253,10 +253,12 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
    2880 minutes (48 hours / 2 days); booking horizon 7 days by reservation
    START; minimum lead 0; cancellation cutoff 0; purpose optional; no
    restricted operating-hour window; and, per principal across all assets
-   and that principal's API tokens, up to 50 upcoming reservations with no
-   more than 8 existing blocking records intersecting a proposed interval
-   (an overlap count of intersecting records, not a maximum
-   simultaneous-occupancy sweep). Manual policy creation is no longer a
+   and that principal's API tokens, up to 50 upcoming reservations, and a
+   new booking requires fewer than 8 existing blocking records intersecting
+   the proposed interval (8 or more existing intersecting records rejects
+   it; the new record would be the 8th). This is a count of records
+   intersecting the proposed interval, not a maximum simultaneous-occupancy
+   sweep. Manual policy creation is no longer a
    prerequisite for a fresh install. Staff manage all policies through the
    existing audited services in the staff management UI at `/manage/`.
    Reservations resolve an active policy for the exact asset, its parent
