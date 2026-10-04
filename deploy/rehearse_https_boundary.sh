@@ -1263,7 +1263,7 @@ python3 - "$work/error-curl.conf" <<'PYAUTH'
 import secrets
 import sys
 import uuid
-value = "sar_" + uuid.uuid4().hex + "_" + secrets.token_urlsafe(32)
+value = "sar_" + uuid.uuid4().hex + "_" + secrets.token_hex(32)
 open(sys.argv[1], "w").write('header = "Authorization: Bearer ' + value + '"\n')
 PYAUTH
 chmod 600 "$work/error-curl.conf"
@@ -1291,9 +1291,7 @@ ok "production-error-safe-through-tls"
 #  (a) form content types: the application's own DATA_UPLOAD_MAX_MEMORY_SIZE
 #      cap rejects with 400 before view logic (early, bounded);
 #  (b) multipart bodies the app reads: the edge's shipped 10MB cap rejects
-#      with 413 - proven for Content-Length bodies here (b1) and for
-#      chunked (unknown-length) bodies against a body-reading probe
-#      backend in the 033-b evidence;
+#      with 413, exercised on a Content-Length multipart upload here;
 #  (c) bodies the app never reads (unknown-length form bodies and
 #      octet-stream bodies): NOT rejected as a whole body - the app
 #      answers as for an empty form (200, nothing from the body is
