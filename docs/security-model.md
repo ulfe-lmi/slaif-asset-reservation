@@ -331,11 +331,11 @@ Reverse proxy and app must set or support:
   private` - survive the proxy unchanged; `Server` and Caddy's default
   `Via` hop header are removed;
 - request body and header limits (verified layered contract: edge
-  10MB whole-body cap 413 for bodies the application reads -
-  Content-Length and chunked alike; early application 400 for form
-  bodies above `DATA_UPLOAD_MAX_MEMORY_SIZE` (2.5 MiB) without the body
-  being read; bounded-not-rejected 200 for bodies the application never
-  reads; `read_body 60s` and `read_body_idle 30s 1024` cutting stalled/trickling bodies,
+  10MB read cap, with an edge 413 exercised on a Content-Length multipart
+  upload; early application 400 for form bodies above
+  `DATA_UPLOAD_MAX_MEMORY_SIZE` (2.5 MiB); current WSGI unknown-length
+  multipart and unread payloads produce an empty-form 200, which is
+  bounded but is not whole-body rejection; `read_body 60s` and `read_body_idle 30s 1024` cutting stalled/trickling bodies,
   the cut surfacing to the client as 499; 1MB header-size bound via Go
   `net/http`, oversized headers get 431) - see `deployment.md` section
   8;

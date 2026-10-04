@@ -67,7 +67,7 @@ jobs:
           echo "22c84f8d2d4e4e0e2d422f8049fdd0fc1ed8d5665d0fe166f506c7fd863b4555  /tmp/caddy.tar.gz" | sha256sum -c -
           tar -xzf /tmp/caddy.tar.gz -C /tmp
           sudo install -m 0755 /tmp/caddy /usr/local/bin/caddy
-          test "$(caddy version | head -n 1)" = "v2.11.6"
+          test "$(caddy version | awk '{print $1}')" = "v2.11.6"
           caddy version
       # pg_dump/pg_restore on the host: the ubuntu-24.04 runner has no pg client
       # tools by default (only the postgres:17 service image has them). Install
