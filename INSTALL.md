@@ -37,6 +37,20 @@ clients (browsers, API agents)
   Kubernetes/Swarm/Helm/Terraform/Ansible path, no image registry, and no
   automated deployment.
 
+The application container runs Gunicorn with the `gthread` worker pool —
+3 workers, 8 threads per worker, 5 s keep-alive, 30 s worker timeout — in
+every supported default (the `Dockerfile` `CMD`, the development Compose
+app command, and the production example app command). The threaded pool
+keeps `/health/live` and ordinary requests responsive while a handful of
+slow or idle clients hold connections; under the legacy single-threaded
+`sync` pool, three stalled clients can occupy all workers and time out
+new requests. Worker sizing is a responsiveness baseline, not a load
+guarantee: the service remains published on loopback only, and all
+external access still comes exclusively through the HTTPS reverse proxy,
+which must buffer client bodies and enforce its own read/idle timeouts.
+See `docs/deployment.md` (section 5, "Gunicorn worker pool") for the full
+rationale and the responsiveness regression.
+
 ## 2. Prerequisites
 
 What this deployment actually requires:
