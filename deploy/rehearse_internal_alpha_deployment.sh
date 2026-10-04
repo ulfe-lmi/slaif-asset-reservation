@@ -234,9 +234,13 @@ scan_owned_projects() {
 container_age() {
   python3 - "$1" <<'PY'
 from datetime import datetime, timezone
+import re
 import sys
 
 raw = sys.argv[1].strip()
+# Docker appends the local abbreviation after its numeric UTC offset.
+# %Z depends on the caller's timezone and need not recognize that name.
+raw = re.sub(r"([+-]\d{4})\s+[A-Za-z]+$", r"\1", raw)
 parsed = None
 for fmt in (
     "%Y-%m-%d %H:%M:%S %z %Z",
