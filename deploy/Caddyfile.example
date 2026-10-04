@@ -1,5 +1,38 @@
+# Supported operator proxy contract (qualified with Caddy v2.11.6,
+# 2026-10-04; see docs/deployment.md section 8 and ADR 0015).
+#
+# Trust boundary:
+# - Caddy terminates TLS and is the ONLY trusted peer of the private app.
+# - It overwrites X-Forwarded-Proto / X-Forwarded-For from the real
+#   connection; the app (SLAIF_TRUSTED_PROXY_PEERS) only honors forwarding
+#   from that peer and ignores everything else, including chains and
+#   underscore/hyphen header variants.
+# - The app must be reachable here at the loopback address only
+#   (127.0.0.1:8000 or the published loopback port).
 {
 	email admin@example.org
+	# Upstream failures are logged even without site access logging. Remove
+	# the request object so error logs cannot retain headers or query text.
+	log {
+		format filter {
+			wrap json
+			fields {
+				request delete
+			}
+		}
+	}
+	# Bound header reads and the TOTAL body-read duration. The idle timeout
+	# and minimum rate (bytes/second) also cut stalls and slow trickles.
+	# The total deadline remains effective when a client exceeds that rate.
+	servers {
+		timeouts {
+			read_header 60s
+			read_body 60s
+			read_body_idle 30s 1024
+			write_idle 30s
+			idle 5m
+		}
+	}
 }
 
 reservation.example.org {
@@ -7,17 +40,59 @@ reservation.example.org {
 
 	header {
 		X-Content-Type-Options nosniff
-		Referrer-Policy strict-origin-when-cross-origin
+		# Deferred default (Caddy `?` modifier): the edge policy is applied
+		# ONLY when the application response does not set its own
+		# Referrer-Policy. This preserves stricter per-view policies through
+		# the proxy - in particular the one-time token display page, whose
+		# no-referrer / no-store / private contract (SAR-015) must survive
+		# the edge unchanged. An unconditional set here would replace the
+		# app's value (verified against v2.11.6).
+		?Referrer-Policy strict-origin-when-cross-origin
 		-Server
+		# Caddy adds `Via: 1.0 Caddy` to proxied responses by default; the
+		# supported contract exposes no server identity or hop information.
+		-Via
 	}
 
+	# Whole-body cap for bodies that downstream handlers actually read
+	# (for example multipart file uploads): once the read passes 10MB the
+	# edge rejects with 413. Note the lazy-proxy limit: a body the
+	# application never reads cannot be measured at the edge. Full-body
+	# rejection for form content types is the application's own
+	# DATA_UPLOAD_MAX_MEMORY_SIZE cap (400, checked before the body is
+	# read); see docs/deployment.md section 8 for the layered contract.
 	request_body {
 		max_size 10MB
 	}
 
+	# No access log by default: a Caddy 2 site emits no access log unless a
+	# `log` directive is defined, which keeps hostile request paths, query
+	# strings and request headers out of the logs. If an access log is
+	# operationally required, configure the JSON logger with field
+	# exclusions (request.uri, request.headers, resp_headers) as described
+	# in docs/deployment.md section 8, and keep it reviewed.
+
 	reverse_proxy 127.0.0.1:8000 {
+		# One-hop normalization from the actual client connection:
+		# overwrite, never append, so the app sees exactly one client.
 		header_up X-Forwarded-Proto {scheme}
-		header_up X-Forwarded-Host {host}
 		header_up X-Forwarded-For {remote_host}
+		# In-memory request buffer bound. This is a MEMORY bound only, and
+		# it MUST stay strictly below the body cap above: Caddy's buffer
+		# reads only up to its limit, so a buffer sized like the cap would
+		# exhaust the cap's counter during buffering and the 413 could
+		# never fire while the buffer is filling. 1MB keeps the footprint
+		# of stalled or oversized clients finite without weakening the cap.
+		request_buffers 1MB
+		transport http {
+			dial_timeout 10s
+			response_header_timeout 30s
+			read_timeout 60s
+			write_timeout 60s
+			# Upstream idle-connection lifetime; must stay below the app's
+			# Gunicorn --keep-alive (5s) so the proxy discards the idle
+			# connection before the app closes it.
+			keepalive 3s
+		}
 	}
 }

@@ -25,6 +25,17 @@ Include:
 - append-only audit evidence for privileged and mutating actions;
 - minimal collection of personal data;
 - HTTPS and secure-cookie settings in production;
+- explicit trusted-proxy-peer boundary: only configured peers
+  (`SLAIF_TRUSTED_PROXY_PEERS`) may forward TLS/client identity, with
+  overwrite-not-append forwarding; every other peer is a direct client
+  pinned to the plain transport; ALL forwarding headers are stripped in
+  both branches, the original socket peer is preserved separately from
+  the normalized client identity, and the edge default `Referrer-Policy`
+  is deferred so stricter per-view policies (one-time token page)
+  survive the proxy;
+- safe logs and error responses: raw request lines, headers, bodies and
+  arbitrary exception state are never retained in logs or echoed back to
+  clients;
 - fail-closed behavior for unsupported or ambiguous authorization states.
 
 See `docs/security-model.md` for the threat model and required controls.

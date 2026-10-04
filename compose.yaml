@@ -38,6 +38,9 @@ services:
       --threads 8
       --keep-alive 5
       --timeout 30
+      --forwarded-allow-ips 127.0.0.1,::1
+      --header-map drop
+      --logger-class slaif_reservation.config.gunicorn.SlaifGunicornLogger
 
 volumes:
   postgres-data:

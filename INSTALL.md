@@ -132,19 +132,38 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
      healthcheck probes `http://127.0.0.1:8000/health/live` from inside
      the application container, and Django rejects a host not in
      `ALLOWED_HOSTS`. Omitting `127.0.0.1` leaves the app container
-     permanently unhealthy.
+     permanently unhealthy. Entries are validated fail-closed at settings
+     load: explicit bare hostnames, IPv4/IPv6 literals, or Django dotted
+     subdomain wildcards (`.example.org`) only — schemes, ports, userinfo,
+     whitespace, and malformed entries are rejected without echoing the
+     configured value, and the bare `*` wildcard is unsafe and refused.
    - `SLAIF_CSRF_TRUSTED_ORIGINS` (the approved service hostname,
      `https://` origin);
    - `SLAIF_API_TOKEN_PEPPER` (at least 32 bytes, distinct from
      `SLAIF_DJANGO_SECRET_KEY`);
    - `DATABASE_URL` — the database password here **must match** the secret
      file from step 3.
+   - `SLAIF_TRUSTED_PROXY_PEERS` — the explicit list of reverse-proxy peer
+     addresses whose `X-Forwarded-Proto` / `X-Forwarded-For` the
+     application honors (comma-separated). Entries must be explicit IP
+     addresses or point-to-point networks (IPv4 `/31`, IPv6 `/127`); broad
+     ranges are rejected. Set `127.0.0.1` (the in-container healthcheck
+     probe below) **and** the Docker bridge gateway IP — the peer the host
+     proxy presents when it dials the published app port. Discover the
+     gateway on the host: `ip route show default dev docker0` (substitute
+     the actual bridge device), or
+     `docker network inspect <network> --format
+     '{{range .IPAM.Config}}{{.Gateway}}{{end}}'` for the compose network.
 
-   Do not weaken `SLAIF_SECURE_SSL_REDIRECT` or the proxy-header trust to
-   make the healthcheck pass: the probe sends `X-Forwarded-Proto: https`,
-   which the production settings already trust via
-   `SECURE_PROXY_SSL_HEADER`, so it works with or without a real
-   TLS-terminating proxy.
+   Do not weaken `SLAIF_SECURE_SSL_REDIRECT` or the trusted-peer list to
+   make the healthcheck pass: the probe dials `127.0.0.1` from inside the
+   application container and sends `X-Forwarded-Proto: https`, so
+   `127.0.0.1` must be present in `SLAIF_TRUSTED_PROXY_PEERS` (and in
+   `SLAIF_ALLOWED_HOSTS`, as above). The production settings no longer use
+   a blanket `SECURE_PROXY_SSL_HEADER`: only the listed trusted peers may
+   supply TLS/client-identity forwarding, and the reverse proxy must
+   overwrite `X-Forwarded-Proto` / `X-Forwarded-For` from the real
+   connection (step 12).
 
 3. **Create the PostgreSQL secret file.**
 
@@ -244,11 +263,30 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
     docker compose -f compose.production.example.yaml up -d app
     ```
 
-12. **Configure the reverse proxy** from `deploy/Caddyfile.example`: replace
-    the placeholder hostname and email, keep the `X-Forwarded-Proto`
-    forwarding (production settings trust that header for HTTPS redirect and
-    secure cookies). Nginx remains acceptable if already operated
-    institutionally; see `docs/deployment.md` section 8.
+12. **Configure the reverse proxy** from `deploy/Caddyfile.example`
+    (qualified with Caddy v2.11.6): replace the placeholder hostname and
+    remove the placeholder email (ACME is not part of this contract). The
+    example overwrites (never appends) `X-Forwarded-Proto` and
+    `X-Forwarded-For` from the actual client connection, caps body size and
+    read/idle time, drops the `Server` and `Via` identity headers, and
+    applies its `Referrer-Policy` edge policy as a **deferred default**
+    (Caddy `?` modifier) so stricter per-view policies — in particular the
+    one-time token page's `no-referrer` / `no-store, private` contract —
+    pass through the proxy unchanged. Set
+    `SLAIF_TRUSTED_PROXY_PEERS` to the source peer the application actually
+    sees from the proxy — `127.0.0.1` for a host-side proxy dialing the
+    published loopback port, plus the Docker bridge gateway IP if the proxy
+    dials the published loopback port (discovery in step 2): the application
+    honors that peer's forwarding and treats every other peer as a direct
+    client. In both cases the application strips every forwarding header it
+    does not consume (trusted and untrusted alike), keeps the original
+    socket peer separately from the normalized client identity
+    (`request.client_ip`), and logs only the safe normalized client in its
+    request log. Browser POSTs must present an `Origin` exactly matching
+    the `SLAIF_CSRF_TRUSTED_ORIGINS` entry. Nginx remains acceptable if
+    already operated institutionally; it must implement the same
+    overwrite-not-append forwarding, peer allowlist, and deferred-default
+    header semantics. Full contract: `docs/deployment.md` section 8.
 
 13. **Verify HTTPS end to end** from outside the host. Enter the approved
     service hostname (without a scheme or path); reuse it for the checks
@@ -480,9 +518,18 @@ docker compose -f compose.production.example.yaml restart app
 - PostgreSQL is never public: the production-shaped example publishes no
   database port, and the application is loopback-only behind the proxy.
 - Production settings fail closed: `SLAIF_DJANGO_SECRET_KEY`,
-  `SLAIF_ALLOWED_HOSTS`, `SLAIF_CSRF_TRUSTED_ORIGINS`, `DATABASE_URL`, and
+  `SLAIF_ALLOWED_HOSTS`, `SLAIF_CSRF_TRUSTED_ORIGINS`,
+  `SLAIF_TRUSTED_PROXY_PEERS`, `DATABASE_URL`, and
   `SLAIF_API_TOKEN_PEPPER` are all required, the pepper must be distinct and
-  at least 32 bytes, and `SLAIF_DEBUG` is rejected. Secure session/CSRF
+  at least 32 bytes, and `SLAIF_DEBUG` is rejected. `SLAIF_ALLOWED_HOSTS`
+  entries must be explicit bare hosts (hostnames, IP literals, or Django
+  dotted subdomain wildcards); out-of-contract HSTS combinations are
+  rejected (a non-zero `SLAIF_SECURE_HSTS_SECONDS` requires the SSL redirect
+  enabled; the subdomain/preload flags require a non-zero max-age). Trusted
+  proxy peers must be explicit IP addresses or point-to-point networks
+  (broad ranges are rejected); only those peers may supply
+  TLS/client-identity forwarding, every other peer is a direct client with
+  all forwarding headers stripped. Secure session/CSRF
   cookies and SSL redirect are on by default; HSTS stays disabled until the
   final HTTPS hostname is verified, then must be enabled explicitly.
 - Local Django accounts, created by administrators, are acceptable for the
@@ -562,6 +609,7 @@ data-retention decision deliberately.
 | App cannot start: database password mismatch | The password in `DATABASE_URL` (`deploy/env.production`) must equal the content of `deploy/secrets/postgres_password`. If the `postgres-data` volume already exists, changing `POSTGRES_PASSWORD_FILE` does **not** change the existing database's password — PostgreSQL applies it only when initializing an empty volume. Align the password file with the existing database, or re-provision the volume (destructive). |
 | App unhealthy / liveness probe fails with HTTP 400 | `DisallowedHost`: `SLAIF_ALLOWED_HOSTS` is missing `127.0.0.1` (the in-container healthcheck probe) or the service hostname (step 2). |
 | `/health/ready` returns 503 | Database unreachable or migrations not applied: check `docker compose -f compose.production.example.yaml ps` and the `db` logs, then run the deliberate migration step (section 5, step 7). |
-| HTTPS redirect or CSRF failures behind the proxy | The proxy must forward `X-Forwarded-Proto: https`; `SLAIF_CSRF_TRUSTED_ORIGINS` must be the exact `https://` service origin (steps 2 and 12). |
+| HTTPS redirect or CSRF failures behind the proxy (301 loops, missing secure cookies, CSRF 403) | The trusted-peer list must include the peer the proxy actually presents: `SLAIF_TRUSTED_PROXY_PEERS` needs `127.0.0.1` (in-container probe) and, for a Docker-network proxy, the bridge gateway IP; the proxy must overwrite `X-Forwarded-Proto` from the real connection (steps 2 and 12). `SLAIF_CSRF_TRUSTED_ORIGINS` must be the exact `https://` service origin, and browser POSTs must carry the matching `Origin`. |
+| Underscore header variants (`X_Forwarded_*` etc.) have no effect | Deliberate: Gunicorn runs with `--header-map drop`, so wire headers containing underscores are discarded at the parser and never reach the application; the supported contract uses only the canonical hyphenated names written by the trusted proxy. |
 | No reservation accepted | No unambiguous active policy resolves for the asset (exact asset, parent machine, global) — the system fails closed; configure a policy in `/manage/`. |
 | Backup/restore tools missing in the app container | The application image deliberately contains no PostgreSQL client tools; backups run from the `db` container (section 8), and the `manage.py` wrappers run host-side where a pg client and `DATABASE_URL` are available. |

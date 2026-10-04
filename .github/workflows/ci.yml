@@ -49,6 +49,26 @@ jobs:
           version: "0.11.23"
           enable-cache: true
       - run: uv sync --locked --all-groups
+      # Pinned official Caddy v2.11.6 for the owned real-HTTPS boundary
+      # qualification (tests/test_https_boundary.py drives
+      # deploy/rehearse_https_boundary.sh, which refuses to run on any
+      # other version). Source: the official caddyserver/caddy GitHub
+      # release artifact; the release's caddy_2.11.6_checksums.txt covers
+      # the separately built dist.caddyserver.com tarball, so the digest
+      # below is the verified sha256 of THIS release artifact (two
+      # independent downloads compared byte-identical) plus a
+      # self-reported version assertion after install. Loopback-only use
+      # by the rehearsal; no deployment, listener or network change.
+      - name: Install pinned Caddy v2.11.6 (sha256-verified)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/caddy.tar.gz \
+            https://github.com/caddyserver/caddy/releases/download/v2.11.6/caddy_2.11.6_linux_amd64.tar.gz
+          echo "22c84f8d2d4e4e0e2d422f8049fdd0fc1ed8d5665d0fe166f506c7fd863b4555  /tmp/caddy.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/caddy.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/caddy /usr/local/bin/caddy
+          test "$(caddy version | awk '{print $1}')" = "v2.11.6"
+          caddy version
       # pg_dump/pg_restore on the host: the ubuntu-24.04 runner has no pg client
       # tools by default (only the postgres:17 service image has them). Install
       # the PostgreSQL 17 client from the official PGDG repository so the client

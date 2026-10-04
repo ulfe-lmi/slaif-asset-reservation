@@ -61,6 +61,93 @@ gthread baseline (3 workers, 8 threads, 5 s keep-alive, 30 s timeout); prompt 20
 held idle and while 6 partial-header clients are held; a real old-`sync` negative control in
 which held idle clients make bounded probe attempts time out (regression sensitivity); and
 child cleanup even after failures.
+
+HTTPS/proxy trust-boundary qualification (part of the standard `pytest` run):
+
+```bash
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  tests/test_https_boundary.py -v
+```
+
+`tests/test_https_boundary.py` drives `deploy/rehearse_https_boundary.sh` as
+a bounded subprocess (one module-scoped run per suite, 1800 s timeout). The
+script qualifies the ACTUAL supported operator path, owned and disposable:
+pinned Caddy v2.11.6 on the host (loopback bind, admin off, auto_https off,
+1-day synthetic certificate trusted only by the rehearsal clients) in front
+of the production image **built from a tracked-file snapshot** of this
+repository (never a wholesale copy of the checkout; ignored sentinels are
+proved absent from the snapshot), running in an **owned copy** of
+`compose.production.example.yaml` under a uniquely named project with
+kernel-assigned loopback ports and a private PostgreSQL 17. The bridge
+gateway is explicitly discovered (`docker network inspect <project>_default`)
+and configured as the `/32` trusted proxy peer — the peer the app actually
+sees behind the published port. Every migration/seed/check one-shot runs
+via `docker run --env-file` with an explicit minimal synthetic environment;
+nothing is inherited (no `DATABASE_URL`, `TEST_DATABASE_URL`, or repository
+`.env`); name collisions are refusals, not adoptions, and ownership of what
+the run creates is re-verified from compose labels after creation. The
+Caddy configuration is derived from the shipped `deploy/Caddyfile.example`
+by explicit narrow substitutions (certificate, site address, loopback
+listen, short read_header/idle windows, proxy target), and every shipped or
+substituted value is asserted against the actual adapted JSON. Exit codes:
+0 all checks passed (`https-boundary=ok`), 1 a check failed or cleanup was
+incomplete, 42 prerequisites missing (pinned Caddy v2.11.6 / openssl / curl
+/ docker) — the wrapper converts 42 into an honest skip, never a fake pass.
+The rehearsal proves, end to end: real TLS login with Secure cookies and
+CSRF using the legitimate origin **including the fixture Caddy port**;
+the one-time-token response arriving through Caddy with the STRICTER
+per-view headers intact (`no-referrer` / `no-store, private` — the edge
+default is deferred, not replacing) with the issued secret extracted in
+memory only and asserted absent from every captured log; overwrite-not-append
+forwarding from the trusted edge (spoofed `X-Forwarded-Proto`, ambiguous
+`X-Forwarded-For` chains, `Forwarded` + `X-Real-IP` + `X-Forwarded-Port`
+multi-variant, underscore variants dropped at the Gunicorn parser) with
+total stripping in both application branches; the normalized CLIENT IP
+itself via the safe request-log `client` field (a TLS client bound to
+127.0.0.2 is logged as 127.0.0.2, never its spoofed values; the
+Gunicorn access line's `peer` field is the POST-middleware REMOTE_ADDR -
+the normalized one-hop client for trusted traffic - and the original
+socket peer of a trusted dial stays on `request.remote_peer`, unlogged);
+an untrusted
+direct bridge peer (probe container claiming the service hostname) getting
+301, with its own bridge IP as the original socket peer of the rejected
+request in the Gunicorn access line (the 301 is issued before the safe
+request log middleware completes) and no spoofed value in any captured
+log; the layered body-size contract (3 MiB form, above the application's
+2.5 MiB cap → early application 400 without the body being read; 11 MiB
+multipart → edge 413; 11 MiB **chunked** multipart → empty-form 200 (unread, not a rejection); 11 MiB unread
+body → 200, honestly labeled bounded-not-rejected; a 640 KiB multipart
+without CSRF → early 403; a 640 KiB above-floor multipart completing); the
+shipped `read_body_idle 30s 1024` pair cutting stalled and below-floor
+trickling bodies (the cut surfaces to the client as Caddy's 499) while the
+pool stays responsive during the cut; a sender above the minimum rate
+is also cut by the total body deadline (declared 60s-to-3s test substitution);
+slow-header, oversized-header (431), and idle-connection bounds; private
+docs staying 404; malformed-request 400 without raw echo; Gunicorn safe
+logger categories; direct host→app 301; and a dead-DB instance (liveness
+200, readiness a safe 503, production 500 with no error or credential
+leakage through the identical TLS proxy contract).
+The wrapper additionally asserts that the captured output never carries the
+synthetic database password (sentinel set via
+`SLAIF033B_BOUNDARY_DB_PASSWORD`) and that no owned container/volume/image
+residue remains; dedicated tests prove that a foreign container or volume
+holding an expected owned name is refused and left untouched, that a
+creation race (foreign claim of the app name after the run's pre-creation
+check) is left untouched by the failed create, and that an injected
+mid-run failure (the Caddy session leader SIGKILLed while its child
+survives) leaves no owned container, volume, image, or process-session
+residue and does not kill a foreign session. Test-only dials exist for
+these injections (`SLAIF033B_BOUNDARY_PROJECT`, `SLAIF033B_BOUNDARY_CADDY`,
+`SLAIF033B_BOUNDARY_DB_PASSWORD`, `SLAIF033B_BOUNDARY_SLOW_APP_UP_S`,
+`SLAIF033B_BOUNDARY_FAULT`); an operator never sets them. In CI the test
+job installs the pinned official Caddy v2.11.6 artifact (sha256-verified,
+self-reported version asserted), so the required real-HTTPS evidence runs
+at the implementation head rather than skipping. Focused suites for the
+same boundary without the full rehearsal: `tests/test_proxy_gunicorn.py`
+(real Gunicorn forwarding, parser, and safe-logger behavior) and
+`tests/test_proxy_security.py` (middleware trust, headers, and log
+privacy).
+
 The original four CI job names remain quality/test/security/container. Required current-head checks
 must actually succeed. Pending/missing/cancelled/skipped are not success. Separate implementation
 head CI from final report head CI; no future result invented in a report-only commit.
@@ -77,6 +164,7 @@ head CI from final report head CI; no future result invented in a report-only co
 | Synthetic import | test_legacy_import.py; parser/mapping/dry-run/apply/idempotency/stale plan/actual report/privacy |
 | Operations | test_operational_hardening.py/test_settings.py/health suites; failure and real entry points |
 | Readiness helper | test_pilot_readiness_check.py; DB-down/unmigrated/count failure, strict/JSON/read-only, not only row counts |
+| Proxy/TLS trust boundary | test_proxy_gunicorn.py/test_proxy_security.py (real Gunicorn forwarding/spoofing, parser and log privacy); test_https_boundary.py plus deploy/rehearse_https_boundary.sh (owned real-HTTPS rehearsal, pinned Caddy v2.11.6, loopback-only, owned resources) |
 | Browser | tests/browser explicit Chromium; no secret-bearing capture artifacts |
 
 Use current tree to discover exact filenames rather than invent missing paths. A mocked database
