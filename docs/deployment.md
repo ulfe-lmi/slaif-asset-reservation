@@ -179,6 +179,63 @@ The configured runtime user must be `10001:10001`.
 
 Locked versions are recorded in `uv.lock`.
 
+### Gunicorn worker pool
+
+All three supported defaults (the `Dockerfile` `CMD`, the development
+`compose.yaml` app command, and the production example
+`compose.production.example.yaml` app command) run Gunicorn with the
+`gthread` worker pool:
+
+```text
+gunicorn slaif_reservation.config.wsgi:application
+  --bind 0.0.0.0:8000
+  --workers 3
+  --threads 8
+  --keep-alive 5
+  --timeout 30
+```
+
+- The legacy `sync` pool processes one request per worker, and a client
+  that connects and sends nothing — or stalls part-way through the header
+  block — blocks that worker in a socket read. Three such clients occupy
+  all three workers, and new connections sit in the listen backlog until a
+  blocker disconnects or the arbiter's worker timeout restarts a worker.
+  That is the idle-connection starvation failure: new requests time out on
+  the LAN while slow or idle clients merely hold connections.
+- `gthread` accepts connections in a worker event loop and serves each
+  request in a pool thread. Idle keep-alive connections wait in the event
+  loop and are closed after the 5 s keep-alive; only a stalled header read
+  occupies a thread. The baseline is 3 workers x 8 threads = 24 request
+  slots: six slow clients can occupy one full worker's thread pool while
+  the remaining workers and threads keep `/health/live` and ordinary page
+  loads responsive, and the existing 3-worker process isolation is
+  retained.
+- `--timeout 30` keeps the standard arbiter worker timeout; the binds are
+  unchanged (container-internal `0.0.0.0:8000`; the service is published
+  on host loopback only).
+- This is a responsiveness baseline for the supported reverse-proxied
+  shape, not a load guarantee and not authorization to expose Gunicorn
+  directly to the internet. The application stays reachable exclusively
+  through the HTTPS reverse proxy (section 8), which must buffer client
+  bodies and enforce its own read/idle timeouts; a slow-client flood is a
+  proxy abuse-control concern, not something worker sizing solves.
+
+Troubleshooting: if new requests queue while the service otherwise looks
+up, suspect clients holding connections without completing requests
+(idle or partial-header clients). The regression below reproduces the
+starvation with the old `sync` configuration and proves the shipped
+`gthread` defaults stay responsive:
+
+```bash
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  tests/test_gunicorn_responsiveness.py -v
+```
+
+The test launches the real installed Gunicorn with the real Django routes
+on unique loopback ports (the anonymous `/health/live` and `/login/` GETs
+need no database), pins the supported commands to the `gthread` baseline,
+and shuts its children down even after failures.
+
 ## 6. Health endpoints
 
 - `/health/live`: application process responds; no expensive dependencies.

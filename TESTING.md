@@ -46,6 +46,21 @@ uv run --env-file .env python manage.py operational_check
 
 Install Playwright browser/system dependencies inside the approved disposable environment when
 needed, record tools installed, and do not ask the human for routine setup. No real service calls.
+
+Gunicorn responsiveness regression (part of the standard `pytest` run):
+
+```bash
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  tests/test_gunicorn_responsiveness.py -v
+```
+
+`tests/test_gunicorn_responsiveness.py` launches the real installed Gunicorn with the real
+Django routes on unique loopback ports; the anonymous `/health/live` and `/login/` GETs it
+exercises need no database. Required evidence: the three supported commands pinned to the
+gthread baseline (3 workers, 8 threads, 5 s keep-alive, 30 s timeout); prompt 200s while 6
+held idle and while 6 partial-header clients are held; a real old-`sync` negative control in
+which held idle clients make bounded probe attempts time out (regression sensitivity); and
+child cleanup even after failures.
 The original four CI job names remain quality/test/security/container. Required current-head checks
 must actually succeed. Pending/missing/cancelled/skipped are not success. Separate implementation
 head CI from final report head CI; no future result invented in a report-only commit.
