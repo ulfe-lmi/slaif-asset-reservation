@@ -78,6 +78,9 @@ def test_openapi_schema_generation_succeeds(tmp_path: Path) -> None:
         for parameter in parsed_schema["paths"]["/api/v1/reservations/"]["post"]["parameters"]
     }
     assert {"Idempotency-Key", "X-Request-ID"} <= create_parameters
+    create_responses = parsed_schema["paths"]["/api/v1/reservations/"]["post"]["responses"]
+    assert {"201", "429", "503"} <= set(create_responses)
+    assert "200" not in create_responses
     assert "/api/v1/tokens/" not in parsed_schema["paths"]
     assert "/api/v1/reservations/{reservation_id}/cancel/" in parsed_schema["paths"]
 

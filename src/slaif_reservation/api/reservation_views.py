@@ -227,7 +227,7 @@ class ReservationListCreateAPIView(BearerAPIView):
 
     @extend_schema(
         request=ReservationCreateSerializer,
-        responses={200: OpenApiTypes.OBJECT, 429: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT},
+        responses={201: OpenApiTypes.OBJECT, 429: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT},
         operation_id="api_v1_reservation_create",
         parameters=[
             OpenApiParameter("Idempotency-Key", str, OpenApiParameter.HEADER, required=True),
