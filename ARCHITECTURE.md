@@ -1,15 +1,33 @@
 # ARCHITECTURE — SLAIF Asset Reservation
 
-**New consolidated canonical edition for workflow conversion.** This is not a byte-identical copy
-of a previously approved root architecture: no root ARCHITECTURE.md existed in the inspected tree.
-The accepted `docs/architecture.md` is preserved unchanged in `docs/bootstrap/1/previous/docs-architecture.md`
-(Git blob `246870a7771452ce3878c228b9ad7ffd8e71eda0`). This edition consolidates that design with
+**New consolidated canonical edition for workflow conversion, extended by the 2026-10-04 selected
+Internet/UX target.** This is not a byte-identical copy of a previously approved root architecture:
+no root ARCHITECTURE.md existed in the inspected tree. The accepted `docs/architecture.md` is
+preserved unchanged in `docs/bootstrap/1/previous/docs-architecture.md` (Git blob
+`246870a7771452ce3878c228b9ad7ffd8e71eda0`). The 2026-09 edition consolidated that design with
 implemented Work Orders 0001–0013 and explicitly labels future scope and proof gaps. It changes no
 application behavior. Its adoption is part of the conversion review, not retrospective approval.
 
-Observed software revision: `1fcc2c91d793556a91711365abef562604b62f84` (main, merged PR27).
-Repository: private `ulfe-lmi/slaif-asset-reservation`. Requirement IDs SAR-001–SAR-038 are stable;
-new editions append IDs and record controlled changes rather than silently repurpose them.
+**Two temporal layers are distinguished throughout this document.**
+
+- **Original conversion observations (2026-09 baseline).** Statements about the inspected software
+  were observed at software revision `1fcc2c91d793556a91711365abef562604b62f84` (main, merged
+  PR27). They are point-in-time baseline observations, not current audit results. Where later
+  development orders changed the state, the current state belongs to the exact
+  reports/tests/audits at the exact revision; this document does not re-assert old proof-gap
+  claims as current and does not invent fresh results.
+- **Current selected target (2026-10-04).** The attributable human selected
+  M-INTERNET-UX-PILOT development on 2026-10-04: an Internet-reachable authenticated service
+  through a normal HTTPS endpoint and a friendly SLAIF browser experience, with bounded
+  development, disposable qualification, strategic development merge and a fresh independent
+  closure audit. Real Internet exposure remains a human D2 decision. A-15 and
+  SAR-039–SAR-047 record this selected meaning; they are targets, not implemented controls.
+
+Repository: private `ulfe-lmi/slaif-asset-reservation`. Requirement IDs SAR-001–SAR-047 are stable;
+new editions append IDs and record controlled changes rather than silently repurpose them. This
+2026-10-04 edition appends A-15 and SAR-039–SAR-047 and labels the 2026-09 baseline observations
+as historical; it weakens or silently replaces no existing A-01–A-14 section or SAR-001–SAR-038
+requirement.
 
 ## A-01. System boundary and purpose
 
@@ -63,10 +81,11 @@ be broadened to copy private control-plane homes, tokens, logs, FIFOs or install
 ## A-03. Stack and topology
 
 The declared stack at this revision is Python `>=3.13,<3.14`, Django `>=5.2,<5.3`, DRF
-`>=3.16,<3.18`, PostgreSQL17, uv with a committed lockfile, psycopg, Gunicorn, WhiteNoise,
-PyYAML/jsonschema, drf-spectacular plus its local sidecar. Tests use pytest/pytest-django,
-Playwright, coverage, Ruff, mypy/django-stubs and pip-audit. These are observed constraints, not a
-request to upgrade dependencies. Exact resolved versions come from the preserved uv.lock.
+`>=3.16,<3.18` (current source constraint; the lock is authoritative and resolves DRF 3.17.x),
+PostgreSQL17, uv with a committed lockfile, psycopg, Gunicorn, WhiteNoise, PyYAML/jsonschema,
+drf-spectacular plus its local sidecar. Tests use pytest/pytest-django, Playwright, coverage,
+Ruff, mypy/django-stubs and pip-audit. These are observed constraints, not a request to upgrade
+dependencies. Exact resolved versions come from the preserved uv.lock.
 
 The intended service deployment is a Linux host: HTTPS reverse proxy (Caddy example) -> Gunicorn
 Django application -> private PostgreSQL. The runtime image uses UID:GID 10001:10001 and includes
@@ -118,9 +137,12 @@ installation. `chatgptpro` is excluded, not converted to a fictitious device. Th
 
 **Policies.** Policy rows govern duration, horizon, lead, cancellation cutoff, upcoming/concurrent
 counts and purpose requirements. Resolution is active exact asset, parent machine, global fallback;
-absence/ambiguity fails closed. Preserve the implemented unique active-scope constraints. There is
-no institution-wide guessed policy seeded by bootstrap, and no implicit grant to every resource
-through a token scope alone.
+absence/ambiguity fails closed. Preserve the implemented unique active-scope constraints. Historical 2026-09 baseline
+observation: no institution-wide policy was seeded by bootstrap; the current selected target
+instead requires a supported fresh-initialization path to create an effective active global
+fallback policy named `default` (A-15, SAR-041), and until that target is implemented and audited
+the baseline behavior stands. No implicit grant to every resource through a token scope alone
+(continues).
 
 **Reservations.** Reservation identity/owner/asset/original interval/history remain durable.
 Confirmed, cancelled and released are stored states; active/upcoming/completed are time-derived
@@ -249,14 +271,19 @@ out of Git and Docker contexts.
 operational_check covers DB, migrations, static assets, sanitized inventory and cleanup command
 registration. pilot_readiness_check reports aggregate counts and strict/non-strict gates without
 identifiers or mutation. A successful readiness count is not authentication, a resource grant or a
-backup/restore proof. At the inspected revision, count queries precede the DB-readiness helper and
-policy-resolution errors use a broad catch; failure-boundary qualification is a follow-up evidence
-candidate, not something this conversion silently fixes.
+backup/restore proof. Point-in-time observation at the inspected 2026-09 baseline revision: count
+queries preceded the DB-readiness helper and policy-resolution errors used a broad catch. That
+baseline observation is historical, not a current audit result; the current state of these
+boundaries belongs to the exact reports/tests/audits at the exact revision, and no fresh result is
+claimed here.
 
 Production JSON logs and correlation are operational breadcrumbs, not raw forensic dumps. No
 Authorization/cookies/payload/private free text. Backup/restore commands use PostgreSQL tools,
-default dry-run and explicit apply. The documented isolated restore drill remains to be proved with
-actual fixture data and result comparison before any recovery guarantee. Rehearsal uses production
+default dry-run and explicit apply. At the 2026-09 baseline, no documented isolated restore
+drill had been established; that proof-gap claim is historical, not a current audit result.
+Current recovery evidence belongs to the exact reports/tests/audits at the exact revision, and a
+recovery guarantee still requires an actual fixture-data restore drill with result comparison
+proved at that revision. No fresh result is claimed here. Rehearsal uses production
 settings with synthetic local values and intentionally no real TLS; it validates image, migrations,
 bootstrap dry-run, health/login/anonymous management/API failure and schema. It is not evidence for
 an authenticated live pilot, public TLS, real identity or network enforcement.
@@ -320,6 +347,12 @@ review and human adoption permit only the selected canary, not a claim that this
 complete. Final human M-CONVERSION acceptance follows canary evidence and current-revision ICA. M-EXISTING is the preserved historical internal-alpha baseline, not re-certified
 by this package. M-LOCAL-PILOT-EVIDENCE is a proposed future target for actual local end-to-end and
 restore evidence; M-EXTERNAL-PILOT and release require separate human scope and authorization.
+As of 2026-10-04 the selected development target is M-INTERNET-UX-PILOT (A-15): Internet-
+reachable authenticated service and SLAIF browser experience, bounded development and disposable
+qualification, strategic development merge and a fresh ICA over the full current requirement
+index (SAR-001–SAR-047). Selection is not completion; real Internet exposure, DNS/TLS/firewall,
+identity, secrets and private data remain human D2, and M-EXTERNAL-PILOT/release gates continue
+to apply to any real exposure.
 Record independent audit rows as IMPLEMENTED/PARTIAL/ABSENT/UNPROVEN at exact audited revision.
 Initially all rows below are UNPROVEN for a new ICA, even where source/test existence is observed.
 The historical WO0010 report did not establish a separate independent auditor/context provenance,
@@ -327,10 +360,14 @@ so do not rebrand it as the new Concentrated OAP ICA.
 
 ## A-14. Stable requirements and enforcement map
 
-Every law below is preserved product scope or an explicit conversion invariant. Source references
-refer to the pre-conversion repository unless marked generator/current instruction. Enforcement
-paths below are relative to src/slaif_reservation unless otherwise stated. They are an evidence
-starting point; presence of a path does not constitute a passing test.
+Every law below is preserved product scope, an explicit conversion invariant, or a facet of
+the 2026-10-04 selected Internet/UX target (SAR-039–SAR-047, A-15). Source references refer to
+the pre-conversion repository unless marked generator/current instruction. Enforcement paths
+below are relative to src/slaif_reservation unless otherwise stated. They are an evidence
+starting point; presence of a path does not constitute a passing test. The
+“Initial independent-closure classification” lines record the 2026-09 baseline point-in-time
+state (or, for SAR-039–SAR-047, the new-milestone initial state), not current audit results;
+current classification belongs to a fresh ICA at the exact revision.
 
 ### SAR-001 — One reservation authority
 
@@ -673,3 +710,209 @@ Source: Generator §§7,8,14.
 
 Inspect: `CRITICAL.md; oap/audit/; docs/READINESS.md`. Evidence: Attribution/ICA freshness/target gate tests; no self-certification.
 Initial independent-closure classification: **UNPROVEN**.
+
+### SAR-039 — Internet HTTPS/proxy boundary
+
+Enforce the A-15 Internet HTTPS/proxy boundary: the complete topology/trust/TLS/configuration/error/header/log/privacy/docs/health/DB/secrets contract of the selected target.
+
+Source: human requirement 1 (2026-10-04); A-15.
+
+Inspect: `config/settings; middleware; deploy/Compose/proxy configuration; docs`. Evidence: Real disposable HTTPS proxy; spoofed forwarded peers/headers; negative hosts/origins/cookies/settings/errors; private topology and leak canaries.
+Initial independent-closure classification: **UNPROVEN** (new milestone; initially UNPROVEN).
+
+### SAR-040 — Shared authentication and API abuse control
+
+Enforce the A-15 shared authentication and API abuse control: cross-process bounds on ordinary and administration login attempts and on unauthenticated/invalid-bearer and authenticated API traffic, sane configurable rates, trusted client identity, safe failure/expiry/cleanup and no permanent account lockout.
+
+Source: human requirement 1 security paragraph (2026-10-04); A-15.
+
+Inspect: actual limiter storage/middleware/auth/adapters and deployment. Evidence: Real multi-process attacks; invalid/valid bearer scopes; retry behavior; worker-count scaling; database-failure negatives; legitimate requests.
+Initial independent-closure classification: **UNPROVEN** (new milestone; initially UNPROVEN).
+
+### SAR-041 — Default fresh-install policy
+
+Enforce the A-15 default fresh-install policy: the named `default` active global fallback values, clear defaults for required unspecified fields, fresh/repeated/configured-upgrade behavior, atomicity and a unique active-global policy, and a real booking that succeeds.
+
+Source: human requirement 2 (2026-10-04); A-15.
+
+Inspect: initialization/migrations/services and supported operator paths. Evidence: Fresh and upgrade databases; repetition/races/rollback; policy UI units and booking.
+Initial independent-closure classification: **UNPROVEN** (new milestone; initially UNPROVEN).
+
+### SAR-042 — Public product entry
+
+Enforce the A-15 public product entry: anonymous landing with product identity and obvious Login and Administration actions and no private leakage, the administration login route, and sensible role navigation without redirect loops.
+
+Source: human requirement 3 (2026-10-04); A-15.
+
+Inspect: URLs, web templates, auth. Evidence: Anonymous/member/staff/admin/inactive/service-account real browser routes/CTAs and leak tests.
+Initial independent-closure classification: **UNPROVEN** (new milestone; initially UNPROVEN).
+
+### SAR-043 — Browser product identity
+
+Enforce the A-15 browser product identity: no visible Django/framework branding across all user/admin/error/title/footer/breadcrumb surfaces, proper structural custom administration and protected-model explanations.
+
+Source: human requirement 4 and administration experience (2026-10-04); A-15.
+
+Inspect: actual AdminSite/templates/errors. Evidence: Browser inner_text/title/accessible-label no-framework assertions, not source-import blacklist or CSS hiding; permission matrix unchanged.
+Initial independent-closure classification: **UNPROVEN** (new milestone; initially UNPROVEN).
+
+### SAR-044 — Explained accessible forms
+
+Enforce the A-15 explained accessible forms: systematic member/management/admin/filter field coverage, human-language token scopes, units/policy/DST/high-impact help associations and preserved validation.
+
+Source: human requirement 5 and default-policy UX (2026-10-04); A-15.
+
+Inspect: forms, admin, raw templates. Evidence: Complete field inventory plus coverage; meaningful visible help/labels/aria; negative validation and protected mutations.
+Initial independent-closure classification: **UNPROVEN** (new milestone; initially UNPROVEN).
+
+### SAR-045 — Safe operator appearance overrides
+
+Enforce the A-15 safe operator appearance overrides: self-contained defaults and read-only Docker/no-rebuild logo/compact/favicon/images plus CSS-after-default safe customization, with no code/template/remote-JS/file escape.
+
+Source: human requirement 6 and theming acceptance (2026-10-04); A-15.
+
+Inspect: actual handler/settings/mounts/template assets/docs. Evidence: Custom fixture Playwright; missing/invalid/path/symlink/MIME/mount/failure negatives.
+Initial independent-closure classification: **UNPROVEN** (new milestone; initially UNPROVEN).
+
+### SAR-046 — SLAIF design and visual qualification
+
+Enforce the A-15 SLAIF design and visual qualification: current reference inspection, a coherent accessible responsive system, and all role/surface viewport/default/custom screenshot view/iterate with semantic regressions.
+
+Source: human requirement 7, Playwright primary acceptance and visual quality bar (2026-10-04); A-15.
+
+Inspect: CSS/tokens/templates/assets/browser evidence. Evidence: Actually reviewed privacy-safe screenshots at 1440/1024/768/390, default/custom; contrast/focus/layout/help/navigation/no-overflow; visual iteration notes.
+Initial independent-closure classification: **UNPROVEN** (new milestone; initially UNPROVEN).
+
+### SAR-047 — Threaded Gunicorn responsiveness
+
+Enforce the A-15 threaded Gunicorn responsiveness: preserve or reproduce the fix, a consistent deliberate pool, and six held idle/partial clients against actually bounded health/login responses with old-sync sensitivity and cleanup/proxy rationale.
+
+Source: human requirement 8 (2026-10-04); A-15.
+
+Inspect: image/Compose/rehearsal and real Gunicorn tests. Evidence: Exact config; negative old-sync and positive threaded sockets; held-open and failure cleanup; existing DB concurrency.
+Initial independent-closure classification: **UNPROVEN** (new milestone; predecessor evidence indexed but not self-certified ICA).
+
+## A-15. Selected Internet/UX target (2026-10-04)
+
+Selected by the attributable human on 2026-10-04 as M-INTERNET-UX-PILOT development scope:
+bounded development, disposable qualification, strategic development merge and a fresh isolated
+ICA over the full current requirement index. Real Internet exposure, DNS/TLS/firewall, identity,
+secrets and private data remain human D2. This section is the authoritative selected-target
+contract; each SAR-039–SAR-047 row enforces a facet of it. Nothing here claims an unimplemented
+control; all new rows are initially UNPROVEN until a fresh ICA at the exact merged revision.
+
+M-INTERNET-UX-PILOT is the selected human product meaning as of 2026-10-04. SLAIF Asset
+Reservation must support an Internet-reachable authenticated service through a normal HTTPS
+endpoint, and a friendly SLAIF browser experience. Accounts remain administrator-created; no
+anonymous self-registration or private inventory/reservation disclosure. The public landing is
+the only selected new anonymous product surface. Broad authenticated-human reservation access
+under current policies remains an explicit authorization limitation; projects/groups/memberships
+remain deferred. Internet reachability does not imply anonymous access or unrestricted production
+maturity. All prior reservation/domain/auth/privacy/CSRF/idempotency/audit/protected-admin/
+PostgreSQL/recovery guarantees continue to apply.
+
+The qualified target topology is public HTTPS reverse proxy/TLS termination -> loopback/private
+non-root Gunicorn -> private PostgreSQL17, on Linux amd64/x86_64. Gunicorn and PostgreSQL must not
+be directly published to the Internet. Operator-owned Caddy or equivalent remains the simple
+baseline unless bounded investigation selects a simpler safe optional proxy configuration. Trust
+only explicitly configured proxy peers; reject or ignore attacker-supplied forwarding outside that
+boundary, and define client IP and TLS-header normalization precisely. Allowed hosts and CSRF
+trusted origins are explicit; production debug off, secure session/CSRF cookies and SSL redirect
+enforced. HSTS remains a documented deliberate opt-in strategy (no fictional live certificate/
+domain qualification). Production errors and response headers must avoid framework traceback/
+secret leakage. API docs/schema remain disabled by default and staff-only when enabled. Health
+must expose only safe liveness/readiness state. Logs exclude raw credentials, private payload/
+free text and sensitive query material. Fail-closed secrets and private DB/network persist.
+Administration is protected by the same HTTPS/authentication/abuse assumptions; any extra
+operator IP restrictions must be configurable and documented rather than assuming a trusted LAN.
+
+Abuse protection must bound remote authentication attempts on ordinary AND administration login
+and bound unauthenticated/invalid-bearer and authenticated API traffic without arbitrarily tiny
+limits for legitimate agents. Limits must coordinate across Gunicorn workers/processes;
+per-process in-memory multiplication is insufficient. Choose and document reasonable
+configurable rates, trusted-client identity, expiry/cleanup and failure behavior. No permanent
+attacker-triggered account lockout. Preserve stable machine-readable API errors, owner privacy,
+CSRF and idempotency. Multi-process and negative-path HTTP tests must prove effective controls;
+proxy read/idle/body bounds remain necessary because threads do not prevent arbitrary slow-client
+floods.
+
+A supported fresh initialization path automatically creates an effective active global fallback
+reservation policy named `default`: asset NULL, booking horizon 7 days measured by reservation
+START, maximum duration 2880 minutes (48 hours / 2 days), no restricted operating-hour window,
+minimum lead 0, cancellation cutoff 0, purpose optional. Required unspecified fields use simple
+explicit minimally surprising defaults consistent with existing constraints; strategy sets actual
+values in the initialization objective after semantic inspection. Upcoming/concurrent limits must
+be visible and documented. Initialization must be idempotent and atomic, fresh assets reservable
+subject to policy, existing operator policies (including deliberate inactive configuration)
+preserved, upgrades predictable, no duplicate active-global policy or silent overwrite. It may
+use a migration, safe initializer or bootstrap path; requiring manual policy creation in a normal
+fresh install is disallowed. Tests prove fresh initialization, repetition, configured-upgrade
+preservation and real booking.
+
+Anonymous `/` is a polished public landing with product identity, concise purpose, obvious Login
+AND Administration actions, appropriate locally packaged SLAIF branding, and no asset/user/
+reservation data. The Administration action enters the administration login. Authenticated
+members can reach dashboard, staff management and permitted administrators administration
+without redirect loops. Member/admin login excludes invalid/inactive/service-account identities
+under current authority rules. Product browser titles, headings, breadcrumbs, admin login/index/
+header, footer and errors use SLAIF Asset Reservation or SLAIF-branded Administration, never
+Django/default framework branding. Customize administration identity structurally, not by CSS
+hiding. Technical docs/imports/dependency names may say Django. Protected/read-only admin models
+remain protected and explain their service-backed mutation route.
+
+Audit every member, staff and admin editable field plus non-obvious choices and raw filters.
+Useful labels and nearby rendered help explain units/effects, horizon START semantics,
+lead/cutoff, global/specific resolution, optional purpose, DST occurrence-only relevance, token
+scopes in human language, destructive/high-impact actions and protected admin editing. Help is
+accessible through labels/aria-describedby or equivalent form associations. Do not clutter
+obvious fields or weaken validation. Humanize policy duration display without changing storage
+units and retain machine scope values/permissions.
+
+Default appearance follows the CURRENT SLAIF references slaif.si/doc.slaif.si/edu.slaif.si/
+trainings, inspected with Playwright screenshots. Build coherent typography/color/spacing/nav/
+cards/buttons/forms/tables/status/footer using CSS tokens, local official assets where
+organizationally appropriate and licensed. Do not hotlink runtime-critical assets or copy
+unrelated site HTML/framework. Operator appearance customization needs no source fork or
+application image rebuild: a bounded read-only branding directory/configuration, primary/compact
+logo where useful, favicon/browser identity where practical, selected images and CSS loaded AFTER
+defaults. Self-contained defaults and safe fallback; no server-side template execution, remote JS
+mechanism, arbitrary file exposure or unsafe mount adoption. Define MIME/path/symlink/size/
+failure boundaries and document them. Default and custom fixtures must be Playwright tested.
+
+Gunicorn uses a deliberate threaded pool consistently in image/local/production/rehearsal where
+relevant. Preserve a foreign fix if found; otherwise independently reproduce old sync starvation
+BEFORE changing configuration. Real-server tests hold at least six idle/slow clients while
+/health/live and user login respond within bounded time; the old sync negative control must fail
+or an equivalent mechanism proves original sensitivity. Owned child/socket cleanup even on
+failure, unique resources, no foreign service. Worker/thread/keepalive rationale and bounded
+capacity documented, mandatory buffering/time-limited HTTPS proxy retained. Observed, not
+claimed: at the 2026-10-04 activation the merged predecessor 031-a (PR62) established and
+regression-verified the threaded Gunicorn baseline on main; that evidence is indexed, not a
+self-certified ICA for this target.
+
+Qualification uses real unit/integration, PostgreSQL concurrency/rollback, browser
+authentication/CSRF/privacy, Gunicorn six-client negative/positive regression, disposable
+Internet-shaped HTTPS proxy, shared login/API abuse controls, production-settings negatives,
+container/config/health, fresh+upgrade policy initialization, default/custom branding. Real
+Playwright development capture/view/iterate is mandatory, not merely 200 or test pass.
+Representative meaningful fixtures cover anonymous landing/login/admin login; member
+dashboard/assets/detail/availability/create/reservation list+detail/profile/token list+create;
+management dashboard/policy list+detail+form/blackout list+detail+form/reservations/audit
+list+detail+export controls; administration index/user list+change/asset list+change/relevant
+models. Review approximately 1440, 1024, 768, 390 widths, desktop/mobile, default/custom.
+Durable semantic assertions cover overflow, primary actions/navigation/focus/labels/associated
+help/responsive tables/forms, no framework visible text, no anonymous private leak. No
+brittle pixel snapshots unless stability proven. Privacy-safe screenshots exclude one-time
+secrets/password verifiers/cookies/CSRF/raw traces/private data. Strategy actually visually
+inspects screenshots and orders iterations when poor; attractive is not established by CI alone.
+
+Product-first README/QUICKSTART/INSTALL/docs index and security/deployment/theming docs reconcile
+behavior, keeping OAP history out of product narrative. The standard five exact-head checks
+quality/test/security/container/oap-harness plus links/pip audit apply. The final fresh isolated
+ICA begins with human scope, full current architecture/digest and exact current merged immutable
+revision; it maps ALL applicable SAR-001–SAR-047 source/runtime/negative evidence. The old
+internal-pilot ICA cannot qualify this changed target. Findings require bounded corrections then
+a repeat architecture-to-current-main audit, not only closed-findings review. The human owns
+milestone acceptance/release/real Internet exposure, DNS/TLS/firewall/identity/secrets/private
+data; development and disposable qualification authorize none of those real actions. Development
+evidence may support presenting one exact revision to D2, never authorize deploying it.

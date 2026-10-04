@@ -25,7 +25,10 @@ CRITICAL disposition or release approval. Human decides applicable judgments/tar
 separately release/exposure/deployment. Independent audit never substitutes for that decision.
 
 Materialize templates/request drafts and a complete initial matrix from the
-ARCHITECTURE.md SAR requirement index (SAR-001 through SAR-038).
+current ARCHITECTURE.md SAR requirement index, deriving the ID range dynamically from
+the canonical index at the audited revision (2026-10-04 edition: SAR-001 through
+SAR-047) rather than from a hardcoded count; the preserved 38-row template matrix is a
+historical seed for its 2026-09 baseline revision.
 M-CONVERSION includes preservation and role/protocol/authority constraints; M-LOCAL-PILOT-EVIDENCE
 includes all applicable product boundaries. Do not invent accepted targets, measured results,
 independent identities or future revisions in inactive audit drafts.

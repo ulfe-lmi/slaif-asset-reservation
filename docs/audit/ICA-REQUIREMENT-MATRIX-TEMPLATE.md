@@ -1,6 +1,10 @@
-# ICA requirement matrix — initial existing-product assessment seed
+# ICA requirement matrix — historical initial existing-product assessment seed
 
-Baseline source inspection: `1fcc2c91d793556a91711365abef562604b62f84`.
+Baseline source inspection: `1fcc2c91d793556a91711365abef562604b62f84`. **Historical
+seed:** this 38-row matrix was materialized for that 2026-09 baseline revision and is
+preserved as-is. Current canonical requirement scope: the ARCHITECTURE.md SAR index at
+the audited revision (2026-10-04 edition: SAR-001 through SAR-047); derive each new ICA
+matrix dynamically per ICA-PROTOCOL.md rather than copying this seed.
 **Not an independent audit.** Initial classifications are UNPROVEN for the new closure audit,
 not assertions that the existing implementation is absent. Historical work/tests are context.
 At audit time replace the audited revision with the actual selected merged revision and record

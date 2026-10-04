@@ -1,10 +1,19 @@
 # ARCHITECTURE-for-agents — executor projection
 
-Source: root ARCHITECTURE.md, initial SHA-256 `9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4`.
-Scope: preservation and bounded development of existing SLAIF Asset Reservation. Not independent architecture or approval.
-Normal coding reads this file, not the full source. A genuine gap goes to strategy for a bounded correction/excerpt.
+Source: root ARCHITECTURE.md, 2026-10-04 edition (A-01..A-15, SAR-001..SAR-047); current
+full-source SHA-256 `06dd0f50e778b9843e2a709caa0ae1f0c97f48baee726f4e3a1397cc6a198d8c`. Initial projection source SHA-256
+`9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4` is historical provenance.
+Scope: preservation and bounded development of existing SLAIF Asset Reservation, including the
+selected M-INTERNET-UX-PILOT development target (A-15); real Internet exposure remains human D2.
+Not independent architecture or approval. Normal coding reads this file, not the full source. A
+genuine gap goes to strategy for a bounded correction/excerpt.
 
-Existing baseline: private ulfe-lmi/slaif-asset-reservation; main observed 1fcc2c91d793556a91711365abef562604b62f84; WO0001–0013 already complete. Python3.13/Django5.2/DRF3.16/PostgreSQL17; preserve uv.lock. Current conversion is governance only.
+Baseline (historical, 2026-09): private ulfe-lmi/slaif-asset-reservation; WO0001–0013 complete;
+main at the original projection observed 1fcc2c91d793556a91711365abef562604b62f84, and at this
+projection observed 3abe17d026d7ebfe402426afd89e30cdc6924f61 (merged PR62).
+Python3.13/Django5.2/DRF (source >=3.16,<3.18; lock authoritative, resolves 3.17.2)/PostgreSQL17;
+preserve uv.lock. SAR-001..SAR-038 are stable; SAR-039..SAR-047 are new A-15 facets, initially
+UNPROVEN until a fresh ICA at the exact merged revision.
 
 **SAR-001 / One reservation authority:** Humans and authenticated software agents share scheduling records and authoritative domain operations. Do not introduce parallel booking logic.
 
@@ -81,7 +90,23 @@ Existing baseline: private ulfe-lmi/slaif-asset-reservation; main observed 1fcc2
 **SAR-037 / Canonical governance and projection:** Maintain canonical PLAN/ARCHITECTURE and preserved prior sources; compact coding projections are coverage-mapped and hash-bound, not independent law. Preserve security/reporting constraints while changing process authority deliberately.
 
 **SAR-038 / Human target and ICA:** Strategic development merge never means release, deployment, physical-resource entitlement beyond product rules or human milestone acceptance. ICA derives from full architecture and exact merged revision with independent context and applicable DHA gates.
+**SAR-039 / Internet HTTPS/proxy boundary:** Enforce the full A-15 Internet boundary: qualified proxy/TLS topology, trusted peers with attacker-forwarding rejection, explicit hosts/CSRF origins, secure cookies/SSL redirect, HSTS opt-in, safe errors/headers/logs, private docs/schema, safe health, fail-closed secrets, private DB/network, non-LAN administration. UNPROVEN (new milestone).
 
+**SAR-040 / Shared authentication and API abuse control:** Enforce A-15 cross-worker bounds on ordinary and administration login and on unauthenticated/invalid-bearer and authenticated API traffic; configurable rates, trusted-client identity, expiry/cleanup, safe failure, no permanent account lockout; stable API errors, owner privacy, CSRF, idempotency preserved. UNPROVEN (new milestone).
+
+**SAR-041 / Default fresh-install policy:** Enforce A-15 fresh initialization auto-creating effective active global fallback policy `default` (asset NULL, horizon 7 days by START, max 2880 minutes, no operating-hour window, lead 0, cutoff 0, purpose optional) with clear defaults for other required fields; idempotent, atomic, upgrade-safe, unique active-global, real booking succeeds; manual policy creation on normal fresh install disallowed. UNPROVEN (new milestone).
+
+**SAR-042 / Public product entry:** Enforce A-15 anonymous landing with product identity, obvious Login and Administration actions, no private data; Administration enters the administration login; role navigation without redirect loops; login excludes invalid/inactive/service-account identities. UNPROVEN (new milestone).
+
+**SAR-043 / Browser product identity:** Enforce A-15 SLAIF Asset Reservation or SLAIF-branded Administration across titles, headings, breadcrumbs, admin login/index/header, footer and errors; never visible Django/framework branding; structural admin customization, not CSS hiding; protected models stay protected with service-backed mutation explained. UNPROVEN (new milestone).
+
+**SAR-044 / Explained accessible forms:** Enforce A-15 systematic member/staff/admin field help: units/effects, horizon START semantics, lead/cutoff, resolution, purpose, DST occurrence relevance, human token scopes, high-impact actions, protected admin editing; labels/aria associations; no clutter, no weakened validation; humanized duration display, unchanged storage units. UNPROVEN (new milestone).
+
+**SAR-045 / Safe operator appearance overrides:** Enforce A-15 self-contained defaults plus read-only Docker/no-rebuild branding (logo/favicon/images/CSS after defaults) without source fork or image rebuild; no server-side template execution, remote JS, arbitrary file exposure or unsafe mount adoption; documented MIME/path/symlink/size/failure boundaries; default and custom fixtures Playwright tested. UNPROVEN (new milestone).
+
+**SAR-046 / SLAIF design and visual qualification:** Enforce A-15 current-reference design inspection, coherent accessible responsive CSS-token system, fixtures reviewed at ~1440/1024/768/390 default/custom with durable semantic assertions, no brittle pixel snapshots unless stable, privacy-safe screenshots, strategy visual iteration. UNPROVEN (new milestone).
+
+**SAR-047 / Threaded Gunicorn responsiveness:** Enforce A-15 deliberate threaded pool consistently (image/local/production/rehearsal); six held idle/slow clients with bounded /health/live and login response; old-sync negative control failing or equivalent sensitivity proof; owned cleanup on failure; documented worker/thread/keepalive rationale; buffering/time-limited HTTPS proxy retained. UNPROVEN (new milestone; predecessor gthread evidence indexed, not self-certified ICA).
 
 ## Component routing
 
@@ -98,12 +123,14 @@ Explicit bearer: /api/v1/me/; /api/v1/assets/{id}/availability/ with availabilit
 /{id}/release/ POST/release. Reservation scopes are reservations:<action>. Every mutation needs
 Idempotency-Key; own/guessed/other-user 404 is non-disclosing. Existing /api/v1/assets/ list/detail
 remain staff-session-only. No token-lifecycle/management/admin REST endpoints. /api/schema/ and
-/api/docs/ share private configuration; production never becomes public by convenience.
+/api/docs/ share private configuration, are disabled by default and staff-only when enabled; production never becomes public by convenience.
 
 ## Verification cautions
 
-Source existence is not a pass. Baseline command executes count queries before DB-readiness guard;
-rehearsal/tests use deployment paths and resource cleanup; full isolated restore proof not established.
-Treat these as bounded investigation candidates, not bootstrap feature authorization. Preserve
-ordinary no-past vs documented synthetic historical migration exception; API replay vs legacy source
-idempotency are separate contracts. Root full architecture records rationale, proof gaps and deferrals.
+Source existence is not a pass. At the 2026-09 baseline the command executed count queries
+before the DB-readiness guard and no full isolated restore proof was established; both
+observations are historical, and current evidence belongs to exact reports/tests at the exact
+revision. Rehearsal/tests use deployment paths and resource cleanup. Treat these as bounded
+investigation candidates, not bootstrap feature authorization. Preserve ordinary no-past vs
+documented synthetic historical migration exception; API replay vs legacy source idempotency are
+separate contracts. Root full architecture records rationale, proof gaps and deferrals.
