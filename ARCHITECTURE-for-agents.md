@@ -1,7 +1,7 @@
 # ARCHITECTURE-for-agents — executor projection
 
 Source: root ARCHITECTURE.md, 2026-10-04 edition (A-01..A-15, SAR-001..SAR-047); current
-full-source SHA-256 `06dd0f50e778b9843e2a709caa0ae1f0c97f48baee726f4e3a1397cc6a198d8c`. Initial projection source SHA-256
+full-source SHA-256 `f8a8df265d4dd452969d4bee874045c8f8a8261f9c87c96ba4c049a7dddf320d`. Initial projection source SHA-256
 `9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4` is historical provenance.
 Scope: preservation and bounded development of existing SLAIF Asset Reservation, including the
 selected M-INTERNET-UX-PILOT development target (A-15); real Internet exposure remains human D2.
@@ -95,7 +95,7 @@ UNPROVEN until a fresh ICA at the exact merged revision.
 
 **SAR-040 / Shared authentication and API abuse control:** Bound ordinary AND administration login and unauthenticated/invalid-bearer and authenticated API traffic with generous legitimate-agent throughput; configurable rates coordinated across processes (no multiplied per-process in-memory bounds); trusted-client identity, expiry/cleanup, safe failure; no permanent account lockout; stable machine-readable API errors, owner privacy, CSRF, idempotency preserved; multi-process negative proof; proxy read/idle/body bounds.
 
-**SAR-041 / Default fresh-install policy:** Fresh initialization auto-creates effective active global fallback policy `default` (asset NULL, horizon 7 days by START, max 2880 minutes, no operating-hour window, lead 0, cutoff 0, purpose optional) with clear defaults for other required fields; idempotent, atomic, upgrade-safe, unique active-global, real booking succeeds, dry-upgrade predictable; existing operator policies incl. deliberate inactive configuration preserved, no silent overwrite or reactivation; manual policy creation on normal fresh install disallowed; required caps visible/documented.
+**SAR-041 / Default fresh-install policy:** Run initialize_default_policy after migrate: atomic audited active global `default` (asset NULL; duration1..2880min; START horizon7d; no hours; lead/cutoff0; purpose optional; upcoming50/overlap8 per principal across assets/tokens; overlap counts intersecting blocking records). Fresh booking works; repeats/races unique; any existing policy including inactive/specific prevents writes/reactivation/audit. Empty-upgrade init explicit; no migration/startup grant or manual fresh-policy step. Caps visible/documented; staff mutations unchanged; audit rollback tested.
 
 **SAR-042 / Public product entry:** Anonymous landing with product identity, obvious Login and Administration actions, no private data; Administration enters the administration login; role navigation without redirect loops; login excludes invalid/inactive/service-account identities.
 

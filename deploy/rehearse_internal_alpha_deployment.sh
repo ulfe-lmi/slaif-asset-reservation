@@ -650,6 +650,9 @@ run_one_shot() {
 log "applying migrations"
 run_one_shot migrate --noinput
 
+log "initializing default reservation policy"
+run_one_shot initialize_default_policy
+
 log "validating sanitized bootstrap import"
 run_one_shot import_bootstrap_assets --input data/bootstrap/assets.yaml
 

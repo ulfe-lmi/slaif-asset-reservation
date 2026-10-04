@@ -97,6 +97,14 @@ Behavior:
 - server-side validation is authoritative;
 - show local and absolute time clearly;
 - explain min/max duration and horizon;
+- fresh installs provide the `default` global fallback policy with these
+  explicit defaults: minimum 1 minute, maximum 2880 minutes (48 hours /
+  2 days), 7-day horizon by reservation START, zero lead and cancellation
+  cutoff, purpose optional, no operating-hour window, and per principal
+  (across assets and that principal's API tokens) 50 upcoming reservations
+  with at most 8 existing blocking records intersecting a proposed
+  interval (an overlap count of intersecting records, not a maximum
+  simultaneous-occupancy sweep);
 - on conflict, preserve input and suggest available alternatives where feasible;
 - prevent accidental duplicate submit, but still rely on server correctness;
 - confirmation shows asset, start, end, timezone, and reservation ID.

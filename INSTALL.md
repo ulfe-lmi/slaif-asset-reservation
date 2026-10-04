@@ -225,6 +225,20 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
    This installs the `btree_gist` extension and the
    `reservation_no_overlap_per_asset` exclusion constraint.
 
+   Then initialize the fresh-install default policy, deliberately and
+   immediately after migrations:
+
+   ```bash
+   docker compose -f compose.production.example.yaml run --rm app \
+     python manage.py initialize_default_policy
+   ```
+
+   On a fresh database this creates the active global fallback policy
+   `default` (step 9 documents its values). On a database that already
+   has any policy row it is a no-op: no writes, no audit, no
+   reactivation. Migrations and application startup never run it
+   implicitly.
+
 8. **Run the operational check.**
 
    ```bash
@@ -233,10 +247,20 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
    ```
 
 9. **Configure initial assets and policies.** Import the sanitized bootstrap
-   inventory (dry-run first, then apply), then configure reservation
-   policies through the staff management UI at `/manage/`. Reservations
-   resolve an active policy for the exact asset, its parent machine, or
-   global; a missing or ambiguous policy fails closed.
+   inventory (dry-run first, then apply). A fresh database already has the
+   step 7 initializer's active global fallback policy `default` with these
+   chosen explicit defaults: minimum duration 1 minute; maximum duration
+   2880 minutes (48 hours / 2 days); booking horizon 7 days by reservation
+   START; minimum lead 0; cancellation cutoff 0; purpose optional; no
+   restricted operating-hour window; and, per principal across all assets
+   and that principal's API tokens, up to 50 upcoming reservations with no
+   more than 8 existing blocking records intersecting a proposed interval
+   (an overlap count of intersecting records, not a maximum
+   simultaneous-occupancy sweep). Manual policy creation is no longer a
+   prerequisite for a fresh install. Staff manage all policies through the
+   existing audited services in the staff management UI at `/manage/`.
+   Reservations resolve an active policy for the exact asset, its parent
+   machine, or global; a missing or ambiguous policy fails closed.
 
    ```bash
    docker compose -f compose.production.example.yaml run --rm app \
@@ -463,6 +487,13 @@ operator-owned responsibility; the repository provides no scheduler.
      python manage.py migrate --noinput
    ```
 
+   Upgrades do not initialize or change policies: migrations alone never
+   create the default policy, and existing policy configuration is never
+   touched. An upgraded installation that still has no policy rows may
+   deliberately run the same explicit initializer
+   (`python manage.py initialize_default_policy`); any existing policy
+   configuration makes it a no-op.
+
 6. Restart the application on the new image:
 
    ```bash
@@ -612,7 +643,7 @@ data-retention decision deliberately.
 | `/health/ready` returns 503 | Database unreachable or migrations not applied: check `docker compose -f compose.production.example.yaml ps` and the `db` logs, then run the deliberate migration step (section 5, step 7). |
 | HTTPS redirect or CSRF failures behind the proxy (301 loops, missing secure cookies, CSRF 403) | The trusted-peer list must include the peer the proxy actually presents: `SLAIF_TRUSTED_PROXY_PEERS` needs `127.0.0.1` (in-container probe) and, for a Docker-network proxy, the bridge gateway IP; the proxy must overwrite `X-Forwarded-Proto` from the real connection (steps 2 and 12). `SLAIF_CSRF_TRUSTED_ORIGINS` must be the exact `https://` service origin, and browser POSTs must carry the matching `Origin`. |
 | Underscore header variants (`X_Forwarded_*` etc.) have no effect | Deliberate: Gunicorn runs with `--header-map drop`, so wire headers containing underscores are discarded at the parser and never reach the application; the supported contract uses only the canonical hyphenated names written by the trusted proxy. |
-| No reservation accepted | No unambiguous active policy resolves for the asset (exact asset, parent machine, global) — the system fails closed; configure a policy in `/manage/`. |
+| No reservation accepted | No unambiguous active policy resolves for the asset (exact asset, parent machine, global) — the system fails closed. Fresh installs run `initialize_default_policy` after migrate (section 5, step 7); otherwise configure a policy in `/manage/`. |
 | Backup/restore tools missing in the app container | The application image deliberately contains no PostgreSQL client tools; backups run from the `db` container (section 8), and the `manage.py` wrappers run host-side where a pg client and `DATABASE_URL` are available. |
 
 ### Abuse-control configuration and cleanup

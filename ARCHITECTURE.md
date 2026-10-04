@@ -836,18 +836,22 @@ CSRF and idempotency. Multi-process and negative-path HTTP tests must prove effe
 proxy read/idle/body bounds remain necessary because threads do not prevent arbitrary slow-client
 floods.
 
-A supported fresh initialization path automatically creates an effective active global fallback
-reservation policy named `default`: asset NULL, booking horizon 7 days measured by reservation
-START, maximum duration 2880 minutes (48 hours / 2 days), no restricted operating-hour window,
-minimum lead 0, cancellation cutoff 0, purpose optional. Required unspecified fields use simple
-explicit minimally surprising defaults consistent with existing constraints; strategy sets actual
-values in the initialization objective after semantic inspection. Upcoming/concurrent limits must
-be visible and documented. Initialization must be idempotent and atomic, fresh assets reservable
-subject to policy, existing operator policies (including deliberate inactive configuration)
-preserved, upgrades predictable, no duplicate active-global policy or silent overwrite. It may
-use a migration, safe initializer or bootstrap path; requiring manual policy creation in a normal
-fresh install is disallowed. Tests prove fresh initialization, repetition, configured-upgrade
-preservation and real booking.
+Supported fresh initialization runs `initialize_default_policy` immediately after migrations.
+It atomically creates an active global fallback named `default` only when no policy rows exist:
+asset NULL; minimum duration 1 minute; maximum 2880 minutes (48 hours / 2 days); booking horizon
+7 days by reservation START; minimum lead 0; cancellation cutoff 0; purpose optional; no
+restricted operating-hour window; upcoming limit 50 and proposed-interval overlap limit 8 per
+principal across assets and that principal's tokens. The overlap limit counts existing blocking
+records intersecting the proposed interval, not a maximum simultaneous-occupancy sweep.
+These required caps remain visible and documented. The trusted initializer couples policy and
+policy-created audit atomically with no fabricated account. Repetition/races cannot duplicate
+creation. Any prior policy configuration, including inactive or asset-specific rows, prevents
+initialization changes or audit events: no silent overwrite, reactivation or upgrade entitlement.
+An empty upgraded installation may deliberately run the same explicit initializer; migrations
+and application startup never invoke it implicitly. Fresh assets are immediately reservable
+subject to the initialized policy. Staff retain the existing audited policy-management route.
+Manual policy creation is not a prerequisite on the supported fresh path. Tests prove fresh,
+repeat, configured-upgrade, concurrency, audit rollback and real accepted booking behavior.
 
 Anonymous `/` is a polished public landing with product identity, concise purpose, obvious Login
 AND Administration actions, appropriate locally packaged SLAIF branding, and no asset/user/

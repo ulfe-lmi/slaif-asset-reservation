@@ -306,6 +306,16 @@ SSL redirect because no real reverse proxy or TLS endpoint exists in this local 
 - do not edit previously deployed migrations;
 - record application release and migration state.
 
+Policy initialization is a deliberate operator command, not a migration.
+On the supported fresh path run
+`python manage.py initialize_default_policy` immediately after `migrate`:
+it atomically creates the active global fallback policy `default` only
+when no policy rows exist, couples the `reservation_policy.created` audit
+in the same transaction, and is safe to repeat. Any pre-existing policy
+configuration — active or inactive, global or asset-specific — is
+preserved with no writes and no audit, so upgrades never silently
+initialize or broaden an installation.
+
 ### Backup
 
 Work Order 0008 adds PostgreSQL-native wrappers:
