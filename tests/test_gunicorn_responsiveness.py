@@ -21,6 +21,11 @@ Safety properties:
   children are terminated, force-killed and reaped even when a
   readiness check or an assertion (including a deliberately injected
   one) fails before an explicit stop;
+- log diagnostics are finite: while the server process is still alive,
+  ``log_tail`` returns a bounded marker instead of blocking on the
+  pipe, so a readiness-failure assertion can never be held up by its
+  own failure message and its teardown always runs; after bounded
+  teardown the stopped process's real log tail is readable;
 - unique loopback ports and owned sockets only; no container, global
   signal, or shared-state cleanup.
 
@@ -36,6 +41,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -59,6 +65,21 @@ HOLD_PARTIAL_COUNT = 6
 # its workers/threads block on the missing bytes before probing; without
 # it a probe could run before the blockers occupy the pool (false pass).
 PARTIAL_SETTLE_S = 1.5
+# Bounded liveness probe of the OLD unbounded-read behavior (031-c): a
+# pipe read without EOF cannot return, so a reader still blocked after
+# this wait proves the old failure message would hang the cleanup path.
+OLD_READ_PROBE_S = 0.5
+# Upper bound for the fixed diagnostics: log_tail must return promptly
+# whether the process is alive (bounded marker) or stopped (EOF tail).
+LOG_TAIL_PROMPT_MS = 500.0
+# Budget for the full forced readiness-failure path: assertion message
+# plus the bounded graceful/forced teardown and the orphan audit.
+READINESS_FAILURE_PATH_MS = 15_000.0
+# Returned by log_tail while the server process is still running.
+LIVE_LOG_MARKER = (
+    "log tail unavailable: gunicorn still running; "
+    "bounded marker, full log readable after bounded teardown"
+)
 
 
 def _free_port() -> int:
@@ -228,6 +249,16 @@ class GunicornServer:
         return self._orphans
 
     def log_tail(self) -> str:
+        """Bounded log tail; finite even while the server process is alive.
+
+        A ``stdout.read`` on a live process blocks until EOF, which would
+        hold up an assertion message and its ``finally`` teardown (031-c).
+        While the process is alive we return a bounded marker instead;
+        after bounded teardown the pipe has reached EOF and the real tail
+        (e.g. a stopped startup failure) is read.
+        """
+        if self.proc.poll() is None:
+            return LIVE_LOG_MARKER
         try:
             tail = self.proc.stdout.read().splitlines()[-8:]
         except Exception:  # pragma: no cover - stream already consumed
@@ -494,3 +525,82 @@ def test_gthread_cleanup_survives_injected_failure() -> None:
             sock.close()
         server.stop()  # idempotent; also covers readiness failure above
     assert orphans == 0, f"orphan gunicorn children after injected-failure cleanup: {orphans}"
+
+
+def test_readiness_failure_diagnostics_bounded_while_server_alive() -> None:
+    """A readiness failure with the server still alive must not block cleanup.
+
+    Regression closed in 031-c: the readiness-failure assertion message
+    evaluated ``log_tail()``, which performed an unbounded ``stdout.read``
+    on the still-alive process; that read blocks until EOF, so the
+    assertion could not raise and its ``finally`` teardown could not run.
+    The forced readiness result is fixture injection only: the gunicorn
+    process, worker and loopback port are real. Sensitivity of the old
+    behavior is demonstrated on the live process through an owned daemon
+    reader thread with bounded coordination, joined after bounded
+    teardown, so this test can neither hang nor leave the thread behind.
+    This is a fixture-safety test: it complements, not replaces, the real
+    six-socket sync negative controls and the gthread positives.
+    """
+    server = GunicornServer(["--workers", "1", "--threads", "2"], label="cleanup-live")
+    orphans: int | None = None
+    try:
+        assert server.wait_ready(), f"server not ready; log tail:\n{server.log_tail()}"
+
+        # Sensitivity probe of the OLD behavior: an unbounded stdout.read
+        # on the live process must still be blocked after the bounded
+        # wait (the strategy-observed fault shape).
+        old_read: dict[str, object] = {}
+
+        def _old_behavior_read() -> None:
+            try:
+                old_read["result"] = server.proc.stdout.read()
+            except Exception:
+                old_read["result"] = None
+
+        reader = threading.Thread(target=_old_behavior_read, name="oap-031c-old-read", daemon=True)
+        reader.start()
+        time.sleep(OLD_READ_PROBE_S)
+        assert reader.is_alive(), (
+            "sensitivity check failed: the old unbounded read unexpectedly "
+            "returned while the owned gunicorn is alive"
+        )
+
+        # The fixed diagnostics are finite while the process is alive...
+        started = time.monotonic()
+        live_tail = server.log_tail()
+        live_ms = (time.monotonic() - started) * 1000.0
+        assert live_ms < LOG_TAIL_PROMPT_MS, f"live log_tail not prompt: {live_ms:.1f}ms"
+        assert live_tail == LIVE_LOG_MARKER, (
+            f"live log_tail must return the bounded marker, got: {live_tail!r}"
+        )
+
+        # ...and the real readiness-failure path (forced result, real
+        # process) completes through the same message/assert/finally
+        # shape within the bounded teardown budget.
+        server.wait_ready = lambda: False  # fixture injection; server stays alive
+        started = time.monotonic()
+        with pytest.raises(AssertionError, match="server not ready"):
+            try:
+                assert server.wait_ready(), f"server not ready; log tail:\n{server.log_tail()}"
+            finally:
+                orphans = server.stop()
+        failure_path_ms = (time.monotonic() - started) * 1000.0
+        assert failure_path_ms < READINESS_FAILURE_PATH_MS, (
+            f"readiness-failure path not bounded: {failure_path_ms:.1f}ms"
+        )
+
+        # Bounded teardown delivered EOF: the old read must finish now, and
+        # no owned thread, socket or child may remain.
+        reader.join(timeout=READINESS_DEADLINE_S)
+        assert not reader.is_alive(), "old-read probe thread survived bounded teardown"
+        assert orphans == 0, f"orphan gunicorn children after readiness failure: {orphans}"
+
+        # Diagnostics remain bounded and readable after the stop.
+        started = time.monotonic()
+        stopped_tail = server.log_tail()
+        stopped_ms = (time.monotonic() - started) * 1000.0
+        assert stopped_ms < LOG_TAIL_PROMPT_MS, f"stopped log_tail not prompt: {stopped_ms:.1f}ms"
+        assert isinstance(stopped_tail, str)
+    finally:
+        server.stop()  # idempotent; also covers any failure of this test itself
