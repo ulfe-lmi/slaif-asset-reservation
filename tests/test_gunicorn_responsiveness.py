@@ -7,7 +7,8 @@ deployment defaults (Dockerfile CMD, development Compose, production
 Compose example) run the ``gthread`` worker pool, that held idle and
 partial-header clients cannot starve new connections under that
 pool, and that the old sync worker configuration actually starves
-new connections under held idle clients (negative control).
+new connections under held idle and partial-header clients
+(negative control, both held-client shapes).
 
 Safety properties:
 
@@ -16,8 +17,10 @@ Safety properties:
   accidental database contact fails fast instead of reaching a
   foreign database;
 - every server run is a subprocess in its own session with bounded
-  setup/request/shutdown limits; children are terminated, force-killed
-  and reaped even after a failed assertion;
+  setup/request/shutdown limits; the bounded stop is idempotent, and
+  children are terminated, force-killed and reaped even when a
+  readiness check or an assertion (including a deliberately injected
+  one) fails before an explicit stop;
 - unique loopback ports and owned sockets only; no container, global
   signal, or shared-state cleanup.
 
@@ -36,6 +39,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +55,10 @@ SYNC_PROBE_ATTEMPTS = 2
 SYNC_SETTLE_S = 1.5
 HOLD_IDLE_COUNT = 6
 HOLD_PARTIAL_COUNT = 6
+# Bounded settle so the server actually accepts the stalled clients and
+# its workers/threads block on the missing bytes before probing; without
+# it a probe could run before the blockers occupy the pool (false pass).
+PARTIAL_SETTLE_S = 1.5
 
 
 def _free_port() -> int:
@@ -168,6 +176,8 @@ class GunicornServer:
             text=True,
             start_new_session=True,
         )
+        self._stopped = False
+        self._orphans = 0
 
     def wait_ready(self) -> bool:
         deadline = time.monotonic() + READINESS_DEADLINE_S
@@ -181,7 +191,15 @@ class GunicornServer:
         return False
 
     def stop(self) -> int:
-        """Terminate/kill/reap the whole session; return orphan count."""
+        """Terminate/kill/reap the whole session; return the orphan count.
+
+        Idempotent once complete: later calls return the recorded count
+        without touching the session again. ``_stopped`` is set only
+        after the full bounded teardown succeeded, so a ``finally`` chain
+        that observes a mid-teardown failure can retry the teardown.
+        """
+        if self._stopped:
+            return self._orphans
         try:
             os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
         except (ProcessLookupError, PermissionError):
@@ -194,7 +212,7 @@ class GunicornServer:
             except (ProcessLookupError, PermissionError):
                 pass
             self.proc.wait(timeout=10)
-        orphans = 0
+        self._orphans = 0
         marker = f"--bind {BIND}:{self.port}"
         for pid in os.listdir("/proc"):
             if not pid.isdigit():
@@ -205,8 +223,9 @@ class GunicornServer:
             except OSError:
                 continue
             if marker in cmdline and int(pid) != self.proc.pid:
-                orphans += 1
-        return orphans
+                self._orphans += 1
+        self._stopped = True
+        return self._orphans
 
     def log_tail(self) -> str:
         try:
@@ -346,6 +365,12 @@ def test_gthread_serves_promptly_with_partial_header_clients() -> None:
 
         for _ in range(HOLD_PARTIAL_COUNT):
             partial.append(_open_idle_client(server.port, send_partial=True))
+        time.sleep(PARTIAL_SETTLE_S)  # pool threads accept and stall on the header reads
+
+        states = [_held_state(sock) for sock in partial]
+        assert all(state == "held-open" for state in states), (
+            f"partial clients not held before probing: {states}"
+        )
 
         for path in PROBE_PATHS:
             status, ms, note = _get(server.port, path, read_timeout_s=3.0)
@@ -353,21 +378,35 @@ def test_gthread_serves_promptly_with_partial_header_clients() -> None:
                 f"probe {path} while {len(partial)} partial-header clients held: "
                 f"{status} {ms:.1f}ms ({note})"
             )
+
+        states = [_held_state(sock) for sock in partial]
+        assert all(state == "held-open" for state in states), (
+            f"partial clients not held after probing: {states}"
+        )
     finally:
         for sock in partial:
             sock.close()
         server.stop()
 
 
-def test_old_sync_configuration_starves_new_connections() -> None:
+@pytest.mark.parametrize(
+    "send_partial",
+    [False, True],
+    ids=["silent-idle", "partial-header"],
+)
+def test_old_sync_configuration_starves_new_connections(send_partial: bool) -> None:
     """Negative control: the old sync 3-worker config must starve probes.
 
-    A test that only opens sockets could falsely pass; this launches the
-    real old configuration (sync pool, 3 workers) and expects held idle
-    clients to make bounded probe attempts time out, then expects prompt
-    recovery once the blockers close.
+    Runs for both held-client shapes: silent idle connections (workers
+    blocked on the first request read) and partial-header connections
+    (workers blocked inside the header block). A test that only opens
+    sockets could falsely pass; this launches the real old configuration
+    (sync pool, 3 workers) and expects held clients to make bounded probe
+    attempts time out on both endpoints, then expects prompt recovery
+    once the blockers close.
     """
-    server = GunicornServer(["--workers", "3"], label="sync-3")
+    label = "sync-3-partial" if send_partial else "sync-3-idle"
+    server = GunicornServer(["--workers", "3"], label=label)
     held: list[socket.socket] = []
     try:
         _require_ready(server)
@@ -376,8 +415,8 @@ def test_old_sync_configuration_starves_new_connections() -> None:
             assert status == 200, f"warm {path}: {status} ({note})"
 
         for _ in range(HOLD_IDLE_COUNT):
-            held.append(_open_idle_client(server.port, send_partial=False))
-        time.sleep(SYNC_SETTLE_S)  # workers accept and start blocking reads
+            held.append(_open_idle_client(server.port, send_partial=send_partial))
+        time.sleep(SYNC_SETTLE_S)  # workers accept and block on the stalled reads
 
         for path in PROBE_PATHS:
             for attempt in range(SYNC_PROBE_ATTEMPTS):
@@ -406,7 +445,12 @@ def test_old_sync_configuration_starves_new_connections() -> None:
 
 
 def test_gthread_shutdown_cleans_children_on_failure() -> None:
-    """Shutdown must reap the whole server session even after a failure."""
+    """Shutdown must reap the whole server session even after a failure.
+
+    The stop lives in ``finally``: a readiness failure or a failed
+    assertion before the explicit stop must still terminate, force-kill
+    and reap the owned session instead of leaking its children.
+    """
     server = GunicornServer(["--workers", "2", "--threads", "4"], label="cleanup")
     held: list[socket.socket] = []
     try:
@@ -419,3 +463,34 @@ def test_gthread_shutdown_cleans_children_on_failure() -> None:
     finally:
         for sock in held:
             sock.close()
+        server.stop()  # idempotent; completes teardown when an earlier step failed
+
+
+def test_gthread_cleanup_survives_injected_failure() -> None:
+    """A deliberate failure inside the protected region still reaps the session.
+
+    Regression closed in 031-b: the 031-a cleanup test only stopped the
+    server on the happy path. Here the assertion is injected inside the
+    try region, the ``finally`` must execute the bounded teardown, and
+    the session audit must show no matching gunicorn children left. The
+    outer ``finally`` stops the server too (idempotent), so this test
+    cannot leak children on its own failure either.
+    """
+    server = GunicornServer(["--workers", "2", "--threads", "4"], label="cleanup-inject")
+    held: list[socket.socket] = []
+    orphans: int | None = None
+    try:
+        assert server.wait_ready(), f"server not ready; log tail:\n{server.log_tail()}"
+        held.append(_open_idle_client(server.port, send_partial=True))
+        held.append(_open_idle_client(server.port, send_partial=True))
+        time.sleep(0.5)  # let the pool threads block on the header reads
+        with pytest.raises(AssertionError, match="injected protected-region failure"):
+            try:
+                raise AssertionError("injected protected-region failure")
+            finally:
+                orphans = server.stop()
+    finally:
+        for sock in held:
+            sock.close()
+        server.stop()  # idempotent; also covers readiness failure above
+    assert orphans == 0, f"orphan gunicorn children after injected-failure cleanup: {orphans}"
