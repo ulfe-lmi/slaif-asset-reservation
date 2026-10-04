@@ -1,10 +1,20 @@
 # ARCHITECTURE-for-agents — executor projection
 
-Source: root ARCHITECTURE.md, initial SHA-256 `9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4`.
-Scope: preservation and bounded development of existing SLAIF Asset Reservation. Not independent architecture or approval.
-Normal coding reads this file, not the full source. A genuine gap goes to strategy for a bounded correction/excerpt.
+Source: root ARCHITECTURE.md, 2026-10-04 edition (A-01..A-15, SAR-001..SAR-047); current
+full-source SHA-256 `06dd0f50e778b9843e2a709caa0ae1f0c97f48baee726f4e3a1397cc6a198d8c`. Initial projection source SHA-256
+`9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4` is historical provenance.
+Scope: preservation and bounded development of existing SLAIF Asset Reservation, including the
+selected M-INTERNET-UX-PILOT development target (A-15); real Internet exposure remains human D2.
+SAR-039..SAR-047 rows carry their executor-relevant conditions directly; root A-15 is reference
+only (not a mandatory read). Not independent architecture or approval. Normal coding reads this
+file, not the full source. A genuine gap goes to strategy for a bounded correction/excerpt.
 
-Existing baseline: private ulfe-lmi/slaif-asset-reservation; main observed 1fcc2c91d793556a91711365abef562604b62f84; WO0001–0013 already complete. Python3.13/Django5.2/DRF3.16/PostgreSQL17; preserve uv.lock. Current conversion is governance only.
+Baseline (historical, 2026-09): private ulfe-lmi/slaif-asset-reservation; WO0001–0013 complete;
+main at the original projection observed 1fcc2c91d793556a91711365abef562604b62f84, and at this
+projection observed 3abe17d026d7ebfe402426afd89e30cdc6924f61 (merged PR62).
+Python3.13/Django5.2/DRF (source >=3.16,<3.18; lock authoritative, resolves 3.17.2)/PostgreSQL17;
+preserve uv.lock. SAR-001..SAR-038 are stable; SAR-039..SAR-047 are new A-15 facets, initially
+UNPROVEN until a fresh ICA at the exact merged revision.
 
 **SAR-001 / One reservation authority:** Humans and authenticated software agents share scheduling records and authoritative domain operations. Do not introduce parallel booking logic.
 
@@ -81,7 +91,25 @@ Existing baseline: private ulfe-lmi/slaif-asset-reservation; main observed 1fcc2
 **SAR-037 / Canonical governance and projection:** Maintain canonical PLAN/ARCHITECTURE and preserved prior sources; compact coding projections are coverage-mapped and hash-bound, not independent law. Preserve security/reporting constraints while changing process authority deliberately.
 
 **SAR-038 / Human target and ICA:** Strategic development merge never means release, deployment, physical-resource entitlement beyond product rules or human milestone acceptance. ICA derives from full architecture and exact merged revision with independent context and applicable DHA gates.
+**SAR-039 / Internet HTTPS/proxy boundary:** Public HTTPS endpoint only; Linux amd64; operator Caddy-or-equivalent; private-loopback non-root app; private DB; Gunicorn and DB never direct-Internet. Trust configured proxy peers only; reject attacker-supplied forwarding; normalize client IP/TLS headers. Explicit hosts/CSRF trusted origins; secure cookies; SSL redirect; debug off; safe errors/headers; safe logs; safe health; docs/schema disabled by default, staff-only when enabled; fail-closed secrets; private DB/network. HSTS deliberate opt-in; administration on the same hardened boundary; extra operator restrictions configurable (no LAN assumption).
 
+**SAR-040 / Shared authentication and API abuse control:** Bound ordinary AND administration login and unauthenticated/invalid-bearer and authenticated API traffic with generous legitimate-agent throughput; configurable rates coordinated across processes (no multiplied per-process in-memory bounds); trusted-client identity, expiry/cleanup, safe failure; no permanent account lockout; stable machine-readable API errors, owner privacy, CSRF, idempotency preserved; multi-process negative proof; proxy read/idle/body bounds.
+
+**SAR-041 / Default fresh-install policy:** Fresh initialization auto-creates effective active global fallback policy `default` (asset NULL, horizon 7 days by START, max 2880 minutes, no operating-hour window, lead 0, cutoff 0, purpose optional) with clear defaults for other required fields; idempotent, atomic, upgrade-safe, unique active-global, real booking succeeds, dry-upgrade predictable; existing operator policies incl. deliberate inactive configuration preserved, no silent overwrite or reactivation; manual policy creation on normal fresh install disallowed; required caps visible/documented.
+
+**SAR-042 / Public product entry:** Anonymous landing with product identity, obvious Login and Administration actions, no private data; Administration enters the administration login; role navigation without redirect loops; login excludes invalid/inactive/service-account identities.
+
+**SAR-043 / Browser product identity:** Never visible Django/framework branding on browser surfaces - SLAIF Asset Reservation or SLAIF-branded Administration across titles, headings, breadcrumbs, admin login/index/header, footer and errors; technical imports/docs/dependency names may say Django. Customize administration structurally, not by CSS hiding; protected/read-only admin models stay protected with service-backed mutation explained.
+
+**SAR-044 / Explained accessible forms:** Audit raw filters AND every editable field/non-obvious choice across member/staff/admin; nearby actually-rendered meaningful help with accessible label/aria associations; explain units/effects, horizon START semantics, lead/cutoff, resolution, purpose, DST occurrence relevance, human token scopes, high-impact actions, protected admin editing; no clutter, no weakened validation; humanized duration display, unchanged storage units.
+
+**SAR-045 / Safe operator appearance overrides:** Self-contained defaults plus read-only Docker/no-rebuild branding: primary/compact logo where relevant, favicon where practical, selected images and CSS loaded after defaults; no source fork/image rebuild; no server-side template execution, remote JS, arbitrary file exposure or unsafe mount adoption; safe fallback; documented MIME/path/symlink/size/failure boundaries; default and custom fixtures Playwright tested.
+
+**SAR-046 / SLAIF design and visual qualification:** Design from the CURRENT references slaif.si/doc.slaif.si/edu.slaif.si/trainings; coherent accessible responsive CSS-token system; local official assets where organizationally appropriate, no runtime-critical hotlinking, no unrelated HTML/framework copy. Surface inventory and view/iterate rules are stated in the Selected target qualification clause below.
+
+**SAR-047 / Threaded Gunicorn responsiveness:** Deliberate threaded pool consistently (image/local/production/rehearsal); preserve any foreign fix found, else reproduce the old sync failure before changing configuration; real-server test holds six idle/slow clients while /health/live and login stay bounded; old-sync negative control fails or equivalent sensitivity proof; owned cleanup on failure; documented worker/thread/keepalive rationale; buffering/time-limited HTTPS proxy retained. Predecessor 031-a/PR62 independently reproduced and remediated the baseline on main; evidence indexed, not future work or a new ICA.
+
+**Selected target qualification (A-15):** Real unit/integration tests, PostgreSQL concurrency/rollback, browser HTTP auth/CSRF/privacy, real Gunicorn positive plus old-sync negative, disposable Internet HTTPS proxy, shared abuse controls, production-settings negatives, container/Compose/health, fresh+upgrade policy init, default/custom branding; standard five exact-head checks plus links/pip audit; exact source/revision/evidence statuses, no mocked-boundary pass. Browser surfaces: anonymous landing/login/admin login; member dashboard/assets list+detail/availability/reservation create+list+detail/profile/token list+create; staff management/policy list+detail+form/blackout list+detail+form/reservations/audit list+detail+export controls; admin index/user list+change/asset list+change/relevant protected models. Real Playwright capture/view/iterate at ~1440/1024/768/390 desktop/mobile, default/custom, with STRATEGIC visual review mandatory; durable semantic assertions on overflow, actions, navigation, focus, labels, associated help, tables, forms, no framework text, no anonymous leak; privacy-safe screenshots (no tokens/passwords/verifiers/CSRF/cookies/raw traces/private data); no brittle pixel CI unless stability proven. Final fresh isolated full-architecture ICA over all SAR-001..SAR-047 at the exact merged revision runs AFTER implementation; the old internal audit is historical; findings require bounded repair then a FULL architecture-to-current-main re-audit, not closed-findings-only review. Human acceptance/release/D2 real resources remain separate. Product-first docs reconcile behavior without ledger or public-production claims.
 
 ## Component routing
 
@@ -98,12 +126,14 @@ Explicit bearer: /api/v1/me/; /api/v1/assets/{id}/availability/ with availabilit
 /{id}/release/ POST/release. Reservation scopes are reservations:<action>. Every mutation needs
 Idempotency-Key; own/guessed/other-user 404 is non-disclosing. Existing /api/v1/assets/ list/detail
 remain staff-session-only. No token-lifecycle/management/admin REST endpoints. /api/schema/ and
-/api/docs/ share private configuration; production never becomes public by convenience.
+/api/docs/ share private configuration, are disabled by default and staff-only when enabled; production never becomes public by convenience.
 
 ## Verification cautions
 
-Source existence is not a pass. Baseline command executes count queries before DB-readiness guard;
-rehearsal/tests use deployment paths and resource cleanup; full isolated restore proof not established.
-Treat these as bounded investigation candidates, not bootstrap feature authorization. Preserve
-ordinary no-past vs documented synthetic historical migration exception; API replay vs legacy source
-idempotency are separate contracts. Root full architecture records rationale, proof gaps and deferrals.
+Source existence is not a pass. At the 2026-09 baseline the command executed count queries
+before the DB-readiness guard and no full isolated restore proof was established; both
+observations are historical, and current evidence belongs to exact reports/tests at the exact
+revision. Rehearsal/tests use deployment paths and resource cleanup. Treat these as bounded
+investigation candidates, not bootstrap feature authorization. Preserve ordinary no-past vs
+documented synthetic historical migration exception; API replay vs legacy source idempotency are
+separate contracts. Root full architecture records rationale, proof gaps and deferrals.
