@@ -1,17 +1,20 @@
 # INTERNET-UX-PROJECTION-REVIEW — A-15 coverage and measured coding context
 
-Orders: 032-a (initial, 2026-10-04) and 032-b (strategic second pass on the same objective,
-2026-10-04; not an ICA). This is a **semantic coverage record and measured context record**
-for the selected Internet/UX target. It is a deliberate semantic comparison, not an ICA, and
-it grants no authority beyond what the orders grant.
+Orders: 032-a (initial, 2026-10-04), 032-b (strategic second pass on the same objective,
+2026-10-04; not an ICA) and 032-c (D0 single-phrase negation correction of the SAR-041
+clause, 2026-10-04; not an ICA). This is a **semantic coverage record and measured context
+record** for the selected Internet/UX target. It is a deliberate semantic comparison, not
+an ICA, and it grants no authority beyond what the orders grant.
 
 ## 1. Scope of this review
 
 - Canonical source after these orders: root `ARCHITECTURE.md` (2026-10-04 edition),
   SHA-256 `06dd0f50e778b9843e2a709caa0ae1f0c97f48baee726f4e3a1397cc6a198d8c` — unchanged by
   032-b (identity carried from 032-a, not a hash rewrite).
-- Compact projection after 032-b: `ARCHITECTURE-for-agents.md`,
-  SHA-256 of its content at measurement: `09d2157df1a57a312071f818fcb2600bee65abce213aa268f657fb67ab3b3cf3`.
+- Compact projection after 032-c: `ARCHITECTURE-for-agents.md`,
+  SHA-256 of its content at measurement: `26d26dac79043ed6b7b1e2ce4e134c5e6ccd6e9504f41f65339c76672bf59483`.
+- Preceding projection after 032-b (superseded SAR-041 wording; historical):
+  SHA-256 `09d2157df1a57a312071f818fcb2600bee65abce213aa268f657fb67ab3b3cf3`.
 - `PLAN.md` after 032-b: SHA-256
   `b19219e2d727af5a9554e011ba45a786f1bb61f25c001011fc18006cae665d08`.
 - The projection embeds the current full-source SHA-256 identity and preserves the initial
@@ -77,17 +80,18 @@ order and product code:
 |---|---:|---:|
 | `AGENTS.md` | 1058 | 2048 |
 | `oap/coding-instructions/AGENTS.md` | 6403 | 12000 |
-| `ARCHITECTURE-for-agents.md` | 19982 | 20000 |
+| `ARCHITECTURE-for-agents.md` | 19974 | 20000 |
 | `OAP-COMMUNICATION-coding-agent.md` | 4105 | 10000 |
 | `oap/coding-instructions/SECURITY-CORE.md` | 1410 | — |
 | `oap/coding-instructions/TESTING-CORE.md` | 1947 | — |
-| **Total (excluding order/code)** | **34905** | **50000** |
+| **Total (excluding order/code)** | **34897** | **50000** |
 
-Projection alone: 19982 bytes ≤ 20000. Routine read set: 34905 bytes ≤ 50000. Both ceilings
-hold with margin. Conservative wider sum (projection + PLAN.md + this review, all post-032-b
-bytes) also stays under 50000 bytes (47858 bytes). The 032-a
-and 032-b order files themselves are order-scoped, not part of the routine transitive set,
-per the generation-1 convention.
+Projection alone: 19974 bytes ≤ 20000 (measured margin 26 bytes — small, not a large
+margin; further growth will need explicit faithful redistillation, not truncation). Routine
+read set: 34897 bytes ≤ 50000. Conservative wider sum (projection + PLAN.md + this review,
+all post-032-c bytes) also stays under 50000 bytes (49710 bytes). The 032-a, 032-b and
+032-c order files themselves are order-scoped, not part of the routine transitive set, per
+the generation-1 convention.
 
 Tokens: **UNMEASURED** — no qualified tokenizer for the configured model was run; character
 estimates are not presented as exact counts (same convention as generation 1).
@@ -117,3 +121,24 @@ estimates are not presented as exact counts (same convention as generation 1).
   compact clauses are faithful condensations of the A-15 facets — the full facet wording
   remains in root A-15 (reference only) and in this mapping; byte ceilings are measured on
   committed bytes, tokens remain UNMEASURED.
+
+## 6. 032-c correction (superseding note)
+
+- The preceding compact wording of the SAR-041 clause, `no silent overwrite, reactivation
+  supported;`, was incorrect and is superseded by this precise correction: the full
+  architecture's default fresh-install policy requires existing operator policies
+  (including deliberate inactive configuration) to be preserved, so initialization must not
+  silently reactivate operator-inactive booking authority. 032-c replaces that single
+  phrase with `no silent overwrite or reactivation;`. No reactivation feature is added and
+  no future operator workflow is inferred.
+- The 032-b projection hash
+  `09d2157df1a57a312071f818fcb2600bee65abce213aa268f657fb67ab3b3cf3` is preserved above as
+  historical; sections 1 and 4 carry the actual recomputed post-032-c identity and byte
+  measurements. The 032-b review byte figure (12353) differed by 2 bytes from the actually
+  committed review (12355); this record reports the actual committed bytes.
+- Projection byte change: 19982 -> 19974 (-8 bytes) from the one-phrase replacement; every
+  other normative clause is byte-identical (clause-level comparison against the committed
+  pre-032-c bytes). The margin against the 20000-byte ceiling is small, not large; further
+  growth will need explicit faithful redistillation, not truncation.
+- The old semantic mapping and historical records in this file are preserved without
+  renumbering; only the superseded wording, its hash and the byte measurements are amended.
