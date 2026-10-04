@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from slaif_reservation.accounts.tokens import DEVELOPMENT_API_TOKEN_PEPPER
-from slaif_reservation.config.env import postgres_database_from_url
+from slaif_reservation.config.env import env_int_range, postgres_database_from_url
 
 BASE_DIR = Path(__file__).resolve().parents[4]
 
@@ -41,6 +41,7 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "slaif_reservation.config.abuse.AbuseControlMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -140,3 +141,29 @@ LOGGING = {
 
 def apply_database_url(database_url: str) -> None:
     DATABASES["default"] = postgres_database_from_url(database_url)
+
+
+_login_window = env_int_range("SLAIF_LOGIN_WINDOW_SECONDS", default=300, minimum=1, maximum=86400)
+_api_window = env_int_range("SLAIF_API_WINDOW_SECONDS", default=60, minimum=1, maximum=86400)
+ABUSE_RATES = {
+    "login_ip": (
+        env_int_range("SLAIF_LOGIN_IP_LIMIT", default=30, minimum=1, maximum=1000000),
+        _login_window,
+    ),
+    "login_identity": (
+        env_int_range("SLAIF_LOGIN_IDENTITY_LIMIT", default=10, minimum=1, maximum=1000000),
+        _login_window,
+    ),
+    "api_ip": (
+        env_int_range("SLAIF_API_IP_LIMIT", default=1200, minimum=1, maximum=1000000),
+        _api_window,
+    ),
+    "api_owner": (
+        env_int_range("SLAIF_API_OWNER_LIMIT", default=600, minimum=1, maximum=1000000),
+        _api_window,
+    ),
+    "api_token": (
+        env_int_range("SLAIF_API_TOKEN_LIMIT", default=300, minimum=1, maximum=1000000),
+        _api_window,
+    ),
+}

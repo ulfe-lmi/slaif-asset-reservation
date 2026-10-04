@@ -133,7 +133,7 @@ def postgres_database_from_url(url: str) -> dict[str, str | int | dict[str, str]
     if parsed.port:
         config["PORT"] = parsed.port
 
-    options = {key: value for key, value in parse_qsl(parsed.query)}
+    options = {"connect_timeout": "5"} | {key: value for key, value in parse_qsl(parsed.query)}
     if options:
         config["OPTIONS"] = options
 

@@ -102,7 +102,7 @@ class MeAPIView(BearerAPIView):
     required_scopes: tuple[str, ...] = ()
 
     @extend_schema(
-        responses=MeSerializer,
+        responses={200: MeSerializer, 429: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT},
         operation_id="api_v1_me_retrieve",
         description="Bearer-token-authenticated principal and token context.",
     )
@@ -133,7 +133,7 @@ class AvailabilityAPIView(BearerAPIView):
     required_scopes = ("availability:read",)
 
     @extend_schema(
-        responses=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT, 429: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT},
         operation_id="api_v1_asset_availability_retrieve",
         parameters=[
             OpenApiParameter("date", str, OpenApiParameter.QUERY),
@@ -195,7 +195,7 @@ class ReservationListCreateAPIView(BearerAPIView):
         super().check_permissions(request)
 
     @extend_schema(
-        responses=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT, 429: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT},
         operation_id="api_v1_reservation_list",
         parameters=[
             OpenApiParameter("asset", str, OpenApiParameter.QUERY),
@@ -227,7 +227,7 @@ class ReservationListCreateAPIView(BearerAPIView):
 
     @extend_schema(
         request=ReservationCreateSerializer,
-        responses=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT, 429: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT},
         operation_id="api_v1_reservation_create",
         parameters=[
             OpenApiParameter("Idempotency-Key", str, OpenApiParameter.HEADER, required=True),
@@ -305,7 +305,7 @@ class ReservationDetailAPIView(BearerAPIView):
     required_scopes = ("reservations:read",)
 
     @extend_schema(
-        responses=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT, 429: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT},
         operation_id="api_v1_reservation_retrieve",
         description="Retrieve one owned reservation by opaque UUID.",
     )
@@ -324,7 +324,7 @@ class ReservationCancelAPIView(BearerAPIView):
 
     @extend_schema(
         request=ReservationCancelSerializer,
-        responses=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT, 429: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT},
         operation_id="api_v1_reservation_cancel",
         parameters=[
             OpenApiParameter("Idempotency-Key", str, OpenApiParameter.HEADER, required=True),
@@ -379,7 +379,7 @@ class ReservationReleaseAPIView(BearerAPIView):
 
     @extend_schema(
         request=EmptyMutationSerializer,
-        responses=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT, 429: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT},
         operation_id="api_v1_reservation_release",
         parameters=[
             OpenApiParameter("Idempotency-Key", str, OpenApiParameter.HEADER, required=True),

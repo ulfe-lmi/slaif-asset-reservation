@@ -76,11 +76,12 @@ Production settings must include, as applicable:
 
 Local-auth password reset/email workflows must not reveal whether an account exists.
 
-Work Order 0004 implements local session login for administrator-created accounts only. The login
-form uses email identity, denies inactive users and `is_service_account=true` users with the same
-generic failure, preserves Django CSRF/session protections, and exposes logout only as POST. Login
-rate limiting is not implemented in Django in this slice and must be supplied by a future
-authentication hardening work order or trusted reverse-proxy policy before public deployment.
+Human login uses administrator-created email accounts, denies inactive and
+service accounts with a generic failure, preserves CSRF/session protections,
+and exposes logout only as POST. Member and Administration attempts share
+source and identity budgets in PostgreSQL; API budgets also cover invalid
+bearer traffic and valid account/token traffic. See the shared budget contract
+below for rates, temporary denials and cleanup.
 If an already-authenticated browser session later belongs to a service account or inactive user, the
 member UI clears that session and terminates at the login page rather than looping through member
 routes.
@@ -386,3 +387,12 @@ The project may not claim production readiness until:
 - dependency/security scans are reviewed;
 - incident and token-rotation runbooks exist;
 - a human security/release decision is recorded.
+
+## Shared login and API abuse budgets
+
+Member and Administration login attempts share PostgreSQL-backed source and
+normalized-identity budgets. API traffic is bounded before authentication and
+valid tokens additionally share account/token budgets. Counters coordinate
+across workers, use pseudonymous HMAC keys, expire and fail closed. No permanent
+account lockout is applied. See [the abuse-control contract](decisions/0016-shared-abuse-controls.md)
+for allowances, fixed-window bursts, shared-NAT tradeoffs and cleanup.

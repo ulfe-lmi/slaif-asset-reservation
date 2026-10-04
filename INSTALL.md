@@ -553,7 +553,8 @@ docker compose -f compose.production.example.yaml restart app
   synthetic-fixture only and human-supervised.
 - No production monitoring stack or alert routing; the operator owns proxy,
   health, database, and backup monitoring, and scheduled off-host backup.
-- No API rate limiting or throttling, and no login throttling.
+- Login and API abuse budgets use shared PostgreSQL counters. They do not
+  replace perimeter protection against distributed or volumetric attacks.
 - Shared privileged PostgreSQL role: the application, migrations, and
   backups all run as the same database role (`slaif`, a superuser under the
   Compose defaults). Role separation is a known operational limitation.
@@ -613,3 +614,15 @@ data-retention decision deliberately.
 | Underscore header variants (`X_Forwarded_*` etc.) have no effect | Deliberate: Gunicorn runs with `--header-map drop`, so wire headers containing underscores are discarded at the parser and never reach the application; the supported contract uses only the canonical hyphenated names written by the trusted proxy. |
 | No reservation accepted | No unambiguous active policy resolves for the asset (exact asset, parent machine, global) — the system fails closed; configure a policy in `/manage/`. |
 | Backup/restore tools missing in the app container | The application image deliberately contains no PostgreSQL client tools; backups run from the `db` container (section 8), and the `manage.py` wrappers run host-side where a pg client and `DATABASE_URL` are available. |
+
+### Abuse-control configuration and cleanup
+
+The production example supplies positive shared login/API budgets. See
+[the allowances and tradeoffs](docs/decisions/0016-shared-abuse-controls.md)
+before changing them for a shared NAT or agent integration. Counter expiry
+does not permanently lock an account. Inspect expiry with
+`python manage.py purge_expired_abuse_buckets`; add `--apply --batch-size 1000`
+for bounded removal. Run inside the configured application container like
+other maintenance commands. No periodic cleanup job is installed; bounded
+opportunistic cleanup also runs. Database connection timeouts default to five
+seconds and production requires a positive value no greater than thirty.

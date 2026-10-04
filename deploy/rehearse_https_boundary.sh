@@ -1237,7 +1237,7 @@ echo "$ready_body" | grep -qiE 'psycopg|operationalerror|connection refused|data
   && fail "dead-db-ready-details"
 ok "dead-db-boundary"
 
-# Production 500 response and logging through TLS, using the identical
+# Production fail-closed 503 response and logging through TLS, using the identical
 # proxy contract and a non-root/read-only app pointed at its own closed
 # database port. No production crash endpoint is introduced.
 error_port="$(free_port)"
@@ -1269,10 +1269,10 @@ PYAUTH
 chmod 600 "$work/error-curl.conf"
 for _ in $(seq 1 60); do
   error_status="$(curl -sS --cacert "$work/cert.pem"     --resolve "${HOSTNAME_SYNTHETIC}:${error_port}:127.0.0.1"     --config "$work/error-curl.conf" -H 'Accept: application/json'     --max-time 3 -o "$work/error-body" -w '%{http_code}'     "https://${HOSTNAME_SYNTHETIC}:${error_port}/api/v1/me/" 2>/dev/null || true)"
-  [ "$error_status" = "500" ] && break
+  [ "$error_status" = "503" ] && break
   sleep 0.1
 done
-[ "$error_status" = "500" ] || fail "production-error-status"
+[ "$error_status" = "503" ] || fail "production-error-status"
 python3 - "$work/error-curl.conf" "$work/error-body" "$dead_cid" "$work/error.out" <<'PYERRORSAFE' || fail "production-error-privacy"
 import re
 import subprocess

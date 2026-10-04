@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, Throttled
 from rest_framework.request import Request
 
 from slaif_reservation.accounts.models import ApiToken
@@ -18,6 +18,12 @@ from slaif_reservation.accounts.tokens import (
     api_token_verifier,
     api_token_verifier_matches,
     parse_bearer_token,
+)
+from slaif_reservation.api.problem import ServiceUnavailable
+from slaif_reservation.config.abuse import (
+    BudgetExceeded,
+    BudgetUnavailable,
+    consume_authenticated,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,6 +90,13 @@ class ApiTokenAuthentication(BaseAuthentication):  # type: ignore[misc]
             raise AuthenticationFailed("Invalid bearer token.")
         if token.expires_at <= timezone.now():
             raise AuthenticationFailed("Invalid bearer token.")
+
+        try:
+            consume_authenticated(owner=str(token.owner_id), token=str(token.id))
+        except BudgetExceeded as error:
+            raise Throttled(wait=error.wait) from None
+        except BudgetUnavailable:
+            raise ServiceUnavailable() from None
 
         try:
             record_api_token_use(token)
