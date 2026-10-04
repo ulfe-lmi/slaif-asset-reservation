@@ -58,4 +58,7 @@ def validate_bootstrap_assets() -> None:
 
 def required_management_commands_present() -> bool:
     commands = get_commands()
-    return "purge_expired_idempotency_records" in commands
+    return all(
+        name in commands
+        for name in ("purge_expired_idempotency_records", "purge_expired_abuse_buckets")
+    )

@@ -648,3 +648,17 @@ The scaffold is intentionally not production-ready. Remaining gaps include:
 - no execution gateway integration;
 - reverse-proxy static-asset strategy for production if WhiteNoise is later replaced;
 - no projects/resource restrictions or delegated resource-manager roles beyond active staff.
+
+### Shared abuse budgets
+
+The service requires migrated PostgreSQL counter storage for login and API
+requests. [Default allowances and configuration](decisions/0016-shared-abuse-controls.md)
+coordinate across Gunicorn workers. Review shared-NAT and agent throughput
+before adjusting the `SLAIF_LOGIN_*` / `SLAIF_API_*_LIMIT` values in the production
+example. A generic429 is temporary; its Retry-After states the remaining window.
+503 on protected operations can indicate unavailable/unmigrated counter storage.
+Liveness is still independent; check readiness, migrations and database health.
+
+Inspect expired counters with `python manage.py purge_expired_abuse_buckets`.
+Add `--apply --batch-size 1000` for bounded deletion. The service also performs
+bounded opportunistic cleanup. No periodic operator job is installed.

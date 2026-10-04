@@ -20,6 +20,8 @@ Include:
 - no production secrets in the repository or coding-agent runtime;
 - scoped, expiring, revocable API tokens stored only as one-way verifiers;
 - secure sessions and CSRF protection for human users;
+- shared, expiring PostgreSQL budgets for member/admin login and API traffic,
+  including invalid bearer attempts and authenticated account/token limits;
 - object-level authorization for every asset and reservation action;
 - database-enforced reservation conflict prevention;
 - append-only audit evidence for privileged and mutating actions;

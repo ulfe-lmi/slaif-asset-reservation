@@ -101,6 +101,7 @@ class ProductionGunicornServer(GunicornServer):
         *,
         bind_host: str = BIND,
         allowed_hosts: str = "127.0.0.1",
+        database_url: str = DEAD_DATABASE_URL,
     ) -> None:
         self._bind_host = bind_host
         self.port = _free_port()
@@ -109,7 +110,7 @@ class ProductionGunicornServer(GunicornServer):
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "PYTHONPATH": str(REPO_ROOT / "src"),
             "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.production",
-            "DATABASE_URL": DEAD_DATABASE_URL,
+            "DATABASE_URL": database_url,
             "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
             "SLAIF_ALLOWED_HOSTS": allowed_hosts,
             "SLAIF_CSRF_TRUSTED_ORIGINS": "https://127.0.0.1",
@@ -629,18 +630,41 @@ def test_gunicorn_access_log_omits_request_target_and_query() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.django_db(transaction=True)
 def test_oversized_post_is_bounded_and_pool_stays_responsive() -> None:
     # Small/large controls with a valid CSRF token prove the oversized
     # rejection happens at the actual body limit, not by an early 403
     # (missing CSRF before body parsing) or a 301 redirect false pass.
-    server = ProductionGunicornServer(_shipped_production_args(), "oversized-post", LOOPBACK_PEERS)
+    from urllib.parse import quote
+
+    from django.db import connection
+
+    db = connection.settings_dict
+    database_url = (
+        "postgres://"
+        + quote(str(db["USER"]), safe="")
+        + ":"
+        + quote(str(db["PASSWORD"]), safe="")
+        + "@"
+        + str(db["HOST"])
+        + ":"
+        + str(db["PORT"])
+        + "/"
+        + str(db["NAME"])
+    )
+    server = ProductionGunicornServer(
+        _shipped_production_args(),
+        "oversized-post",
+        LOOPBACK_PEERS,
+        database_url=database_url,
+    )
     try:
         _ready(server)
         csrf_cookie = _fetch_csrf_cookie(server.port)
 
         # Small control: valid CSRF and a small body must pass CSRF and
-        # body parsing and reach the view. With the dead database the
-        # invalid login form re-renders (200) without touching the DB.
+        # body parsing and reach the view. The owned migrated database
+        # supplies shared counters; an empty login form re-renders200.
         small_status, small_ms, small_note = _send_multipart_post(
             server.port, csrf_cookie=csrf_cookie, field_size=1024
         )

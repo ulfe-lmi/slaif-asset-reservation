@@ -11,6 +11,7 @@ from django.test import override_settings
 from slaif_reservation.accounts.models import User
 
 
+@pytest.mark.django_db
 def test_api_v1_namespace_exists(client) -> None:
     response = client.get("/api/v1/")
 
@@ -77,6 +78,9 @@ def test_openapi_schema_generation_succeeds(tmp_path: Path) -> None:
         for parameter in parsed_schema["paths"]["/api/v1/reservations/"]["post"]["parameters"]
     }
     assert {"Idempotency-Key", "X-Request-ID"} <= create_parameters
+    create_responses = parsed_schema["paths"]["/api/v1/reservations/"]["post"]["responses"]
+    assert {"201", "429", "503"} <= set(create_responses)
+    assert "200" not in create_responses
     assert "/api/v1/tokens/" not in parsed_schema["paths"]
     assert "/api/v1/reservations/{reservation_id}/cancel/" in parsed_schema["paths"]
 
@@ -122,6 +126,7 @@ def test_swagger_ui_uses_local_sidecar_static_assets(settings) -> None:
     assert finders.find("drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js")
 
 
+@pytest.mark.django_db
 def test_token_lifecycle_routes_are_not_exposed_as_api(client) -> None:
     root_response = client.get("/api/v1/")
     assert root_response.status_code == 200

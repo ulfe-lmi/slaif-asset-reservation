@@ -50,3 +50,14 @@ class IdempotencyRecord(models.Model):
 
     def __str__(self) -> str:
         return f"{self.action}:{self.idempotency_key}"
+
+
+class AbuseBucket(models.Model):
+    """Expiring shared security counter; keys are scoped HMAC digests."""
+
+    key = models.CharField(primary_key=True, max_length=64)
+    count = models.PositiveIntegerField()
+    expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "api_abuse_bucket"

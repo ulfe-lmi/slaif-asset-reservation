@@ -187,3 +187,12 @@ Name commands/revision/counts/duration measured if available, exact failures/blo
 what was NOT RUN. Do not sum overlapping focused/full suites as additional unique coverage. The
 historical419-test report is not a current measurement. M-CONVERSION and local-pilot ICA use full
 architecture matrices with actual evidence and independent provenance; no test count grants release.
+
+Shared abuse controls: `tests/test_abuse_controls.py` exercises atomic real-PG
+contention, bounded locked-row failure, expiry/cleanup and adapter behavior.
+`tests/test_abuse_http.py` launches the production application with real
+Gunicorn workers and the shipped TLS proxy. It proves worker-independent
+allowances, forwarded-header spoof resistance, shared member/admin identity
+limits, valid logins, multiple-token account budgets and safe DB failure.
+Fixtures use owned ports, short-lived per-client certificates and explicit
+synthetic environments; no production data or global trust-store changes.

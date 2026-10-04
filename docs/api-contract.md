@@ -228,3 +228,14 @@ Other-user or guessed UUIDs return non-disclosing `404 reservation_not_found`.
 - service-account/admin token issuance;
 - API throttling;
 - execution gateway integration.
+
+## Abuse limits and retry
+
+API traffic has shared source, authenticated-account and token budgets.
+Defaults are1,200/600/300 requests per minute respectively; the account budget
+covers all its tokens. A blocked request returns429 `rate_limited`, `Retry-After`,
+`Cache-Control: no-store` and the normal correlation fields. Wait before retrying
+and retain the same idempotency key for a mutation retry. Security-counter
+failure returns503 `service_unavailable`; it does not accept the mutation.
+These controls also bound invalid or missing bearer attempts. See
+[the shared budget contract](decisions/0016-shared-abuse-controls.md).

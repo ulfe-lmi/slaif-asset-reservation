@@ -46,6 +46,17 @@ if not CSRF_TRUSTED_ORIGINS:
     raise ImproperlyConfigured(msg)
 
 apply_database_url(env_required("DATABASE_URL"))
+database_options = DATABASES["default"].get("OPTIONS", {})  # noqa: F405
+if not isinstance(database_options, dict):
+    raise ImproperlyConfigured("DATABASE_URL options are invalid")
+try:
+    connection_timeout = int(database_options.get("connect_timeout", "5"))
+except (ValueError, TypeError):
+    raise ImproperlyConfigured(
+        "DATABASE_URL connect_timeout must be between 1 and 30 seconds"
+    ) from None
+if not 1 <= connection_timeout <= 30:
+    raise ImproperlyConfigured("DATABASE_URL connect_timeout must be between 1 and 30 seconds")
 
 SECURE_SSL_REDIRECT = env_bool("SLAIF_SECURE_SSL_REDIRECT", default=True)
 SESSION_COOKIE_SECURE = True

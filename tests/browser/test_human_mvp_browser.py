@@ -304,6 +304,7 @@ def test_browser_api_token_create_once_revoke_and_owner_boundary(
     assert "Copy this token now" in content
 
     page.get_by_role("link", name="Back to API tokens").click()
+    page.get_by_role("heading", name="API tokens", exact=True).wait_for()
     list_content = page.content()
     assert "Browser token" in list_content
     assert token.display_prefix in list_content

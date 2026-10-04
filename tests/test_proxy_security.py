@@ -570,6 +570,7 @@ def test_injected_500_is_bare_and_safe_in_logs(client, monkeypatch, caplog) -> N
         assert "Traceback (most recent call last)" not in output
 
 
+@pytest.mark.django_db
 def test_unauthorized_api_route_stays_401_with_safe_details(client) -> None:
     response = client.get("/api/v1/me/")
     assert response.status_code == 401

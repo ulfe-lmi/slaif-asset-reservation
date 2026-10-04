@@ -12,6 +12,7 @@ from rest_framework.exceptions import (
     NotAuthenticated,
     NotFound,
     PermissionDenied,
+    Throttled,
     ValidationError,
 )
 from rest_framework.request import Request
@@ -72,8 +73,30 @@ class IdempotencyConflict(APIException):  # type: ignore[misc]
     default_code = "idempotency_conflict"
 
 
+class ServiceUnavailable(APIException):  # type: ignore[misc]
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = "Service temporarily unavailable."
+    default_code = "service_unavailable"
+
+
 def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response | None:
     request = context.get("request")
+    if isinstance(exc, (Throttled, ServiceUnavailable)):
+        limited = isinstance(exc, Throttled)
+        response = problem_response(
+            request=request,
+            status_code=429 if limited else 503,
+            code="rate_limited" if limited else "service_unavailable",
+            detail="Too many requests. Retry later."
+            if limited
+            else "Service temporarily unavailable.",
+        )
+        response["Cache-Control"] = "no-store"
+        if isinstance(exc, Throttled):
+            import math
+
+            response["Retry-After"] = str(max(1, math.ceil(exc.wait or 1)))
+        return response
     if isinstance(exc, NotAuthenticated):
         return problem_response(
             request=request,

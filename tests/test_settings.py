@@ -701,3 +701,19 @@ def test_uppercase_http_origin_cannot_bypass_production_https_requirement() -> N
     )
     assert result.returncode != 0
     assert "must be https origins" in result.stderr
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "invalid", "1000001"])
+def test_abuse_rate_configuration_cannot_disable_or_overflow_production_limits(value: str) -> None:
+    result = run_django_setup(production_settings_env() | {"SLAIF_LOGIN_IP_LIMIT": value})
+    assert result.returncode != 0
+    assert "SLAIF_LOGIN_IP_LIMIT" in result.stderr
+
+
+@pytest.mark.parametrize("timeout", ["0", "-1", "31", "invalid"])
+def test_production_database_connection_wait_is_bounded(timeout: str) -> None:
+    env = production_settings_env()
+    env["DATABASE_URL"] += "?connect_timeout=" + timeout
+    result = run_django_setup(env)
+    assert result.returncode != 0
+    assert "connect_timeout must be between" in result.stderr
