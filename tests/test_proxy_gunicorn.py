@@ -87,7 +87,10 @@ class ProductionGunicornServer(GunicornServer):
 
     Same ownership and bounded-teardown contract as ``GunicornServer``;
     only the WSGI environment differs (production settings module plus a
-    synthetic SLAIF_* environment) and the bind host may be non-loopback.
+    synthetic SLAIF_* environment). Every call site in this suite binds
+    loopback only (127.0.0.1); the untrusted-peer negatives use a client
+    socket bound to 127.0.0.2, so no listener is ever non-loopback and no
+    external or private host is probed.
     """
 
     def __init__(
