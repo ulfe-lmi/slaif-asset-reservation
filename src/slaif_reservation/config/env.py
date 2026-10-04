@@ -159,6 +159,8 @@ def validate_trusted_proxy_entry(raw_value: str) -> PeerNetwork:
     point-to-point pairs. Broad ranges (private LAN blocks, 0.0.0.0/0, ::/0)
     would let any host in the range impersonate the proxy.
     """
+    if "%" in raw_value:
+        raise ImproperlyConfigured("SLAIF_TRUSTED_PROXY_PEERS must not include scoped addresses")
     try:
         network = ipaddress.ip_network(raw_value, strict=True)
     except ValueError as exc:
@@ -217,6 +219,8 @@ def validate_allowed_host_entry(entry: str) -> str:
     if not value:
         msg = "SLAIF_ALLOWED_HOSTS entries must be non-empty"
         raise ImproperlyConfigured(msg)
+    if "%" in value:
+        raise ImproperlyConfigured("SLAIF_ALLOWED_HOSTS must not include scoped addresses")
     if any(ch.isspace() for ch in value):
         msg = "SLAIF_ALLOWED_HOSTS entries must be bare hosts without whitespace"
         raise ImproperlyConfigured(msg)
@@ -278,17 +282,35 @@ def validate_csrf_origin(origin: str) -> str:
     Raises ImproperlyConfigured for anything that is not a bare origin: no
     userinfo, path, query or fragment, and no credentials in the URL.
     """
-    parsed = urlparse(origin)
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in origin):
+        raise ImproperlyConfigured("SLAIF_CSRF_TRUSTED_ORIGINS must not include whitespace")
+    try:
+        parsed = urlparse(origin)
+        port = parsed.port
+    except ValueError:
+        raise ImproperlyConfigured(
+            "SLAIF_CSRF_TRUSTED_ORIGINS must use valid hosts and ports"
+        ) from None
     if parsed.scheme not in {"http", "https"}:
         msg = "SLAIF_CSRF_TRUSTED_ORIGINS entries must be http or https origins"
         raise ImproperlyConfigured(msg)
     if not parsed.hostname:
         msg = "SLAIF_CSRF_TRUSTED_ORIGINS entries must include a host"
         raise ImproperlyConfigured(msg)
+    if parsed.netloc.endswith(":") or port == 0:
+        raise ImproperlyConfigured("SLAIF_CSRF_TRUSTED_ORIGINS must use valid hosts and ports")
+    try:
+        host = validate_allowed_host_entry(parsed.hostname)
+    except ImproperlyConfigured:
+        raise ImproperlyConfigured(
+            "SLAIF_CSRF_TRUSTED_ORIGINS must use explicit valid hosts"
+        ) from None
     if parsed.username or parsed.password:
         msg = "SLAIF_CSRF_TRUSTED_ORIGINS entries must not include credentials"
         raise ImproperlyConfigured(msg)
     if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
         msg = "SLAIF_CSRF_TRUSTED_ORIGINS entries must be bare origins"
         raise ImproperlyConfigured(msg)
-    return origin
+    # Canonical scheme closes case-based bypasses of production's HTTPS gate.
+    suffix = f":{port}" if port is not None else ""
+    return f"{parsed.scheme}://{host}{suffix}"

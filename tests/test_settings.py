@@ -16,6 +16,7 @@ from slaif_reservation.config.env import (
     env_non_negative_int,
     postgres_database_from_url,
     validate_allowed_host_entry,
+    validate_csrf_origin,
 )
 
 TEST_PRODUCTION_API_TOKEN_PEPPER = "valid-production-test-api-token-pepper-32-bytes"
@@ -674,3 +675,29 @@ def test_production_settings_accept_in_contract_hsts_combination() -> None:
     }
     result = run_django_setup(production_settings_env() | extra)
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://*.example.test",
+        "https://.example.test",
+        "https://example.test:abc",
+        "https://example.test:99999",
+        "https://example.test:0",
+        "https://example.test:",
+        "https://[fe80::1%zone]",
+        "https://exa\nmple.test",
+    ],
+)
+def test_csrf_origin_rejects_wildcards_invalid_ports_and_scoped_addresses(origin: str) -> None:
+    with pytest.raises(ImproperlyConfigured):
+        validate_csrf_origin(origin)
+
+
+def test_uppercase_http_origin_cannot_bypass_production_https_requirement() -> None:
+    result = run_django_setup(
+        production_settings_env() | {"SLAIF_CSRF_TRUSTED_ORIGINS": "HTTP://example.test"}
+    )
+    assert result.returncode != 0
+    assert "must be https origins" in result.stderr
