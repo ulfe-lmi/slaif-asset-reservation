@@ -1,17 +1,19 @@
 # INTERNET-UX-PROJECTION-REVIEW — A-15 coverage and measured coding context
 
-Order: 032-a (2026-10-04). This is a **semantic coverage record and measured context record** for
-the selected Internet/UX target. It is a deliberate semantic comparison, not an ICA, and it
-grants no authority beyond what the order grants.
+Orders: 032-a (initial, 2026-10-04) and 032-b (strategic second pass on the same objective,
+2026-10-04; not an ICA). This is a **semantic coverage record and measured context record**
+for the selected Internet/UX target. It is a deliberate semantic comparison, not an ICA, and
+it grants no authority beyond what the orders grant.
 
 ## 1. Scope of this review
 
-- Canonical source after this order: root `ARCHITECTURE.md` (2026-10-04 edition),
-  SHA-256 `06dd0f50e778b9843e2a709caa0ae1f0c97f48baee726f4e3a1397cc6a198d8c`.
-- Compact projection after this order: `ARCHITECTURE-for-agents.md`,
-  SHA-256 of its content at measurement: `1b271b2fa41c57126d7e47e6ec4f6155e07dd7e2bbc873fc0227a16476227175`.
-- `PLAN.md` after this order: SHA-256
-  `c39f3f82b8493f751cb57388b46e4f61e1be1c82be1c9613ec09c3715634d0fc`.
+- Canonical source after these orders: root `ARCHITECTURE.md` (2026-10-04 edition),
+  SHA-256 `06dd0f50e778b9843e2a709caa0ae1f0c97f48baee726f4e3a1397cc6a198d8c` — unchanged by
+  032-b (identity carried from 032-a, not a hash rewrite).
+- Compact projection after 032-b: `ARCHITECTURE-for-agents.md`,
+  SHA-256 of its content at measurement: `09d2157df1a57a312071f818fcb2600bee65abce213aa268f657fb67ab3b3cf3`.
+- `PLAN.md` after 032-b: SHA-256
+  `b19219e2d727af5a9554e011ba45a786f1bb61f25c001011fc18006cae665d08`.
 - The projection embeds the current full-source SHA-256 identity and preserves the initial
   projection source SHA-256 (`9e7c60e4...`) as historical provenance.
 - The generation-1 context budget record is preserved unchanged at
@@ -33,15 +35,19 @@ grants no authority beyond what the order grants.
 | Safe operator appearance overrides: self-contained defaults; read-only Docker/no-rebuild branding (logo/favicon/images/CSS after defaults); no source fork/image rebuild; no server-side template execution, remote JS, arbitrary file exposure or unsafe mount adoption; documented MIME/path/symlink/size/failure boundaries; default and custom fixtures Playwright tested | SAR-045 | `SAR-045 / Safe operator appearance overrides` |
 | SLAIF design and visual qualification: current reference inspection (slaif.si/doc.slaif.si/edu.slaif.si/trainings); coherent accessible responsive CSS-token system; fixtures at ~1440/1024/768/390 default/custom; durable semantic assertions; no brittle pixel snapshots unless stable; privacy-safe screenshots; strategy visual iteration | SAR-046 | `SAR-046 / SLAIF design and visual qualification` |
 | Threaded Gunicorn responsiveness: deliberate threaded pool consistently; six held idle/slow clients with bounded health/login response; old-sync negative control failing or equivalent sensitivity proof; owned cleanup on failure; documented worker/thread/keepalive rationale; buffering/time-limited HTTPS proxy retained; predecessor 031-a/PR62 gthread baseline observed (indexed, not ICA) | SAR-047 | `SAR-047 / Threaded Gunicorn responsiveness` |
-| Qualification and human gate: real unit/integration, PostgreSQL concurrency/rollback, browser auth/CSRF/privacy, Gunicorn six-client regression, disposable Internet-shaped HTTPS proxy, production-settings negatives, container/config/health, fresh+upgrade policy init, default/custom branding; real Playwright capture/view/iterate; standard five exact-head checks + links/pip audit; final fresh isolated ICA over SAR-001–SAR-047 at exact merged revision; old internal-pilot ICA cannot qualify this target; human owns acceptance/release/real exposure/DNS/TLS/firewall/identity/secrets; development evidence may present one exact revision to D2, never deploy | A-15 final paragraph; SAR-038 (governance facet) | Header scope line ("real Internet exposure remains human D2"; "initially UNPROVEN until a fresh ICA") |
+| Qualification and human gate: real unit/integration, PostgreSQL concurrency/rollback, browser HTTP auth/CSRF/privacy, real Gunicorn positive plus old-sync negative, disposable Internet-shaped HTTPS proxy, shared abuse controls, production-settings negatives, container/Compose/health, fresh+upgrade policy init, default/custom branding; full browser-surface inventory; real Playwright capture/view/iterate at ~1440/1024/768/390 desktop/mobile default/custom with mandatory STRATEGIC visual review; durable semantic assertions; privacy-safe screenshots; standard five exact-head checks + links/pip audit; exact source/revision/evidence statuses, no mocked-boundary pass; final fresh isolated full-architecture ICA over SAR-001–SAR-047 at exact merged revision AFTER implementation; old internal audit historical; repair then FULL architecture-to-current-main re-audit; human owns acceptance/release/real exposure/DNS/TLS/firewall/identity/secrets; development evidence may present one exact revision to D2, never deploy | A-15 final paragraph; SAR-038 (governance facet) | `Selected target qualification (A-15)` clause (added by 032-b); the header scope line is a classification, not the verification clause |
 
 Coverage statement: every normative paragraph of root A-15 maps to at least one stable
 requirement ID above, and every new ID (SAR-039–SAR-047) appears as a compact clause in the
-projection. The original 38 projection clauses were preserved byte-identical; the projection's
-API-boundaries section gained only the A-15 "disabled by default, staff-only when enabled"
-clause for `/api/schema/` and `/api/docs/`.
+projection. 032-b strengthened the SAR-039–SAR-047 clauses with their explicit facet
+conditions, added the `Selected target qualification (A-15)` clause carrying the
+verification scope, browser-surface inventory and ICA sequence directly, and removed the
+repeated per-row filler (the header classification applies to all new rows). The original 38
+projection clauses remain byte-identical; the projection's API-boundaries section still
+carries only the A-15 "disabled by default, staff-only when enabled" clause for
+`/api/schema/` and `/api/docs/`.
 
-## 3. Strategy-only decisions (explicit; not decided by this round)
+## 3. Strategy-only decisions (explicit; properly scoped future D0 decisions, each decided only when its objective is strategy-issued)
 
 1. Actual values of the default policy's other required fields — set by strategy in the
    initialization objective after semantic inspection (A-15 policy paragraph).
@@ -55,8 +61,9 @@ clause for `/api/schema/` and `/api/docs/`.
    iterations when quality is poor (A-15 qualification paragraph).
 6. Issuance, ordering, base and PR mode of every future development order in the PLAN P-06
    draft sequence (all DRAFT UNTIL STRATEGIC RECONCILIATION; no PR/SHA exists).
-7. Whether the merged 031-a gthread baseline is treated as the "foreign fix" to preserve or as
-   the observed baseline to build on, when the runtime objective is issued.
+7. (Resolved by 032-b, superseding the 032-a open question) Bounded search of the repository
+   found no foreign Gunicorn fix; the old sync starvation was independently reproduced and
+   remediated by 031-a/PR62, merged on main. Preserve any foreign fix if later found.
 8. Human-only (not strategy): milestone acceptance, release, real Internet exposure,
    DNS/TLS/firewall, identity, secrets and private data (D2).
 
@@ -70,15 +77,17 @@ order and product code:
 |---|---:|---:|
 | `AGENTS.md` | 1058 | 2048 |
 | `oap/coding-instructions/AGENTS.md` | 6403 | 12000 |
-| `ARCHITECTURE-for-agents.md` | 17328 | 20000 |
+| `ARCHITECTURE-for-agents.md` | 19982 | 20000 |
 | `OAP-COMMUNICATION-coding-agent.md` | 4105 | 10000 |
 | `oap/coding-instructions/SECURITY-CORE.md` | 1410 | — |
 | `oap/coding-instructions/TESTING-CORE.md` | 1947 | — |
-| **Total (excluding order/code)** | **32251** | **50000** |
+| **Total (excluding order/code)** | **34905** | **50000** |
 
-Projection alone: 17328 bytes ≤ 20000. Read set: 32251 bytes ≤ 50000. Both ceilings hold with
-margin. The 032-a order file itself (22034 bytes) is order-scoped, not part of the routine
-transitive set, per the generation-1 convention.
+Projection alone: 19982 bytes ≤ 20000. Routine read set: 34905 bytes ≤ 50000. Both ceilings
+hold with margin. Conservative wider sum (projection + PLAN.md + this review, all post-032-b
+bytes) also stays under 50000 bytes (47858 bytes). The 032-a
+and 032-b order files themselves are order-scoped, not part of the routine transitive set,
+per the generation-1 convention.
 
 Tokens: **UNMEASURED** — no qualified tokenizer for the configured model was run; character
 estimates are not presented as exact counts (same convention as generation 1).
@@ -90,9 +99,21 @@ estimates are not presented as exact counts (same convention as generation 1).
 - Semantic comparison (clause-by-clause against root A-14/A-15) was performed deliberately; the
   38 original clauses are byte-identical to the pre-order projection. This is not an ICA and
   certifies nothing at runtime.
-- No hidden mandatory read of full architecture, PLAN or history is introduced by this order:
-  the routine read set is exactly the table above plus the exact active order when one exists.
+- No hidden mandatory read of full architecture, PLAN or history is introduced by these
+  orders: the routine read set is exactly the table above plus the exact active order when one
+  exists; root A-15 is reference-only for coding.
 - No new framework, harness or test platform was introduced; no product, runtime, test,
   dependency, migration or archived byte changed.
 - All SAR-039–SAR-047 rows are initially UNPROVEN; they are selected-target obligations, not
   implemented controls, and remain so until a fresh isolated ICA at the exact merged revision.
+- 032-b (strategic second pass, not an ICA): the SAR-039–SAR-047 clauses now state their
+  explicit facet conditions; the qualification facet maps to the new `Selected target
+  qualification (A-15)` clause instead of a header-only classification; the PLAN sequence row
+  is corrected (runtime delivered by PR62, not backlog; architecture-contract slice
+  documentation-only; the proxy row owns deployment configuration in a future order); the
+  M-LOCAL milestone is recorded as historical/superseded, not queued replay. The canonical
+  full-source SHA-256 is unchanged from 032-a; the projection was recompiled by clause-level
+  replacement so the 38 original clauses stay byte-identical. Semantic limitations: the
+  compact clauses are faithful condensations of the A-15 facets — the full facet wording
+  remains in root A-15 (reference only) and in this mapping; byte ceilings are measured on
+  committed bytes, tokens remain UNMEASURED.

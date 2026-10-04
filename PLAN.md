@@ -123,12 +123,12 @@ and human adoption before any operational canary. This is a pre-activation safet
 full M-CONVERSION closure follows the authorized canary, a fresh exact-merged-revision ICA and human
 milestone judgment. No app behavior change is required for this gate.
 
-**M-LOCAL-PILOT-EVIDENCE:** possible next governed development target, not automatically selected by
-this bootstrap (2026-10-04: the selected development target is M-INTERNET-UX-PILOT, not this
-one; this target remains available for later selection). Prove actual human/agent/management entry paths plus safe deployment/recovery on
-owned disposable infrastructure, repair evidence-backed baseline defects, then architecture-driven
-ICA. Inert drafts are provided so future strategy need not rediscover context. They require explicit
-activation scope and live reconciliation; no product draft runs during bootstrap.
+**M-LOCAL-PILOT-EVIDENCE:** 2026-09 bootstrap target, not automatically selected by that
+bootstrap. Current status (2026-10-04): the old controlled-internal alpha work is implemented
+and audited; report `docs/audit/reports/M-LOCAL-PILOT-EVIDENCE-a9c3133.md` is historical and
+superseded by the selected new target. It is not available as queued replay, and no human
+milestone acceptance is inferred from its audit counts. Its inert drafts remain for strategy
+reference only; later selection would need explicit strategy activation.
 
 **M-INTERNET-UX-PILOT (selected 2026-10-04; development; not complete):** Internet-reachable
 authenticated service through a normal HTTPS endpoint and a friendly SLAIF browser experience, per
@@ -146,14 +146,16 @@ DNS/TLS/firewall, identity, secrets and private data remain human D2; developmen
 present one exact revision to that decision, never deploy it. Development under this milestone
 authorizes none of the M-EXTERNAL-PILOT/M-RELEASE gates below.
 
-Bounded development sequence (future orders DRAFT UNTIL STRATEGIC RECONCILIATION; each future
-order must be strategy-issued with exact scope, base and PR; no PR/SHA is invented here):
+Bounded development sequence (future orders DRAFT UNTIL STRATEGIC RECONCILIATION with live
+authority; each future order must be strategy-issued with exact scope, base and PR; no PR/SHA
+is invented here; code controls remain UNPROVEN until the later fresh ICA; no new feature
+implementation is claimed):
 
 | # | Ordered slice (draft) | Bounded scope derived from A-15 |
 |---|---|---|
-| 1 | runtime | Threaded Gunicorn runtime baseline consistency (image/local/production/rehearsal), six-client negative/positive regressions, safe log/health/operational boundaries (A-15 Gunicorn/log/health facets; SAR-047). |
-| 2 | architecture | Deployment/architecture documentation and configuration for the qualified topology: HTTPS proxy, Compose, allowed hosts/CSRF origins, private docs/schema, fail-closed production settings (A-15 topology facet; SAR-039). |
-| 3 | proxy | Disposable Internet-shaped HTTPS reverse proxy: trusted-peer forwarding normalization, read/idle/body bounds, client IP/TLS header handling (A-15 topology facet; SAR-039). |
+| 1 | runtime | Delivered by merged PR62 (031-a) on main: threaded Gunicorn baseline with regression; not future backlog. Remaining SAR-047 consistency facets (pool across image/local/production/rehearsal, six-client positive plus old-sync negative, cleanup, proxy rationale) are swept in the final qualification line, not re-implemented. |
+| 2 | architecture contract | Documentation-only contract slice (this PR): the selected target recorded in canonical ARCHITECTURE.md, the executor projection and the coverage record. It does NOT authorize deployment/configuration changes. |
+| 3 | proxy + production security | Disposable Internet-shaped HTTPS reverse proxy: trusted-peer forwarding normalization, read/idle/body bounds, client IP/TLS header handling; plus production configuration for the qualified topology: Compose, allowed hosts/CSRF origins, private docs/schema, fail-closed production settings (A-15 topology facet; SAR-039). |
 | 4 | sharedabuse | Shared cross-process rate bounds for member and administration login plus API traffic; configurable rates, trusted-client identity, expiry/cleanup, safe failure, no permanent lockout (A-15 abuse facet; SAR-040). |
 | 5 | defaultpolicy | Supported fresh-initialization path creating the `default` active global fallback policy; idempotent/atomic, upgrade-safe, unique active-global, real booking (A-15 policy facet; SAR-041). |
 | 6 | landing/admin | Anonymous landing with Login and Administration actions, administration login entry, structural SLAIF administration identity, no framework branding (A-15 landing/identity facets; SAR-042, SAR-043). |
