@@ -337,12 +337,20 @@ SLAIF_ALLOWED_HOSTS=127.0.0.1,localhost
 SLAIF_CSRF_TRUSTED_ORIGINS=http://127.0.0.1,http://localhost
 SLAIF_ENABLE_API_DOCS=false
 SLAIF_PUBLIC_API_DOCS=false
+# Deliberate plain-loopback rehearsal choice: this synthetic deployment has
+# no TLS-terminating proxy, so the redirect is off and the origins are
+# http. A real service deployment (deploy/env.production) keeps the
+# redirect on with https origins and the explicit trusted proxy peers.
 SLAIF_SECURE_SSL_REDIRECT=false
 SLAIF_SECURE_HSTS_SECONDS=0
 SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS=false
 SLAIF_SECURE_HSTS_PRELOAD=false
 SLAIF_API_TOKEN_PEPPER=synthetic-rehearsal-api-token-pepper-not-for-deployment-32-bytes
 SLAIF_API_TOKEN_MAX_LIFETIME_DAYS=90
+# In-container healthcheck peer only; the rehearsal smoke probes arrive
+# from the host via the Docker bridge gateway and are treated as direct
+# (untrusted) clients, which is exactly the contract under test.
+SLAIF_TRUSTED_PROXY_PEERS=127.0.0.1
 DATABASE_URL=postgres://slaif:synthetic-rehearsal-postgres-password@db:5432/slaif_reservation
 EOF
 created_env=1

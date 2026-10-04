@@ -19,13 +19,19 @@ The application must not store machine SSH private keys, SmartScheduling credent
 ## 2. Trust boundaries
 
 1. Untrusted browser/network to reverse proxy.
-2. Browser session and CSRF boundary to Django web views.
-3. Bearer-token client to DRF API.
-4. Application process to PostgreSQL.
-5. Administrative user to privileged operations.
-6. CI/Codex execution environment to repository and test services.
-7. Future execution gateway to internal reservation verification.
-8. Backup storage and restore operator.
+2. Reverse proxy to application: only the explicitly configured trusted
+   proxy peers (`SLAIF_TRUSTED_PROXY_PEERS`) may supply
+   `X-Forwarded-Proto`/single-value `X-Forwarded-For`; the proxy must
+   overwrite (never append) those headers, and every other peer is a
+   direct client with all forwarding headers stripped (see
+   `deployment.md` section 8 and ADR 0015).
+3. Browser session and CSRF boundary to Django web views.
+4. Bearer-token client to DRF API.
+5. Application process to PostgreSQL.
+6. Administrative user to privileged operations.
+7. CI/Codex execution environment to repository and test services.
+8. Future execution gateway to internal reservation verification.
+9. Backup storage and restore operator.
 
 ## 3. Primary threats and controls
 
@@ -44,7 +50,7 @@ The application must not store machine SSH private keys, SmartScheduling credent
 | Malicious metadata/XSS | server-side validation, template autoescaping, output encoding, safe Markdown policy if ever added |
 | SQL injection | Django ORM/parameters, no unsafe string SQL, reviewed migrations |
 | Dependency compromise | locked dependencies, minimal production set, Dependabot/automated review when configured, audit in CI |
-| Denial of service | reverse-proxy limits, pagination, bounded queries, API throttling, DB indexes, no expensive anonymous endpoints |
+| Denial of service | reverse-proxy body caps and server-level read/idle deadlines, pagination, bounded queries, API throttling, DB indexes, no expensive anonymous endpoints |
 | Time manipulation | server authoritative clock, aware timestamps, controlled test clock, no client-derived current time |
 | Gateway spoofing, future | separate service credentials, audience restriction, short-lived signed decision or authenticated lookup |
 | Agent scope creep during development | disposable runtime, no production secrets, `AGENTS.md`, branch protection, human merge authority |
@@ -275,7 +281,7 @@ Use structured logs with an allowlist of fields:
 - timestamp;
 - level;
 - request/correlation ID;
-- route name and method;
+- matched route template (never the raw request path) and method;
 - response status and duration;
 - safe principal UUID and token UUID/prefix;
 - domain action and result code;
@@ -311,10 +317,16 @@ Reverse proxy and app must set or support:
 - HTTPS redirects;
 - HSTS after validation;
 - `X-Content-Type-Options: nosniff`;
-- frame-ancestor/Clickjacking protection;
+- frame-ancestor/Clickjacking protection (`X-Frame-Options: DENY`);
 - a Content Security Policy appropriate to local assets;
-- conservative referrer policy;
-- request body and header limits;
+- `Referrer-Policy: strict-origin-when-cross-origin`;
+- request body and header limits (layered edge buffer/cap plus the
+  application's `DATA_UPLOAD_MAX_MEMORY_SIZE`, see `deployment.md`
+  section 8);
+- proxy trust limited to `SLAIF_TRUSTED_PROXY_PEERS` with
+  overwrite-not-append `X-Forwarded-Proto`/`X-Forwarded-For`, all
+  other forwarding stripped, and underscore wire headers dropped at
+  the parser (`--header-map drop`);
 - CORS disabled by default or explicitly allowlisted for approved machine clients; ordinary non-browser agents do not require CORS.
 
 ## 11. Development and CI boundary

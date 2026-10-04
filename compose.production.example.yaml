@@ -35,6 +35,9 @@ services:
       --threads 8
       --keep-alive 5
       --timeout 30
+      --forwarded-allow-ips 127.0.0.1,::1
+      --header-map drop
+      --logger-class slaif_reservation.config.gunicorn.SlaifGunicornLogger
       --access-logfile -
       --error-logfile -
     read_only: true
@@ -42,9 +45,12 @@ services:
       - /tmp
     user: "10001:10001"
     healthcheck:
-      # Production settings set SECURE_SSL_REDIRECT and trust X-Forwarded-Proto;
-      # the header is what makes this same probe correct with or without a real
-      # TLS-terminating reverse proxy (the slim image has no curl).
+      # Production settings set SECURE_SSL_REDIRECT; the probe presents the
+      # 127.0.0.1 peer, so 127.0.0.1 must be listed in
+      # SLAIF_TRUSTED_PROXY_PEERS (INSTALL.md step 2). That is what makes
+      # the X-Forwarded-Proto header keep this same probe correct with or
+      # without a real TLS-terminating reverse proxy (the slim image has no
+      # curl).
       test: ["CMD-SHELL", "python -c 'import urllib.request as u; u.urlopen(u.Request(\"http://127.0.0.1:8000/health/live\", headers={\"X-Forwarded-Proto\": \"https\"}), timeout=5)'"]
       interval: 10s
       timeout: 5s

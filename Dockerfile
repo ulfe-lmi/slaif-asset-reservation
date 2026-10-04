@@ -35,4 +35,4 @@ USER 10001:10001
 
 EXPOSE 8000
 
-CMD ["gunicorn", "slaif_reservation.config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--threads", "8", "--keep-alive", "5", "--timeout", "30"]
+CMD ["gunicorn", "slaif_reservation.config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--threads", "8", "--keep-alive", "5", "--timeout", "30", "--forwarded-allow-ips", "127.0.0.1,::1", "--header-map", "drop", "--logger-class", "slaif_reservation.config.gunicorn.SlaifGunicornLogger"]

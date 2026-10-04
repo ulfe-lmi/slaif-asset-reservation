@@ -35,6 +35,7 @@ def production_settings_env() -> dict[str, str]:
         "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
+        "SLAIF_TRUSTED_PROXY_PEERS": "127.0.0.1,::1",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
         "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
     }
@@ -172,14 +173,7 @@ def test_production_settings_accept_valid_distinct_non_placeholder_secrets() -> 
     ["SLAIF_ALLOWED_HOSTS", "SLAIF_CSRF_TRUSTED_ORIGINS"],
 )
 def test_production_settings_require_hosts_and_csrf_origins(missing_name: str) -> None:
-    env = clean_subprocess_env() | {
-        "DJANGO_SETTINGS_MODULE": "slaif_reservation.config.settings.production",
-        "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
-        "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
-        "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
-        "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
-        "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
-    }
+    env = production_settings_env()
     env.pop(missing_name)
 
     result = subprocess.run(
@@ -339,6 +333,7 @@ def test_production_hsts_defaults_are_safe_and_https_controls_remain_enabled() -
         "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
+        "SLAIF_TRUSTED_PROXY_PEERS": "127.0.0.1,::1",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
         "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
         "SLAIF_PUBLIC_API_DOCS": "true",
@@ -378,6 +373,7 @@ def test_production_hsts_explicit_opt_in_is_supported() -> None:
         "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
+        "SLAIF_TRUSTED_PROXY_PEERS": "127.0.0.1,::1",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
         "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
         "SLAIF_SECURE_HSTS_SECONDS": "31536000",
@@ -416,6 +412,7 @@ def test_production_hsts_rejects_invalid_seconds(value: str) -> None:
         "SLAIF_DJANGO_SECRET_KEY": TEST_PRODUCTION_SECRET_KEY,
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
+        "SLAIF_TRUSTED_PROXY_PEERS": "127.0.0.1,::1",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
         "SLAIF_API_TOKEN_PEPPER": TEST_PRODUCTION_API_TOKEN_PEPPER,
         "SLAIF_SECURE_HSTS_SECONDS": value,
@@ -431,3 +428,129 @@ def test_production_hsts_rejects_invalid_seconds(value: str) -> None:
 
     assert result.returncode != 0
     assert "SLAIF_SECURE_HSTS_SECONDS must be a non-negative integer" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "peers",
+    [
+        "0.0.0.0/0",
+        "::/0",
+        "172.16.0.0/12",
+        "10.0.0.0/8",
+        "192.168.0.0/24",
+        "192.168.0.0/30",
+        "192.168.0.1/33",
+        "not-an-ip",
+    ],
+)
+def test_production_settings_reject_wildcard_or_broad_proxy_trust(peers: str) -> None:
+    env = production_settings_env() | {"SLAIF_TRUSTED_PROXY_PEERS": peers}
+
+    result = run_django_setup(env)
+
+    assert result.returncode != 0
+    assert "SLAIF_TRUSTED_PROXY_PEERS" in result.stderr
+
+
+def test_production_settings_require_trusted_proxy_peers() -> None:
+    env = production_settings_env()
+    env.pop("SLAIF_TRUSTED_PROXY_PEERS")
+
+    result = run_django_setup(env)
+
+    assert result.returncode != 0
+    assert "SLAIF_TRUSTED_PROXY_PEERS is required" in result.stderr
+
+
+def test_production_settings_accept_explicit_host_and_point_to_point_peers() -> None:
+    env = production_settings_env() | {
+        "SLAIF_TRUSTED_PROXY_PEERS": "127.0.0.1,172.17.0.1,172.17.0.2/31,::1"
+    }
+
+    result = run_django_setup(env)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_production_settings_reject_wildcard_allowed_host() -> None:
+    env = production_settings_env() | {"SLAIF_ALLOWED_HOSTS": "*"}
+
+    result = run_django_setup(env)
+
+    assert result.returncode != 0
+    assert "SLAIF_ALLOWED_HOSTS" in result.stderr
+
+
+def test_production_settings_reject_http_origin_while_ssl_redirect_enabled() -> None:
+    env = production_settings_env() | {
+        "SLAIF_CSRF_TRUSTED_ORIGINS": "http://reservation.example.test"
+    }
+
+    result = run_django_setup(env)
+
+    assert result.returncode != 0
+    assert "SLAIF_CSRF_TRUSTED_ORIGINS" in result.stderr
+
+
+def test_production_settings_allow_http_origin_only_without_ssl_redirect() -> None:
+    # The disposable loopback rehearsal uses production settings with the
+    # redirect explicitly disabled; http origins are the consistent pair.
+    env = production_settings_env() | {
+        "SLAIF_SECURE_SSL_REDIRECT": "false",
+        "SLAIF_CSRF_TRUSTED_ORIGINS": "http://127.0.0.1",
+    }
+
+    result = run_django_setup(env)
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://reservation.example.test/path",
+        "https://user:pass@reservation.example.test",
+        "ftp://reservation.example.test",
+        "https://",
+        "https://reservation.example.test?x=1",
+    ],
+)
+def test_production_settings_reject_malformed_csrf_origins(origin: str) -> None:
+    env = production_settings_env() | {"SLAIF_CSRF_TRUSTED_ORIGINS": origin}
+
+    result = run_django_setup(env)
+
+    assert result.returncode != 0
+    assert "SLAIF_CSRF_TRUSTED_ORIGINS" in result.stderr
+
+
+def test_production_settings_do_not_reintroduce_blanket_proxy_header_trust() -> None:
+    env = production_settings_env()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                """
+                import json
+                import django
+                django.setup()
+                from django.conf import settings
+                print(json.dumps({
+                    "proxy_ssl_header": getattr(settings, "SECURE_PROXY_SSL_HEADER", None),
+                    "referrer_policy": settings.SECURE_REFERRER_POLICY,
+                }))
+                """
+            ),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["proxy_ssl_header"] is None
+    assert payload["referrer_policy"] == "strict-origin-when-cross-origin"

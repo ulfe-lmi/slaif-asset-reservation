@@ -9,6 +9,7 @@ import subprocess
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from django.core.management import call_command
@@ -20,7 +21,10 @@ from slaif_reservation.accounts.models import User
 from slaif_reservation.accounts.services import issue_api_token
 from slaif_reservation.api.models import IdempotencyRecord
 from slaif_reservation.config.logging import JsonLogFormatter
-from slaif_reservation.config.middleware import SafeRequestLogMiddleware
+from slaif_reservation.config.middleware import (
+    UNMATCHED_ROUTE,
+    SafeRequestLogMiddleware,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REHEARSAL_SCRIPT = REPO_ROOT / "deploy" / "rehearse_internal_alpha_deployment.sh"
@@ -547,13 +551,16 @@ def test_json_log_formatter_redacts_secret_fields(settings) -> None:
     assert payload["status_code"] == 401
 
 
-def test_request_logging_middleware_emits_safe_fields_without_headers_or_body(caplog) -> None:
+def test_request_logging_middleware_emits_route_template_without_headers_or_body(caplog) -> None:
     request = RequestFactory().post(
         "/api/v1/reservations/",
         data='{"purpose":"private"}',
         content_type="application/json",
         HTTP_AUTHORIZATION="Bearer not-for-logs",
         HTTP_X_REQUEST_ID="2bb51aa8-c66b-4b09-9534-31ac1e17e1d1",
+    )
+    request.resolver_match = SimpleNamespace(  # noqa: S105
+        route="api/v1/reservations/<int:pk>/"
     )
 
     def app(_request):
@@ -566,12 +573,31 @@ def test_request_logging_middleware_emits_safe_fields_without_headers_or_body(ca
 
     assert response.status_code == 202
     [record] = [item for item in caplog.records if item.name == "slaif_reservation.request"]
-    assert record.path == "/api/v1/reservations/"
+    assert record.path == "api/v1/reservations/<int:pk>/"
     assert record.method == "POST"
     assert record.status_code == 202
     assert record.request_id == "2bb51aa8-c66b-4b09-9534-31ac1e17e1d1"
     assert "not-for-logs" not in record.getMessage()
     assert "private" not in record.getMessage()
+
+
+def test_request_logging_middleware_never_logs_raw_unmatched_path(caplog) -> None:
+    request = RequestFactory().get("/%zz-canary-unmatched-path/?probe=PRIVATE-QUERY-VALUE")
+
+    def app(_request):
+        from django.http import JsonResponse
+
+        return JsonResponse({"detail": "not found"}, status=404)
+
+    caplog.set_level(logging.INFO, logger="slaif_reservation.request")
+    response = SafeRequestLogMiddleware(app)(request)
+
+    assert response.status_code == 404
+    [record] = [item for item in caplog.records if item.name == "slaif_reservation.request"]
+    assert record.path == UNMATCHED_ROUTE
+    formatted = JsonLogFormatter().format(record)
+    assert "zz-canary-unmatched-path" not in formatted
+    assert "PRIVATE-QUERY-VALUE" not in formatted
 
 
 @pytest.mark.django_db

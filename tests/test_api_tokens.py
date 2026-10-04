@@ -1046,6 +1046,7 @@ def test_api_token_production_setting_fail_fast() -> None:
         "SLAIF_DJANGO_SECRET_KEY": "production-secret-key-with-enough-length",
         "SLAIF_ALLOWED_HOSTS": "reservation.example.test",
         "SLAIF_CSRF_TRUSTED_ORIGINS": "https://reservation.example.test",
+        "SLAIF_TRUSTED_PROXY_PEERS": "127.0.0.1",
         "DATABASE_URL": "postgres://slaif:slaif@localhost:5432/slaif_reservation",
     }
 

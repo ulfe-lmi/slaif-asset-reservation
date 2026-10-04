@@ -61,6 +61,44 @@ gthread baseline (3 workers, 8 threads, 5 s keep-alive, 30 s timeout); prompt 20
 held idle and while 6 partial-header clients are held; a real old-`sync` negative control in
 which held idle clients make bounded probe attempts time out (regression sensitivity); and
 child cleanup even after failures.
+
+HTTPS/proxy trust-boundary qualification (part of the standard `pytest` run):
+
+```bash
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  tests/test_https_boundary.py -v
+```
+
+`tests/test_https_boundary.py` drives `deploy/rehearse_https_boundary.sh` as
+a bounded subprocess (one module-scoped run per suite, 900 s timeout). The
+script builds an owned, disposable, loopback-only real TLS edge: pinned
+Caddy v2.11.6 in front of the real Gunicorn/Django production stack, with a
+fresh source copy, a uniquely named PostgreSQL 17 container/volume,
+kernel-assigned loopback ports, and a synthetic short-lived certificate that
+only the test clients trust (`--cacert` plus SNI). It inherits no product
+configuration (no `DATABASE_URL`, `TEST_DATABASE_URL`, or repository `.env`),
+refuses name collisions instead of adopting foreign resources, and removes
+its own processes/containers/volumes even on failure. Exit codes: 0 all
+checks passed (`https-boundary=ok`), 1 a check failed or cleanup was
+incomplete, 42 prerequisites missing (pinned Caddy v2.11.6 / openssl / curl
+/ docker) — the wrapper converts 42 into an honest skip, never a fake pass.
+The rehearsal proves: TLS with secure cookies through the real proxy;
+overwrite-not-append forwarding from the trusted peer and forwarding
+stripping from untrusted peers against the real Gunicorn; the layered
+body-size contract (oversized form body → application 400 before the body
+is read; oversized multipart upload → edge 413; oversized body the
+application never reads → bounded and ignored); server-level read/idle
+deadlines cutting stalled header and body reads; response headers;
+malformed-request and Gunicorn parser log privacy; and dead-DB liveness.
+The wrapper additionally asserts that the captured output never carries the
+synthetic database password (sentinel set via
+`SLAIF033A_BOUNDARY_DB_PASSWORD`) and that no owned rehearsal residue
+remains; a dedicated test proves that a foreign container holding the
+rehearsal's owned name is refused and left untouched. Focused suites for
+the same boundary without the full rehearsal: `tests/test_proxy_gunicorn.py`
+(real Gunicorn forwarding, parser, and safe-logger behavior) and
+`tests/test_proxy_security.py` (middleware trust, headers, and log privacy).
+
 The original four CI job names remain quality/test/security/container. Required current-head checks
 must actually succeed. Pending/missing/cancelled/skipped are not success. Separate implementation
 head CI from final report head CI; no future result invented in a report-only commit.
@@ -77,6 +115,7 @@ head CI from final report head CI; no future result invented in a report-only co
 | Synthetic import | test_legacy_import.py; parser/mapping/dry-run/apply/idempotency/stale plan/actual report/privacy |
 | Operations | test_operational_hardening.py/test_settings.py/health suites; failure and real entry points |
 | Readiness helper | test_pilot_readiness_check.py; DB-down/unmigrated/count failure, strict/JSON/read-only, not only row counts |
+| Proxy/TLS trust boundary | test_proxy_gunicorn.py/test_proxy_security.py (real Gunicorn forwarding/spoofing, parser and log privacy); test_https_boundary.py plus deploy/rehearse_https_boundary.sh (owned real-HTTPS rehearsal, pinned Caddy v2.11.6, loopback-only, owned resources) |
 | Browser | tests/browser explicit Chromium; no secret-bearing capture artifacts |
 
 Use current tree to discover exact filenames rather than invent missing paths. A mocked database

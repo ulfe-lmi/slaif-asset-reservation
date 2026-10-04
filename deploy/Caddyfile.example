@@ -1,5 +1,33 @@
+# Supported operator proxy contract (qualified with Caddy v2.11.6,
+# 2026-10-04; see docs/deployment.md section 8 and ADR 0015).
+#
+# Trust boundary:
+# - Caddy terminates TLS and is the ONLY trusted peer of the private app.
+# - It overwrites X-Forwarded-Proto / X-Forwarded-For from the real
+#   connection; the app (SLAIF_TRUSTED_PROXY_PEERS) only honors forwarding
+#   from that peer and ignores everything else, including chains and
+#   underscore/hyphen header variants.
+# - The app must be reachable here at the loopback address only
+#   (127.0.0.1:8000 or the published loopback port).
 {
 	email admin@example.org
+	# Server-level incoming/outgoing deadlines (verified working in
+	# v2.11.6; see docs/deployment.md section 8). read_body_idle cuts a
+	# stalled or trickling request body: 30s of inactivity, or a
+	# sustained rate below 1KiB/s. read_header bounds slow header reads;
+	# idle is the keep-alive connection lifetime. Defaults when omitted:
+	# read_header 60s, read_body_idle 60s, write_idle 60s, idle 5m.
+	# NOTE: the ROUTE-level `timeouts` directive's read/write deadlines
+	# were observed NOT to take effect in v2.11.6 (stalled bodies were
+	# not cut); do not rely on it for protection.
+	servers {
+		timeouts {
+			read_header 60s
+			read_body_idle 30s 1024
+			write_idle 30s
+			idle 5m
+		}
+	}
 }
 
 reservation.example.org {
@@ -11,13 +39,45 @@ reservation.example.org {
 		-Server
 	}
 
+	# Whole-body cap for bodies that downstream handlers actually read
+	# (for example multipart file uploads): once the read passes 10MB the
+	# edge rejects with 413. Note the lazy-proxy limit: a body the
+	# application never reads cannot be measured at the edge. Full-body
+	# rejection for form content types is the application's own
+	# DATA_UPLOAD_MAX_MEMORY_SIZE cap (400, checked before the body is
+	# read); see docs/deployment.md section 8 for the layered contract.
 	request_body {
 		max_size 10MB
 	}
 
+	# No access log by default: a Caddy 2 site emits no access log unless a
+	# `log` directive is defined, which keeps hostile request paths, query
+	# strings and request headers out of the logs. If an access log is
+	# operationally required, configure the JSON logger with field
+	# exclusions (request.uri, request.headers, resp_headers) as described
+	# in docs/deployment.md section 8, and keep it reviewed.
+
 	reverse_proxy 127.0.0.1:8000 {
+		# One-hop normalization from the actual client connection:
+		# overwrite, never append, so the app sees exactly one client.
 		header_up X-Forwarded-Proto {scheme}
-		header_up X-Forwarded-Host {host}
 		header_up X-Forwarded-For {remote_host}
+		# In-memory request buffer bound. This is a MEMORY bound only, and
+		# it MUST stay strictly below the body cap above: Caddy's buffer
+		# reads only up to its limit, so a buffer sized like the cap would
+		# exhaust the cap's counter during buffering and the 413 could
+		# never fire while the buffer is filling. 1MB keeps the footprint
+		# of stalled or oversized clients finite without weakening the cap.
+		request_buffers 1MB
+		transport http {
+			dial_timeout 10s
+			response_header_timeout 30s
+			read_timeout 60s
+			write_timeout 60s
+			# Upstream idle-connection lifetime; must stay below the app's
+			# Gunicorn --keep-alive (5s) so the proxy discards the idle
+			# connection before the app closes it.
+			keepalive 3s
+		}
 	}
 }
