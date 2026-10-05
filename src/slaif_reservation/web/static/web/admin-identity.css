@@ -135,7 +135,7 @@ h1 { font-size: 2.2rem; margin-bottom: 1.4rem; }
 #user-tools { font-size: .8rem; line-height: 1.8; }
 #content { padding: 2rem; }
 div.breadcrumbs { padding: .8rem 2rem; font-size: .92rem; }
-.module { border: 1px solid var(--border-color); border-radius: .8rem; overflow: hidden; background: var(--body-bg); margin-bottom: 1.5rem; }
+.module { border: 1px solid var(--border-color); border-radius: .8rem; overflow: visible; background: var(--body-bg); margin-bottom: 1.5rem; }
 .module h2,.module caption,.inline-group h2 { padding: .8rem 1rem; font-size: 1rem; background: var(--darkened-bg); color: var(--body-loud-color); }
 .module caption a { color: var(--link-fg); }
 #content-main .module { box-shadow: 0 4px 18px rgb(22 48 46 / 4%); }
@@ -190,3 +190,22 @@ input:not([type="submit"]):not([type="checkbox"]):not([type="radio"]),select,tex
 
 .selector button.selector-add, .selector button.selector-remove { color: var(--link-fg); }
 .selector button:disabled { color: var(--body-quiet-color); opacity: .6; }
+
+/* Stack complex forms before the sidebar leaves too little room for two columns. */
+@media (max-width: 1024px) {
+ .aligned .form-row > div { width: auto; max-width: 100%; min-width: 0; box-sizing: border-box; }
+ .aligned .form-row .flex-container { flex-flow: column; max-width: 100%; min-width: 0; }
+ .aligned .form-row .checkbox-row { flex-flow: row; }
+ .aligned label { width: auto; min-width: 0; margin-bottom: .4rem; }
+ form .aligned .form-row div.help, form .aligned p.help { margin-left: 0; padding-left: 0; width: auto; max-width: 100%; overflow-wrap: anywhere; }
+ .aligned .form-row .readonly { min-width: 0; overflow-wrap: anywhere; }
+ .selector { width: 100%; }
+ .selector-available, .selector-chosen { width: 100%; box-sizing: border-box; }
+ .selector select { width: 100%; box-sizing: border-box; }
+ .selector .selector-chooser { display: flex; width: 100%; margin: .5rem 0; justify-content: center; }
+}
+
+.submit-row a.deletelink { color: #fff; }
+
+.submit-row a.closelink, .submit-row a.closelink:hover, .submit-row a.closelink:focus,
+.submit-row a.deletelink:hover, .submit-row a.deletelink:focus { color: #fff; }

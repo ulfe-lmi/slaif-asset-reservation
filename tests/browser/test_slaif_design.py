@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 from pathlib import Path
 
@@ -141,11 +142,14 @@ def login(page: Page, base: str, email: str) -> None:
 
 
 def inspect_surface(page: Page, output_path, name: str, width: int, theme: str) -> None:
+    Path(output_path).mkdir(parents=True, exist_ok=True)
     page.wait_for_function("document.fonts.status === 'loaded'")
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), name
     assert "Django" not in page.locator("body").inner_text(), name
     assert "Django" not in page.title(), name
     assert page.locator("h1").count() > 0, name
+    assert page.evaluate("""() => [...document.querySelectorAll('nav')].every(nav =>
+      nav.querySelectorAll('[aria-current]').length <= 1)"""), name
     # Every declared help relationship must resolve to actual DOM help.
     assert page.evaluate("""() =>
         Array.from(document.querySelectorAll('[aria-describedby]')).every(el =>
@@ -163,7 +167,7 @@ def inspect_surface(page: Page, output_path, name: str, width: int, theme: str) 
       }).reduce((v,x,i) => v + x*[.2126,.7152,.0722][i], 0);
       return [...document.querySelectorAll(
         'h1,h2,h3,label,.help,.choice-help,button,a.button,.nav-toggle,' +
-        '.site-footer span,.site-footer a,a.admin-brand,#changelist-filter a'
+        '.site-footer span,.site-footer a,a.admin-brand,#changelist-filter a,main a'
       )].filter(el => el.checkVisibility({checkVisibilityCSS: true}) && !el.matches(':disabled') &&
           el.getAttribute('aria-disabled') !== 'true' && [...el.childNodes].some(n =>
           n.nodeType === Node.TEXT_NODE && n.textContent.trim())).flatMap(el => {
@@ -199,6 +203,30 @@ def inspect_surface(page: Page, output_path, name: str, width: int, theme: str) 
       return null;
     }""")
     assert focus_failure is None, (name, focus_failure)
+    help_geometry = page.evaluate("""() => [...document.querySelectorAll('.help,.choice-help')]
+      .filter(el => el.checkVisibility({checkVisibilityCSS:true})).map(el => {
+        const box = el.getBoundingClientRect();
+        const parent = el.closest('.module') || el.closest('main') || el.parentElement;
+        const bounds = parent.getBoundingClientRect(), cs = getComputedStyle(el);
+        return {id:el.id, left:box.left, right:box.right, width:box.width,
+          containerLeft:bounds.left, containerRight:bounds.right,
+          scrollWidth:el.scrollWidth, clientWidth:el.clientWidth,
+          display:cs.display, whiteSpace:cs.whiteSpace, marginLeft:cs.marginLeft};
+      })""")
+    Path(f"{output_path}/{theme}-{width}-{name}-help.json").write_text(
+        json.dumps(help_geometry, indent=2) + "\n"
+    )
+    clipped_help = [
+        item
+        for item in help_geometry
+        if item["left"] < item["containerLeft"] - 1
+        or item["right"] > item["containerRight"] + 1
+        or item["scrollWidth"] > item["clientWidth"] + 1
+    ]
+    assert not clipped_help, (name, clipped_help)
+    page.evaluate(
+        "document.querySelectorAll('.table-scroll,.results').forEach(el => el.scrollLeft=0)"
+    )
     # Focus checks can scroll long forms. Capture their intended initial layout,
     # including the sticky administration sidebar, from the top of the document.
     page.evaluate("window.scrollTo(0, 0)")

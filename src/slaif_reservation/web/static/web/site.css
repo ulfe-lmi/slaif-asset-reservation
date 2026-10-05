@@ -393,7 +393,7 @@ h1 { font-size: clamp(2rem, 3vw, 2.65rem); margin: 0 0 1.5rem; }
 h2 { font-size: 1.6rem; margin-top: 2rem; }
 h3 { font-size: 1.25rem; }
 a { text-underline-offset: .2em; }
-a:hover { color: var(--blue); }
+a:hover { color: var(--accent); text-decoration-thickness: 2px; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
 .site-header { background: var(--background); border-bottom: 1px solid var(--border); }
 .site-header-inner { min-height: 5.5rem; gap: 1rem; }
@@ -402,7 +402,7 @@ a:hover { color: var(--blue); }
 .site-header nav { gap: .35rem; }
 .site-header nav > a { border-radius: .5rem; padding: .45rem .55rem; font-weight: 600; font-size: .93rem; text-decoration: none; }
 .site-header nav > a:hover { background: var(--pale-blue); color: #16302e; }
-.site-header nav > a[aria-current="page"] { background: var(--pale-blue); color: #16302e; }
+.site-header nav > a[aria-current] { background: var(--pale-blue); color: #16302e; }
 .nav-form { margin: 0 0 0 .4rem; }
 .nav-form button { background: transparent; color: var(--accent); padding: .4rem .6rem; }
 .nav-cta { border-radius: 2rem !important; padding: .5rem 1rem !important; }
@@ -506,7 +506,7 @@ input,select,textarea { border-color: #6b8a7c; }
 .site-main .button-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .site-main .button-danger:hover { background: #801d23; border-color: #801d23; }
 
-.management-nav a[aria-current="page"] { background: var(--pale-blue); color: #16302e; }
+.management-nav a[aria-current] { background: var(--pale-blue); color: #16302e; }
 
 .site-header .nav-form button { color: var(--accent); }
 

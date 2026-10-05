@@ -19,8 +19,10 @@
   }
   document.querySelectorAll("nav a[href]").forEach(function (link) {
     const path = link.getAttribute("href");
-    if (path === window.location.pathname || (path !== "/" && window.location.pathname.startsWith(path))) {
-      link.setAttribute("aria-current", "page");
+    const exact = path === window.location.pathname;
+    const localOverview = link.closest(".management-nav") && path === "/manage/";
+    if (exact || (path !== "/" && !localOverview && window.location.pathname.startsWith(path))) {
+      link.setAttribute("aria-current", exact ? "page" : "location");
     }
   });
 })();
