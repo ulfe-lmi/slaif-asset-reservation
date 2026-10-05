@@ -202,6 +202,17 @@ class AssetAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
         ("Timestamps", {"fields": ["created_at", "updated_at"]}),
     ]
 
+    def formfield_for_foreignkey(self, db_field: Any, request: HttpRequest, **kwargs: Any) -> Any:
+        field = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == "parent" and field is not None:
+            widget = field.widget
+            # The admin wraps FK widgets (e.g. autocomplete); the rendered
+            # control is the inner widget, so bind help to it.
+            if hasattr(widget, "widget"):
+                widget = widget.widget
+            widget.attrs["aria-describedby"] = "id_parent_helptext"
+        return field
+
     def get_queryset(self, request: HttpRequest) -> QuerySet[Asset]:
         return super().get_queryset(request).select_related("parent").prefetch_related("tags")
 

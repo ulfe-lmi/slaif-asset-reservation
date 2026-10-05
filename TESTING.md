@@ -231,13 +231,18 @@ uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
 
 Same owned-disposable rules as above: never run product tests from the
 valuable checkout; unique owned test database per run. The server suite
-asserts rendered help with each help element bound to its own control's
-`aria-describedby`, human scope labels, humanized policy units (including
-non-round minutes), daylight-saving occurrence semantics (ambiguous
+asserts rendered help bound to each control's own `aria-describedby` (with
+two documented unbound cases, asserted as visible adjacent help: the
+password-choice RadioSelect and the select-filter lists), human scope
+labels, humanized policy units (including non-round minutes and the
+fresh-install default policy rendered through the real initializer, minimum
+1 minute), daylight-saving occurrence semantics (ambiguous
 Automatic rejected, explicit occurrences, nonexistent spring-forward
 times), and admin password-change enable/disable behavior on GET and
-invalid-POST pages; the browser suite checks visible, bound, nearby help at
-1440 and 390 — including every admin surface (login, user add/change,
+invalid-POST pages; the browser suite checks visible, nearby help at
+1440 and 390 — bound where the control carries `aria-describedby`, adjacent
+in the same field container for the two documented unbound cases —
+including every admin surface (login, user add/change,
 password change, group add, asset add/change, tag add) — with full-page
 captures for long admin forms, keyboard access and overflow checks, and
 privacy-safe screenshots (never the one-time token page, no

@@ -86,7 +86,7 @@ def asset(machine: Asset) -> Asset:
 @pytest.fixture
 def default_policy(asset: Asset) -> ReservationPolicy:
     return ReservationPolicy.objects.create(
-        name="guidance-default",
+        name="guidance-custom",
         asset=None,
         active=True,
         min_duration_minutes=30,
@@ -113,7 +113,7 @@ def _assert_no_dangling_aria(html: str) -> None:
 
 def _control_binds_help(html: str, control_id: str, help_id: str) -> None:
     """The control's own element carries aria-describedby naming the help."""
-    tag = re.search(r"<[a-zA-Z][^>]*\bid=" + re.escape(control_id) + r'"[^>]*>', html)
+    tag = re.search(r'<[a-zA-Z][^>]*\bid="' + re.escape(control_id) + r'"[^>]*>', html)
     described = re.search(r'aria-describedby="([^"]*)"', tag.group(0))
     assert described, f"control #{control_id} has no aria-describedby"
     assert help_id in described.group(1).split(), (
@@ -645,6 +645,34 @@ def test_policy_detail_human_units(
 
 
 @pytest.mark.django_db
+def test_fresh_default_policy_presentation_real_initializer(
+    client: Client,
+    staff_user: User,
+) -> None:
+    """Fresh-install default policy presentation uses the real initializer.
+
+    The fresh default minimum is 1 minute (not 30): the 30-minute value in
+    the browser fixtures is a CUSTOM fixture, never the fresh default.
+    """
+    from slaif_reservation.reservations.initialization import initialize_default_policy
+
+    result = initialize_default_policy()
+    assert result.created, result.reason
+    policy = result.policy
+    assert policy is not None
+    assert policy.name == "default"
+    assert policy.min_duration_minutes == 1
+    assert policy.max_duration_minutes == 2880
+    client.force_login(staff_user)
+    html = client.get(f"/manage/policies/{policy.id}/").content.decode()
+    assert "1 to 2880 minutes" in html
+    assert "1 minute - 2 days" in html
+    assert "No lead required (a booking may start right now)." in html
+    assert "Members may cancel up to the start time." in html
+    assert "50 upcoming / 8 overlapping per principal" in html
+
+
+@pytest.mark.django_db
 def test_blackout_form_guidance_and_invalid_post(
     client: Client,
     staff_user: User,
@@ -973,16 +1001,18 @@ def test_admin_user_change_safe_password_status_and_help(
         ("user_permissions", "per-model administration and management access only"),
     ]:
         _assert_guided(html, f"id_{name}_helptext", fragment, control_id=f"id_{name}")
-    # Editable important dates: real help, bound to the split date subwidget.
+    # Editable important dates: real help, bound to the first split
+    # sub-input via the bound-help widget (Django's template only ids
+    # help divs that have a single control id).
     _assert_guided(
         html,
-        "id_last_login_helptext",
+        "id_last_login_0_helptext",
         "Booking and availability logic never reads it",
         control_id="id_last_login_0",
     )
     _assert_guided(
         html,
-        "id_date_joined_helptext",
+        "id_date_joined_0_helptext",
         "the separate created_at timestamp is the immutable product record",
         control_id="id_date_joined_0",
     )
@@ -1047,15 +1077,14 @@ def test_admin_password_change_guidance(
 
     # The dynamically added high-impact choice is explained with the
     # product truth: no alternate human login backend exists here.
-    _assert_guided(
-        html,
-        "id_usable_password_helptext",
-        "This deployment provides no other human login backend",
-        control_id="id_usable_password",
-    )
+    # Django's template gives the RadioSelect help div no id (no single
+    # control id), so assert presence and exact wording, not a binding.
+    assert "This deployment provides no other human login backend" in unescape(html)
+    assert "a disabled user cannot sign in until an administrator sets" in unescape(html)
     assert "If disabled, the current password for this user will be lost." in html
     assert 'id="id_unusable_warning"' in html
     assert "they may still be able to authenticate using other backends" not in html
+    assert 'id="id_usable_password_0"' in html
 
     # Unchanged negative: mismatched passwords are still rejected.
     response = client.post(
@@ -1079,7 +1108,8 @@ def test_admin_password_change_enable_disable_behavior(
     staff_user.save(update_fields=["password"])
     client.force_login(admin_user)
     html = client.get(url).content.decode()
-    assert "enable password-based authentication for this user" in unescape(html)
+    # The template wraps "enable" in <strong>, so match the contiguous part.
+    assert "password-based authentication for this user" in unescape(html)
     assert 'id="id_usable_password"' not in html
     assert "Enable password-based authentication" in html
 
@@ -1098,7 +1128,8 @@ def test_admin_password_change_enable_disable_behavior(
     assert staff_user.check_password("fresh-staff-passw0rd")
 
     # Disabling removes the current password; no alternate backend exists.
-    response = client.post(url, {"usable_password": "false"})
+    # The disable submission must carry the unset-password action.
+    response = client.post(url, {"usable_password": "false", "unset-password": "1"})
     assert response.status_code == 302
     staff_user.refresh_from_db()
     assert not staff_user.has_usable_password()

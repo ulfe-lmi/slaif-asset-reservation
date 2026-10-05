@@ -12,7 +12,13 @@ control, the raw member/staff filter forms, and the one-time-token display.
 Coverage rules: every editable control has either (a) a meaningful label plus
 nearby rendered help with matching IDs and `aria-describedby` (checkbox groups
 use an accessible fieldset with legend), or (b) an explicit self-evident
-justification recorded below. No filler "Enter name" style text.
+justification recorded below. Two inherited admin cases render visible,
+adjacent help WITHOUT an aria binding, and are documented as such: the
+per-user password-change choice (Django's admin template gives a RadioSelect
+help div no id because the widget has no single control id) and the
+select-filter lists (the admin JavaScript replaces the delivered select with
+`*_from`/`*_to` list controls that carry no persistent binding). No filler
+"Enter name" style text.
 Wire values, validation, permissions, admission and crypto are unchanged.
 
 ## 1. Member surfaces (web)
@@ -95,7 +101,7 @@ Wire values, validation, permissions, admission and crypto are unchanged.
 | User change: is_service_account | same | yes | bare | help: machine account, cannot sign in to member site or administration |
 | User change: is_active / is_staff / is_superuser | same | yes | bare | precise flag effects incl. entry follows the active staff flag (not individual permission selections) and superuser does not bypass the active-human/staff admission gate |
 | User change: groups / user_permissions | same | yes (filter_horizontal) | bare | help: per-model site permissions only — NOT project/membership authorization, do not change reservable-asset policy, and do not admit a session by themselves |
-| User password change form | `/admin/accounts/user/<id>/password/` | `SlaifAdminPasswordChangeForm` (subclass) | generic built-in `usable_password` help mentioned SSO/LDAP although no such backend is configured | `usable_password` (added dynamically only while the user has a usable password) carries product help: disabling loses the current password and blocks password sign-in; no alternate human login backend exists; the built-in warning is preserved verbatim and the control gets `aria-describedby`; password1/password2 keep the built-in rule list/confirm help; validators/hashing/conditional field/actions/permissions unchanged |
+| User password change form | `/admin/accounts/user/<id>/password/` | `SlaifAdminPasswordChangeForm` (subclass) | generic built-in `usable_password` help mentioned SSO/LDAP although no such backend is configured | `usable_password` (added dynamically only while the user has a usable password) carries product help: disabling loses the current password and blocks password sign-in; no alternate human login backend exists; the built-in warning is preserved verbatim; the help div is visible and adjacent but intentionally unbound (Django's admin template gives the RadioSelect help div no id — no single control id — so no `aria-describedby` is claimed); password1/password2 keep the built-in rule list/confirm help with their `aria-describedby`; validators/hashing/conditional field/actions/permissions unchanged |
 | Group permissions | `/admin/auth/group/...` | Django `GroupAdmin` | bare multiselect | help: Django site permissions only, not project/membership authorization |
 | AssetTag name / slug / description | `/admin/assets/assettag/...` | yes | bare | help incl. prepopulated slug behavior |
 | Asset parent / slug / name / kind | `/admin/assets/asset/...` | yes | bare | help: only a machine can be a child's parent and a machine itself never has a parent; slug = stable display/search label (must stay unique; current detail/API routes use UUIDs, so a slug change does not change those URLs); kind: only machines take children |
@@ -134,7 +140,10 @@ history.
 - `tests/test_form_guidance.py`: rendered GET + invalid-POST assertions for
   member/management/admin/raw-filter controls (help present, fragment
   accurate, and the control's OWN `aria-describedby` binds the help element —
-  not just any aria on the page); human_duration boundary test (remainder
+  not just any aria on the page — except the two documented unbound cases);
+  fresh-install default-policy presentation asserted through the REAL
+  initializer (minimum 1 minute, not the 30-minute custom browser fixture);
+  human_duration boundary test (remainder
   minutes preserved incl. days); policy detail with non-round minutes;
   ambiguous-Automatic invalid POSTs keep the corrected occurrence help on
   both the member reservation and staff blackout forms; form-level explicit
@@ -146,7 +155,9 @@ history.
   audit filters, and ALL admin surfaces: login, user add/change, password
   change, group add, asset add/change, tag add); the nearby-help helper now
   requires a visible control, a visible help element, the control's own
-  `aria-describedby` binding, and a real shared field container; long admin
+  `aria-describedby` binding (or, for the two documented unbound cases,
+  visible adjacent help inside the same real field container), and a real
+  shared field container; long admin
   forms are captured full-page so below-fold guidance and actions are in the
   evidence; keyboard access, no horizontal overflow; privacy-safe
   screenshots (no tokens/passwords/verifiers/CSRF/cookies/HAR/traces).

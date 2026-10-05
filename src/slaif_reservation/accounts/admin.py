@@ -4,6 +4,7 @@ from typing import Any
 
 from django import forms
 from django.contrib import admin
+from django.contrib.admin.widgets import AdminSplitDateTime
 from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import AdminPasswordChangeForm
@@ -114,6 +115,25 @@ class _SafePasswordStatusWidget(forms.Widget):
         return context
 
 
+class _BoundHelpSplitDateTime(AdminSplitDateTime):
+    """Split date/time widget whose help div keeps a bindable id.
+
+    Django 5.2's admin fieldset template assigns an id to a help div
+    only when the field's ``id_for_label`` yields a single control id.
+    A MultiWidget reports none (its inputs are ``id_<name>_0``/``_1``),
+    so the rendered sub-inputs still carry the automatic
+    ``aria-describedby`` pointing at a help div that never received an
+    id. Reporting the first sub-input id makes the help div
+    ``id_<name>_0_helptext`` and the binding real. No rendering,
+    format or behavior change.
+    """
+
+    def id_for_label(self, id_: Any, index: Any = None) -> str:
+        if index is None and id_:
+            return f"{id_}_0"
+        return super().id_for_label(id_)
+
+
 def _wire_user_field_help(form: Any, names: tuple[str, ...]) -> None:
     for name in names:
         field = form.base_fields.get(name)
@@ -128,10 +148,13 @@ def _wire_user_field_help(form: Any, names: tuple[str, ...]) -> None:
 class SlaifAdminPasswordChangeForm(AdminPasswordChangeForm):  # type: ignore[type-arg]
     """Per-user password change with product-accurate guidance.
 
-    Only the ``usable_password`` help text and its accessibility wiring
-    change. The built-in warning, validators, hashing, the conditional
-    field (present only while the user has a usable password), the
-    submit actions and all admin permissions are inherited unchanged.
+    Only the ``usable_password`` help text changes. The built-in
+    warning, validators, hashing, the conditional field (present only
+    while the user has a usable password), the submit actions and all
+    admin permissions are inherited unchanged. No accessibility wiring
+    is added here: Django's template gives the RadioSelect help div no
+    id (no single control id), so that help is visible and adjacent
+    but intentionally unbound.
     """
 
     # The built-in Django warning is preserved verbatim at the end of the
@@ -148,13 +171,6 @@ class SlaifAdminPasswordChangeForm(AdminPasswordChangeForm):  # type: ignore[typ
         "If disabled, the current password for this user will be lost."
         "</li></ul>"
     )
-
-    def __init__(self, user: Any, *args: Any, **kwargs: Any) -> None:
-        super().__init__(user, *args, **kwargs)
-        if "usable_password" in self.fields:
-            self.fields["usable_password"].widget.attrs["aria-describedby"] = (
-                "id_usable_password_helptext"
-            )
 
 
 @admin.register(User)
@@ -181,7 +197,7 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
         ),
     )
     readonly_fields = ["created_at", "updated_at"]
-    password_change_form = SlaifAdminPasswordChangeForm
+    change_password_form = SlaifAdminPasswordChangeForm
 
     def get_form(
         self,
@@ -223,10 +239,21 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                     "is_superuser",
                     "groups",
                     "user_permissions",
-                    "last_login",
-                    "date_joined",
                 ),
             )
+            # Editable important dates: explain meaning and correction
+            # impact (the product's created_at stays the immutable
+            # record). Their help binds to the first split sub-input
+            # (see _BoundHelpSplitDateTime).
+            for name in ("last_login", "date_joined"):
+                date_field = form.base_fields.get(name)
+                if date_field is None:
+                    continue
+                if not date_field.help_text:
+                    date_field.help_text = _USER_FIELD_HELP[name]
+                widget = _BoundHelpSplitDateTime()
+                widget.attrs["aria-describedby"] = f"id_{name}_0_helptext"
+                date_field.widget = widget
         else:
             if form.base_fields.get("password1"):
                 form.base_fields["password1"].help_text = (
@@ -264,8 +291,10 @@ class GroupAdmin(DjangoGroupAdmin):
                 "and management access). These are NOT project or membership "
                 "authorization and do not change who can reserve assets."
             )
-            kwargs["widget"].attrs["aria-describedby"] = "id_permissions_helptext"
-        return super().formfield_for_manytomany(db_field, request=request, **kwargs)
+        form_field = super().formfield_for_manytomany(db_field, request=request, **kwargs)
+        if db_field.name == "permissions" and form_field is not None:
+            form_field.widget.attrs["aria-describedby"] = "id_permissions_helptext"
+        return form_field
 
 
 @admin.register(ApiToken)

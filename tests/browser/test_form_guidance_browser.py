@@ -79,7 +79,7 @@ def asset(machine: Asset) -> Asset:
 @pytest.fixture
 def default_policy(asset: Asset) -> ReservationPolicy:
     return ReservationPolicy.objects.create(
-        name="guidance-default",
+        name="guidance-custom",
         asset=None,
         active=True,
         min_duration_minutes=30,
@@ -142,6 +142,33 @@ def _assert_help_near_control(page: Page, control_selector: str, help_id: str) -
         [control_selector, help_id],
     )
     assert bound_and_near, f"help #{help_id} is not bound to and near {control_selector}"
+
+
+def _assert_help_near_control_unbound(
+    page: Page, control_selector: str, help_selector: str
+) -> None:
+    """Nearby-help check for fields whose help div Django's admin
+    template does not id (RadioSelect / MultiWidget: no single control
+    id, hence no id on the help div and no aria binding to assert).
+
+    The control exists and is visible; the help element exists, is
+    visible and lives in the same real field container (nearby, not
+    floating at the bottom of the page).
+    """
+    control = page.locator(control_selector)
+    assert control.count() == 1, f"ambiguous or missing control {control_selector}"
+    assert control.first.is_visible(), f"control {control_selector} is not visible"
+    help_el = page.locator(help_selector)
+    assert help_el.count() == 1, f"missing help {help_selector}"
+    assert help_el.first.is_visible(), f"help {help_selector} is not visible"
+    near = page.evaluate(
+        r"""([c, h]) => {
+            const box = c.closest(".field, .filter, .form-row, fieldset");
+            return box !== null && box.contains(h);
+        }""",
+        [control.first.element_handle(), help_el.first.element_handle()],
+    )
+    assert near, f"help {help_selector} is not near {control_selector}"
 
 
 def _keyboard_walk(page: Page, start_selector: str, hops: int) -> list[str]:
@@ -462,23 +489,26 @@ def test_browser_admin_user_forms_guidance(
     _assert_help_near_control(page, "#id_is_service_account", "id_is_service_account_helptext")
     _assert_help_near_control(page, "#id_is_staff", "id_is_staff_helptext")
     _assert_help_near_control(page, "#id_is_superuser", "id_is_superuser_helptext")
-    _assert_help_near_control(page, "#id_groups", "id_groups_helptext")
-    _assert_help_near_control(page, "#id_last_login_0", "id_last_login_helptext")
-    _assert_help_near_control(page, "#id_date_joined_0", "id_date_joined_helptext")
+    # The selectfilter JS replaces the delivered select with the
+    # id_<name>_from/_to list controls (no persistent aria binding),
+    # so check the visible nearby help on the chosen list.
+    _assert_help_near_control_unbound(page, "#id_groups_to", "#id_groups_helptext")
+    _assert_help_near_control(page, "#id_last_login_0", "id_last_login_0_helptext")
+    _assert_help_near_control(page, "#id_date_joined_0", "id_date_joined_0_helptext")
     assert (
         "does not bypass the active-human/staff admission gate"
         in page.locator("#id_is_superuser_helptext").inner_text()
     )
     assert (
         "Booking and availability logic never reads it"
-        in page.locator("#id_last_login_helptext").inner_text()
+        in page.locator("#id_last_login_0_helptext").inner_text()
     )
     _assert_no_horizontal_overflow(page)
     assert "INPUT" in _keyboard_walk(page, "#id_email", 8)
     _capture(page, output_path, "admin-user-change-1440", full_page=True)
     page.set_viewport_size(MOBILE)
     _assert_help_near_control(page, "#id_email", "id_email_helptext")
-    _assert_help_near_control(page, "#id_last_login_0", "id_last_login_helptext")
+    _assert_help_near_control(page, "#id_last_login_0", "id_last_login_0_helptext")
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-user-change-390", full_page=True)
 
@@ -491,16 +521,28 @@ def test_browser_admin_user_forms_guidance(
         in page.locator("#id_password1_helptext").inner_text()
     )
     _assert_help_near_control(page, "#id_password2", "id_password2_helptext")
-    _assert_help_near_control(page, "#id_usable_password", "id_usable_password_helptext")
+    # The RadioSelect help div gets no id from Django's template (no
+    # single control id), so check visible nearby help without binding.
+    _assert_help_near_control_unbound(
+        page,
+        "#id_usable_password_0",
+        'div.help:has-text("This deployment provides no other human login backend")',
+    )
     assert (
-        "This deployment provides no other human login backend"
-        in page.locator("#id_usable_password_helptext").inner_text()
+        "a disabled user cannot sign in until an administrator sets"
+        in page.locator(
+            'div.help:has-text("This deployment provides no other human login backend")'
+        ).first.inner_text()
     )
     assert "If disabled, the current password for this user will be lost." in page.content()
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-password-change-1440")
     page.set_viewport_size(MOBILE)
-    _assert_help_near_control(page, "#id_usable_password", "id_usable_password_helptext")
+    _assert_help_near_control_unbound(
+        page,
+        "#id_usable_password_0",
+        'div.help:has-text("This deployment provides no other human login backend")',
+    )
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-password-change-390")
 
@@ -519,13 +561,13 @@ def test_browser_admin_group_and_asset_forms_guidance(
     # Group add: permissions guidance at 1440 (full page) and 390.
     page.goto(f"{live_server.url}/admin/auth/group/add/")
     page.set_viewport_size(DESKTOP)
-    _assert_help_near_control(page, "#id_permissions", "id_permissions_helptext")
+    _assert_help_near_control_unbound(page, "#id_permissions_to", "#id_permissions_helptext")
     assert "Site permissions granted through this group" in page.content()
     assert "NOT project or membership authorization" in page.content()
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-group-add-1440", full_page=True)
     page.set_viewport_size(MOBILE)
-    _assert_help_near_control(page, "#id_permissions", "id_permissions_helptext")
+    _assert_help_near_control_unbound(page, "#id_permissions_to", "#id_permissions_helptext")
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-group-add-390", full_page=True)
 
