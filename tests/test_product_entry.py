@@ -308,6 +308,144 @@ def test_admin_login_rejects_non_human_identities(
 
 
 @pytest.mark.django_db
+def test_admin_login_rejects_non_staff_members(client, member_user: User) -> None:
+    # A valid active member credential must not create an administration
+    # session: generic denial, no session, no credential-class wording.
+    response = client.post(
+        "/admin/login/",
+        {"username": member_user.email, "password": "not-a-secret"},
+    )
+
+    assert response.status_code == 200
+    assert b"Enter a valid email address and password" in response.content
+    lowered = response.content.decode().lower()
+    assert "staff" not in lowered
+    assert "service" not in lowered
+    assert SESSION_KEY not in client.session
+
+    # Normal member-login access is preserved.
+    client.force_login(member_user)
+    assert client.get("/").status_code == 200
+
+
+@pytest.mark.django_db
+def test_admin_routes_deny_and_terminate_service_account_session(
+    client, service_account: User
+) -> None:
+    # A staff service-account session is denied on every admin route and
+    # terminated on the login view, not only at login time.
+    service_account.is_staff = True
+    service_account.save(update_fields=["is_staff"])
+
+    for path in (
+        "/admin/",
+        "/admin/accounts/user/",
+        "/admin/assets/asset/",
+        "/admin/reservations/reservation/",
+    ):
+        client.force_login(service_account)
+        response = client.get(path, follow=True)
+
+        assert response.status_code == 200, path
+        assert response.redirect_chain, path
+        assert response.request["PATH_INFO"] == "/admin/login/", path
+        # The disallowed session is terminated, not merely denied.
+        assert SESSION_KEY not in client.session, path
+        # No administration model content on the resulting page.
+        assert "Api tokens" not in response.content.decode(), path
+
+
+@pytest.mark.django_db
+def test_admin_access_denied_after_account_flags_change(client, staff_user: User) -> None:
+    # A previously valid human session loses every admin route as soon as
+    # the operator changes the account flags.
+    client.force_login(staff_user)
+    assert client.get("/admin/").status_code == 200
+
+    staff_user.is_service_account = True
+    staff_user.save(update_fields=["is_service_account"])
+    response = client.get("/admin/", follow=True)
+    assert response.status_code == 200
+    assert response.request["PATH_INFO"] == "/admin/login/"
+    assert SESSION_KEY not in client.session
+    assert "Api tokens" not in response.content.decode()
+
+    # Inactive variant on a fresh valid human session, checked on a model
+    # changelist as well as the index.
+    staff_user.is_service_account = False
+    staff_user.save(update_fields=["is_service_account"])
+    client.force_login(staff_user)
+    assert client.get("/admin/").status_code == 200
+
+    staff_user.is_active = False
+    staff_user.save(update_fields=["is_active"])
+    response = client.get("/admin/accounts/user/", follow=True)
+    assert response.status_code == 200
+    assert response.request["PATH_INFO"] == "/admin/login/"
+    assert SESSION_KEY not in client.session
+
+
+@pytest.mark.django_db
+def test_non_staff_member_denied_administration_without_session_loss(
+    client, member_user: User
+) -> None:
+    client.force_login(member_user)
+    response = client.get("/admin/", follow=True)
+
+    assert response.status_code == 200
+    assert response.request["PATH_INFO"] == "/admin/login/"
+    # A valid member session is denied, not terminated.
+    assert SESSION_KEY in client.session
+    content = client.get("/").content.decode()
+    assert "Dashboard" in content
+
+
+@pytest.mark.django_db
+def test_valid_staff_admin_matrix_preserved(
+    client, rf: RequestFactory, staff_user: User, admin_user: User
+) -> None:
+    from slaif_reservation.audit.models import AuditEvent
+    from slaif_reservation.reservations.models import MaintenanceBlackout, Reservation
+
+    # Permitted administrator: full site admission, all apps, protected
+    # models stay read-only.
+    client.force_login(admin_user)
+    response = client.get("/admin/")
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "<h1>Administration</h1>" in content
+    for app in ("Accounts", "Assets", "Audit", "Reservations"):
+        assert app in content
+
+    for path in (
+        "/admin/accounts/user/",
+        "/admin/accounts/apitoken/",
+        "/admin/audit/auditevent/",
+        "/admin/reservations/reservation/",
+    ):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert "Add API token" not in response.content.decode(), path
+
+    # Active staff without model permissions: admitted to the site, model
+    # content still follows the existing per-model permission checks.
+    client.force_login(staff_user)
+    response = client.get("/admin/")
+    assert response.status_code == 200
+    assert "Api tokens" not in response.content.decode()
+    assert client.get("/admin/accounts/apitoken/").status_code == 403
+
+    # Protected read-only mutation boundaries stay unchanged.
+    request = rf.get("/admin/accounts/apitoken/")
+    request.user = admin_user
+    for model in (ApiToken, AuditEvent, Reservation, MaintenanceBlackout):
+        model_admin = admin.site._registry[model]
+        assert model_admin.has_add_permission(request) is False, model
+        assert model_admin.has_change_permission(request) is False, model
+        assert model_admin.has_delete_permission(request) is False, model
+
+
+@pytest.mark.django_db
 def test_custom_admin_site_identity_and_surfaces(client, admin_user: User) -> None:
     from django.apps import apps
 
@@ -318,13 +456,14 @@ def test_custom_admin_site_identity_and_surfaces(client, admin_user: User) -> No
     assert isinstance(admin.site._wrapped, SlaifAdminSite)
     assert admin.site.site_title == BRANDING + " administration"
     assert admin.site.site_header == BRANDING + " administration"
+    assert admin.site.index_title == "Administration"
 
     client.force_login(admin_user)
     response = client.get("/admin/")
     assert response.status_code == 200
     content = response.content.decode()
     assert BRANDING + " administration" in content
-    assert BRANDING + " site administration" in content
+    assert "<h1>Administration</h1>" in content
     assert 'href="/static/web/brand/slaif-logo.svg"' in content
     # Registered app surfaces remain visible.
     assert "Assets" in content

@@ -168,12 +168,49 @@ def test_browser_anonymous_landing_identity_and_ctas(page: Page, live_server, ou
 def test_browser_landing_login_action_reaches_dashboard(
     page: Page, live_server, output_path, member_user: User, asset: Asset, policy: ReservationPolicy
 ) -> None:
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from slaif_reservation.reservations.services import create_reservation
+
+    # Representative populated state: an in-progress own reservation is
+    # seeded synthetically (the domain service rejects new bookings with
+    # past starts), while the upcoming reservations are created through
+    # the existing domain service, enforcing the effective policy,
+    # exclusivity and audit.
+    now = timezone.now()
+    active_end = now + timedelta(minutes=30)
+    Reservation.objects.create(
+        asset=asset,
+        requested_by_user=member_user,
+        source=Reservation.SOURCE_WEB,
+        status=Reservation.STATUS_CONFIRMED,
+        start_at=now - timedelta(minutes=30),
+        end_at=active_end,
+        effective_end_at=active_end,
+        purpose="entry-active-purpose-036b",
+    )
+    create_reservation(
+        asset=asset,
+        requested_by_user=member_user,
+        start_at=now + timedelta(hours=1),
+        end_at=now + timedelta(hours=2),
+        purpose="entry-upcoming-purpose-036b",
+        now=now,
+    )
+
     page.set_viewport_size(DESKTOP)
     page.goto(live_server.url + "/")
     page.locator("#content").get_by_role("link", name="Log in").click()
     page.wait_for_url(f"{live_server.url}/login/")
     _screenshot(page, output_path, "member-login-1440")
 
+    page.set_viewport_size(MOBILE)
+    _assert_no_horizontal_overflow(page)
+    _screenshot(page, output_path, "member-login-390")
+
+    page.set_viewport_size(DESKTOP)
     page.get_by_label("Email").fill(member_user.email)
     page.get_by_label("Password").fill("not-a-secret")
     page.get_by_role("button", name="Log in").click()
@@ -184,6 +221,15 @@ def test_browser_landing_login_action_reaches_dashboard(
         assert page.get_by_role("link", name=label, exact=True).is_visible()
     assert page.get_by_role("link", name="Management", exact=True).count() == 0
     assert page.get_by_role("link", name="Administration", exact=True).count() == 0
+
+    # Populated dashboard: own reservation, displayed in the member
+    # timezone, without private free-text disclosure.
+    assert "Active reservation" in page.inner_text("#content")
+    assert "Next upcoming reservations" in page.inner_text("#content")
+    assert asset.name in page.inner_text("#content")
+    assert "Times shown in Europe/Ljubljana." in page.inner_text("header")
+    assert "entry-active-purpose-036b" not in page.content()
+    assert "entry-upcoming-purpose-036b" not in page.content()
     _assert_no_framework_branding(page)
     _assert_no_horizontal_overflow(page)
     _screenshot(page, output_path, "member-dashboard-1440")
@@ -231,7 +277,7 @@ def test_browser_staff_navigation_management_and_admin_index(
     page.get_by_role("link", name="Administration").click()
     page.wait_for_url(f"{live_server.url}/admin/")
     assert BRANDING + " administration" in page.title()
-    assert page.get_by_text(BRANDING + " site administration").first.is_visible()
+    assert page.get_by_role("heading", name="Administration", exact=True).is_visible()
     assert page.get_by_role("link", name="Users").count() >= 1
     _assert_no_framework_branding(page)
     _assert_no_horizontal_overflow(page)
@@ -268,6 +314,62 @@ def test_browser_admin_login_rejects_service_accounts(
     lowered = page.inner_text("body").lower()
     assert "service" not in lowered
     _assert_no_framework_branding(page)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_browser_admin_login_rejects_non_staff_members(
+    page: Page, live_server, member_user: User
+) -> None:
+    # A valid active member credential is denied at the administration
+    # login with the same generic message, and the member's own session
+    # access is preserved.
+    page.goto(f"{live_server.url}/login/")
+    page.get_by_label("Email").fill(member_user.email)
+    page.get_by_label("Password").fill("not-a-secret")
+    page.get_by_role("button", name="Log in").click()
+    page.wait_for_url(f"{live_server.url}/")
+
+    page.goto(f"{live_server.url}/admin/login/")
+    page.get_by_label("Email").fill(member_user.email)
+    page.get_by_label("Password").fill("not-a-secret")
+    page.get_by_role("button", name="Log in").click()
+    page.wait_for_url(f"{live_server.url}/admin/login/")
+
+    assert "Enter a valid email address and password" in page.content()
+    lowered = page.inner_text("body").lower()
+    assert "staff" not in lowered
+    assert "service" not in lowered
+    _assert_no_framework_branding(page)
+
+    # Normal member access survives the denied administration attempt.
+    page.goto(f"{live_server.url}/")
+    assert page.title() == "Dashboard"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_browser_admin_flag_transition_denies_and_terminates(
+    page: Page, live_server, staff_user: User
+) -> None:
+    # Real HTTP flag transition: a valid human staff session loses every
+    # admin route as soon as the operator marks the account a service
+    # account, and the session is terminated.
+    _login(page, live_server, staff_user)
+    page.goto(f"{live_server.url}/admin/")
+    page.wait_for_url(f"{live_server.url}/admin/")
+    assert page.get_by_role("heading", name="Administration", exact=True).is_visible()
+
+    staff_user.is_service_account = True
+    staff_user.save(update_fields=["is_service_account"])
+
+    page.goto(f"{live_server.url}/admin/")
+    page.wait_for_url(lambda u: u == f"{live_server.url}/admin/login/?next=/admin/")
+    assert "Api tokens" not in page.content()
+    _assert_no_framework_branding(page)
+
+    # The terminated session no longer reaches the member dashboard either.
+    page.goto(f"{live_server.url}/")
+    assert page.title() == BRANDING
+    assert "Dashboard" not in page.inner_text("#content")
 
 
 @pytest.mark.django_db(transaction=True)
