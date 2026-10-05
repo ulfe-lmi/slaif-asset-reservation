@@ -263,3 +263,49 @@ Before internal alpha, Playwright tests cover at least:
 Work Order 0004 adds headless Chromium tests for the implemented login/logout, member browsing,
 profile, reservation creation/conflict, own detail, cancellation, release, other-user denial, and
 keyboard smoke paths.
+## 11. Field and choice guidance (SAR-044)
+
+Every non-obvious form control renders meaningful help nearby, associated
+through matching element IDs and `aria-describedby` (checkbox groups use an
+accessible fieldset with a legend). The complete control inventory and
+coverage map — bound forms, inherited and model-generated admin fields,
+dynamically renamed fields and raw template filters — is
+`docs/ux/form-guidance-inventory.md`.
+
+Member surfaces: login explains that accounts are administrator-created and
+self-registration is not available; profile explains the required IANA
+timezone with no blank fallback; the reservation form explains start/end in
+the user's timezone, marks the daylight-saving occurrence pickers as
+relevant only on transition dates, and marks purpose as optional unless the
+asset's policy requires it; cancel and release actions warn about their
+irreversible effects; the token form shows human-readable scope labels with
+a one-line effect per scope (`assets:read` is reserved and grants nothing
+today), and the token list and one-time display use the same human labels
+while stored and wire values stay the machine strings. Raw asset filters
+(search/kind/parent/tag/reservable) and the availability "latest valid
+start" note are explained in place.
+
+Staff surfaces: every policy field explains its effect in real units
+(duration in minutes with day equivalents, horizon limits how far a booking
+may START, lead/cutoff semantics, upcoming versus overlapping-record
+counters — the overlap cap counts existing records intersecting the
+proposed interval, not simultaneous occupancy); the policy detail renders
+humanized units (for example 2880 minutes as 2 days); the blackout form
+explains exact-asset behavior and that creating a blackout never cancels or
+releases existing reservations; deactivation actions carry explicit
+warnings; reservation and audit filters label and explain every selector,
+including the renamed `from`/`to` start-range fields (aware ISO-8601).
+
+Administration: user add/change explains each flag's actual effect (groups
+and permissions are site authorization only, never project/membership
+authorization or reservable-asset policy); the user change page replaces
+the inherited password-hash summary with a safe status ("Password set" /
+"No password set" / "Password disabled") plus the real per-user
+password-change action; asset forms explain stable identifiers, staff-only
+internal fields and exclusive booking mode; protected policy/reservation/
+blackout/audit/token pages are read-only with banners naming the supported
+mutation path.
+
+Guidance is presentation only: validation, permission, admission, wire and
+storage behavior are unchanged, and user-visible copy uses domain language
+without framework or work-order text.

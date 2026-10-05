@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n form_guidance %}
 
 {% block title %}{% trans "Log in" %}{% endblock %}
 
@@ -17,6 +17,7 @@
     <div class="field">
       {{ form.username.label_tag }}
       {{ form.username }}
+      {% field_guidance form.username %}
       {{ form.username.errors }}
     </div>
     <div class="field">

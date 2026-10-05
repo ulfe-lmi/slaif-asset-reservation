@@ -217,3 +217,22 @@ child envs with `OAP_ROLE` cleared and explicit `PYTHONPATH`/settings/DB
 URLs); never from the valuable working checkout. The browser suite captures
 privacy-safe 1440/390 screenshots for visual review; round chronology and
 results belong in the immutable OAP reports, not here.
+
+## Form guidance (SAR-044) (task guidance)
+
+Focused suites for the rendered form/choice guidance work:
+
+```bash
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  tests/test_form_guidance.py
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  --browser chromium tests/browser/test_form_guidance_browser.py
+```
+
+Same owned-disposable rules as above: never run product tests from the
+valuable checkout; unique owned test database per run. The server suite
+asserts rendered help, help-ID/`aria-describedby` wiring, human scope
+labels and humanized policy units on GET and invalid-POST pages; the browser
+suite checks nearby help, keyboard access and 1440/390 overflow with
+privacy-safe screenshots (never the one-time token page). The full control
+inventory and coverage map live in `docs/ux/form-guidance-inventory.md`.

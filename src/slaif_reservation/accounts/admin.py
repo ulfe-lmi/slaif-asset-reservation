@@ -2,12 +2,106 @@ from __future__ import annotations
 
 from typing import Any
 
+from django import forms
 from django.contrib import admin
+from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX, identify_hasher
+from django.contrib.auth.models import Group as AuthGroup
+from django.contrib.auth.password_validation import password_validators_help_text_html
 from django.db.models import QuerySet
 from django.http import HttpRequest
+from django.urls import reverse
+from django.utils.translation import gettext_lazy as _
 
 from slaif_reservation.accounts.models import ApiToken, User
+
+_USER_FIELD_HELP: dict[str, Any] = {
+    "email": _(
+        "Sign-in identifier for the account. Accounts are created by an "
+        "administrator; self-registration is not available."
+    ),
+    "display_name": _(
+        "Shown to staff in management views and on reservation records. "
+        "Leave blank to show only the email."
+    ),
+    "timezone": _(
+        "IANA time zone name (for example Europe/Ljubljana) used when this user books from the web."
+    ),
+    "is_service_account": _(
+        "Machine account for API automation. Service accounts cannot sign in "
+        "to the member site or the administration."
+    ),
+    "is_active": _("Inactive accounts cannot sign in anywhere, member or staff."),
+    "is_staff": _(
+        "Grants access to the management area and this administration. "
+        "Members without this flag cannot manage bookings, policies or "
+        "blackouts."
+    ),
+    "is_superuser": _("Full administrative rights, including managing users."),
+    "groups": _(
+        "Site permission groups only. Groups are NOT project or membership "
+        "authorization and do not change who can reserve assets."
+    ),
+    "user_permissions": _(
+        "Individual site permissions. These control administration and "
+        "management access only, not reservable-asset policy."
+    ),
+}
+
+
+class _SafePasswordStatusWidget(forms.Widget):
+    """Renders a safe password status plus the real change action.
+
+    Replaces the inherited hash summary: no algorithm, salt or hash fragment
+    is rendered. The change action is the per-user password form
+    (permission-checked and audited by the admin), not the inherited relative
+    link. The stored hash is only used to compute a safe status.
+    """
+
+    template_name = "admin/safe_password_status.html"
+    read_only = True
+
+    def __init__(self, attrs: dict[str, Any] | None = None, *, user_pk: Any = None) -> None:
+        super().__init__(attrs)
+        self.user_pk = user_pk
+
+    def get_context(self, name: str, value: Any, attrs: Any) -> dict[str, Any]:  # noqa: N802
+        context = super().get_context(name, value, attrs)
+        if not value:
+            status = _("No password set — the account cannot sign in with a password yet.")
+            action_label = _("Set password")
+        elif str(value).startswith(UNUSABLE_PASSWORD_PREFIX):
+            status = _("Password disabled — the account cannot sign in with a password.")
+            action_label = _("Change password")
+        else:
+            try:
+                identify_hasher(str(value))
+            except ValueError:
+                status = _("Stored password has an unrecognized format.")
+                action_label = _("Change password")
+            else:
+                status = _("Password set.")
+                action_label = _("Change password")
+        context["password_status"] = status
+        context["password_action_label"] = action_label
+        context["password_action_url"] = (
+            reverse("admin:auth_user_password_change", args=[self.user_pk])
+            if self.user_pk is not None
+            else ""
+        )
+        return context
+
+
+def _wire_user_field_help(form: Any, names: tuple[str, ...]) -> None:
+    for name in names:
+        field = form.base_fields.get(name)
+        if field is None:
+            continue
+        if not field.help_text:
+            field.help_text = _USER_FIELD_HELP.get(name)
+        if field.help_text:
+            field.widget.attrs["aria-describedby"] = f"id_{name}_helptext"
 
 
 @admin.register(User)
@@ -34,6 +128,97 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
         ),
     )
     readonly_fields = ["created_at", "updated_at"]
+
+    def get_form(
+        self,
+        request: HttpRequest,
+        obj: Any = None,
+        change: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        form = super().get_form(request, obj, change=change, **kwargs)
+        if obj is not None:
+            # Replace the inherited hash-summary password display with a safe
+            # status and the real per-user password-change action. Hashing,
+            # validation and model permissions are unchanged.
+            form.base_fields["password"] = forms.Field(
+                label=_("Password"),
+                help_text=_(
+                    "The stored password is never displayed. Use the action "
+                    "below to set or change it."
+                ),
+                required=False,
+                disabled=True,
+                widget=_SafePasswordStatusWidget(attrs={"id": "id_password"}, user_pk=obj.pk),
+            )
+            # Precise product effects override the generic inherited model
+            # help for the permission flags.
+            form.base_fields["is_staff"].help_text = _(
+                "Grants access to the management area and this administration. "
+                "Members without this flag cannot manage bookings, policies or "
+                "blackouts."
+            )
+            form.base_fields["is_superuser"].help_text = _(
+                "Full administrative rights, including managing users."
+            )
+            form.base_fields["groups"].help_text = _USER_FIELD_HELP["groups"]
+            form.base_fields["user_permissions"].help_text = _USER_FIELD_HELP["user_permissions"]
+            _wire_user_field_help(
+                form,
+                (
+                    "email",
+                    "display_name",
+                    "timezone",
+                    "is_service_account",
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                    "groups",
+                    "user_permissions",
+                ),
+            )
+        else:
+            if form.base_fields.get("password1"):
+                form.base_fields["password1"].help_text = (
+                    _(
+                        "Choose the initial password for this account; the user "
+                        "can change it later from their own session. It must "
+                        "satisfy the site password rules:"
+                    )
+                    + password_validators_help_text_html()
+                )
+            if form.base_fields.get("password2"):
+                form.base_fields["password2"].help_text = _(
+                    "Re-enter the same password to confirm it."
+                )
+            form.base_fields["is_staff"].help_text = _(
+                "Grants access to the management area and this administration. "
+                "Members without this flag cannot manage bookings, policies or "
+                "blackouts."
+            )
+            form.base_fields["is_superuser"].help_text = _(
+                "Full administrative rights, including managing users."
+            )
+            _wire_user_field_help(
+                form, ("email", "password1", "password2", "is_staff", "is_superuser")
+            )
+        return form
+
+
+if AuthGroup in admin.site._registry:
+    admin.site.unregister(AuthGroup)
+
+
+@admin.register(AuthGroup)
+class GroupAdmin(DjangoGroupAdmin):
+    def formfield_for_manytomany(self, db_field: Any, request: HttpRequest, **kwargs: Any) -> Any:
+        if db_field.name == "permissions":
+            kwargs["help_text"] = _(
+                "Site permissions granted through this group (administration "
+                "and management access). These are NOT project or membership "
+                "authorization and do not change who can reserve assets."
+            )
+        return super().formfield_for_manytomany(db_field, request=request, **kwargs)
 
 
 @admin.register(ApiToken)

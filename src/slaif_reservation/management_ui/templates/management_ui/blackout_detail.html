@@ -12,6 +12,7 @@
     <dt>{% trans "Reason" %}</dt><dd>{{ blackout.reason }}</dd>
   </dl>
   <h2>{% trans "Affected reservations" %}</h2>
+  <p class="help">{% trans "These reservations are not changed by the blackout. The blackout only blocks new overlapping bookings." %}</p>
   <ul>
     {% for reservation in affected_reservations %}
       <li><a href="{% url 'management-ui:reservation-detail' reservation.id %}">{{ reservation.id }}</a> {{ reservation.requested_by_user.display_name }}</li>
@@ -20,6 +21,7 @@
     {% endfor %}
   </ul>
   {% if blackout.active %}
+    <p class="status-warning">{% trans "Deactivating lets new overlapping bookings on this asset through immediately. The blackout history is preserved." %}</p>
     <form method="post" action="{% url 'management-ui:blackout-deactivate' blackout.id %}">
       {% csrf_token %}
       <button type="submit">{% trans "Deactivate blackout" %}</button>

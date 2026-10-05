@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n form_guidance %}
 {% block title %}{% trans "Managed reservation" %}{% endblock %}
 {% block content %}
   {% include "management_ui/_nav.html" %}
@@ -15,13 +15,17 @@
     <dt>{% trans "Effective end" %}</dt><dd>{{ reservation.effective_end_at }}</dd>
     <dt>{% trans "Purpose" %}</dt><dd>{{ reservation.purpose }}</dd>
   </dl>
+  <p class="status-warning">{% trans "Staff actions here affect other users' reservations and are recorded in the audit log." %}</p>
   <form method="post" action="{% url 'management-ui:reservation-cancel' reservation.id %}">
     {% csrf_token %}
-    {{ cancel_form.as_p }}
+    {{ cancel_form.reason.label_tag }}
+    {{ cancel_form.reason }}
+    <p class="help" id="id_reason-help">{% trans "Optional. Recorded with the cancellation and visible to staff. Cancelling frees the reserved time and cannot be undone." %}</p>
     <button type="submit">{% trans "Cancel reservation" %}</button>
   </form>
   <form method="post" action="{% url 'management-ui:reservation-release' reservation.id %}">
     {% csrf_token %}
     <button type="submit">{% trans "Release reservation" %}</button>
+    <p class="help">{% trans "Releasing ends the reservation now; the original end stays in the history." %}</p>
   </form>
 {% endblock %}

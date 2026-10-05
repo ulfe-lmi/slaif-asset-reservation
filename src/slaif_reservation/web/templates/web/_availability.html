@@ -25,6 +25,7 @@
       {% endfor %}
     </ul>
     <h3>{% trans "Free intervals" %}</h3>
+    <p class="help">{% trans "A free interval is when the asset is not blocked. The latest valid start is the last time a new booking could begin within that interval under the current policy limits." %}</p>
     <ul>
       {% for interval in availability.free %}
         <li>

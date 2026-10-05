@@ -12,3 +12,37 @@
 </div>
 {% endblock %}
 {% endif %}
+
+{# Read-only protection guidance for the service-backed models. Presentation
+   only: permissions, admission and mutation boundaries are unchanged. #}
+{% block form_top %}
+{{ block.super }}
+{% if not add and not is_popup %}
+  {% if opts.model_name == "reservationpolicy" %}
+    <div class="readonly-guidance">
+      <p>{% translate "This policy is read-only here. Policies are created, updated and deactivated in the management area, which keeps the audit trail consistent." %}</p>
+      <p><a href="{% url 'management-ui:policy-list' %}">{% translate "Open policies in the management area" %}</a></p>
+    </div>
+  {% elif opts.model_name == "reservation" %}
+    <div class="readonly-guidance">
+      <p>{% translate "This reservation is read-only here. Cancellation and release happen in the management area, or by the owner in the member area." %}</p>
+      <p><a href="{% url 'management-ui:reservation-list' %}">{% translate "Open reservations in the management area" %}</a></p>
+    </div>
+  {% elif opts.model_name == "maintenanceblackout" %}
+    <div class="readonly-guidance">
+      <p>{% translate "This blackout is read-only here. Blackouts are created and deactivated in the management area, which keeps the audit trail consistent." %}</p>
+      <p><a href="{% url 'management-ui:blackout-list' %}">{% translate "Open blackouts in the management area" %}</a></p>
+    </div>
+  {% elif opts.model_name == "auditevent" %}
+    <div class="readonly-guidance">
+      <p>{% translate "Audit records are append-only: they can never be edited or deleted here or anywhere else in the product." %}</p>
+      <p><a href="{% url 'management-ui:audit-list' %}">{% translate "Browse the audit log in the management area" %}</a></p>
+    </div>
+  {% elif opts.model_name == "apitoken" %}
+    <div class="readonly-guidance">
+      <p>{% translate "Tokens are read-only here. Token creation and revocation happen on the account holder's own API tokens page." %}</p>
+      <p><a href="{% url 'web:token-list' %}">{% translate "Open the member API tokens page" %}</a></p>
+    </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

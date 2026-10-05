@@ -53,6 +53,12 @@ Work Order 0006 uses:
 The existing `/api/v1/assets/` and `/api/v1/assets/{asset_id}/` endpoints still require a staff
 session. Bearer `assets:read` does not grant those endpoints in this slice.
 
+The human UI displays human-readable scope labels (for example
+"Create reservations" for `reservations:create`) plus a plain-language
+effect line per scope, including the one-time token display and the token
+list. Stored values, form values and wire values are always the exact
+machine strings above; nothing in the UI changes the scope contract.
+
 ## Idempotency
 
 Mutation endpoints require:

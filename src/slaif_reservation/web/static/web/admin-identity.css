@@ -48,3 +48,34 @@
     padding: 2px 4px;
   }
 }
+
+/* 037-a: help and read-only guidance spacing/presentation. */
+.form-row div.help {
+  margin-top: 0.25rem;
+  color: #666;
+}
+
+.password-status {
+  margin-top: 0.25rem;
+}
+
+.password-status .help {
+  color: #666;
+  margin: 0 0 0.4rem;
+}
+
+.readonly-guidance {
+  background: #f8f8f8;
+  border: 1px solid #e0e0e0;
+  border-left: 4px solid #79aec8;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.readonly-guidance p {
+  margin: 0 0 0.35rem;
+}
+
+.readonly-guidance p:last-child {
+  margin-bottom: 0;
+}

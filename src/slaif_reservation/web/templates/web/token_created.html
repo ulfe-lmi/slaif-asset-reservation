@@ -1,6 +1,6 @@
 {% extends "web/base.html" %}
 {% load static %}
-{% load i18n tz web_time %}
+{% load i18n tz web_time form_guidance %}
 
 {% block title %}{% trans "API token created" %}{% endblock %}
 
@@ -10,7 +10,8 @@
   <dl>
     <dt>{% trans "Name" %}</dt><dd>{{ token.name }}</dd>
     <dt>{% trans "Prefix" %}</dt><dd><code>{{ token.display_prefix }}</code></dd>
-    <dt>{% trans "Scopes" %}</dt><dd>{{ token.scopes|join:", " }}</dd>
+    <dt>{% trans "Scopes" %}</dt>
+    <dd>{% for scope in token.scopes %}<span class="scope-label">{{ scope|scope_label }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}</dd>
     {% timezone display_timezone %}
       <dt>{% trans "Expires" %}</dt><dd><time datetime="{{ token.expires_at|utc_datetime }}">{{ token.expires_at|date:"Y-m-d H:i" }}</time></dd>
     {% endtimezone %}

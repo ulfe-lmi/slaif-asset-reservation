@@ -33,6 +33,16 @@ class SlaifAdminAuthenticationForm(AuthenticationForm):
     username = forms.EmailField(
         label=_("Email"),
         widget=forms.EmailInput(attrs={"autocomplete": "email"}),
+        help_text=_("The email address of your administration account."),
+    )
+    password = forms.CharField(
+        label=_("Password"),
+        strip=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}),
+        help_text=_(
+            "The same generic error appears for a wrong password and for "
+            "accounts without administration access."
+        ),
     )
 
     error_messages = {
@@ -40,6 +50,13 @@ class SlaifAdminAuthenticationForm(AuthenticationForm):
         "invalid_login": _("Enter a valid email address and password."),
         "inactive": _("Enter a valid email address and password."),
     }
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        for name in ("username", "password"):
+            field = self.fields[name]
+            if field.help_text:
+                field.widget.attrs["aria-describedby"] = f"id_{name}-help"
 
     def confirm_login_allowed(self, user: Any) -> None:
         # Staff-only admission (the Django AdminAuthenticationForm guard)

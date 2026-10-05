@@ -1,14 +1,18 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n form_guidance %}
 {% block title %}{% trans "Managed reservations" %}{% endblock %}
 {% block content %}
   {% include "management_ui/_nav.html" %}
   <h1>{% trans "Managed reservations" %}</h1>
-  <form method="get">
+  <form method="get" class="filters">
     {{ filter_form.non_field_errors }}
     {% for field in filter_form %}
-      <label>{{ field.label }} {{ field }}</label>
-      {{ field.errors }}
+      <div class="filter">
+        {{ field.label_tag }}
+        {{ field }}
+        {% field_guidance field %}
+        {{ field.errors }}
+      </div>
     {% endfor %}
     <button type="submit">{% trans "Filter" %}</button>
   </form>
