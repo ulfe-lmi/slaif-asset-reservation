@@ -1,7 +1,7 @@
 {% extends "web/base.html" %}
 {% load i18n form_guidance %}
 
-{% block title %}{% blocktrans with name=asset.name %}Reserve {{ name }}{% endblocktrans %}{% endblock %}
+{% block title %}{% blocktrans with name=asset.name %}Reserve {{ name }}{% endblocktrans %} — SLAIF Asset Reservation{% endblock %}
 
 {% block content %}
   <p><a href="{% url 'web:asset-detail' asset.id %}">{{ asset.name }}</a></p>

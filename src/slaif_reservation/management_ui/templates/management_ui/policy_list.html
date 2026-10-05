@@ -1,6 +1,6 @@
 {% extends "web/base.html" %}
 {% load i18n %}
-{% block title %}{% trans "Policies" %}{% endblock %}
+{% block title %}{% trans "Policies" %} — SLAIF Asset Reservation{% endblock %}
 {% block content %}
   {% include "management_ui/_nav.html" %}
   <h1>{% trans "Reservation policies" %}</h1>
@@ -26,7 +26,7 @@
       {% endif %}
     </p>
   {% endif %}
-  <table>
+  <div class="table-scroll" role="region" aria-label="Scrollable table" tabindex="0"><table>
     <thead><tr><th>{% trans "Name" %}</th><th>{% trans "Asset" %}</th><th>{% trans "Active" %}</th><th>{% trans "Bounds" %}</th></tr></thead>
     <tbody>
       {% for policy in page.object_list %}
@@ -40,5 +40,5 @@
         <tr><td colspan="4">{% trans "No policies." %}</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 {% endblock %}

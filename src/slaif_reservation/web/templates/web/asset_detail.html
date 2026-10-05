@@ -1,7 +1,7 @@
 {% extends "web/base.html" %}
 {% load i18n %}
 
-{% block title %}{{ asset.name }}{% endblock %}
+{% block title %}{{ asset.name }} — SLAIF Asset Reservation{% endblock %}
 
 {% block content %}
   <p><a href="{% url 'web:asset-list' %}">{% trans "Assets" %}</a></p>

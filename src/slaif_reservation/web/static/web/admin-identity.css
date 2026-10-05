@@ -100,3 +100,93 @@
     padding: 2px 4px;
   }
 }
+
+/* SLAIF administration shares the public application's local type and palette. */
+@font-face { font-family: Roboto; src: url("fonts/Roboto.ttf") format("truetype"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Roboto Condensed"; src: url("fonts/RobotoCondensed.ttf") format("truetype"); font-weight: 100 900; font-display: swap; }
+:root, html[data-theme="light"] {
+ --primary: #086c86; --secondary: #16302e; --accent: #a3cc32; --primary-fg: #fff;
+ --body-fg: #23312f; --body-bg: #fbfbf9; --body-quiet-color: #52625e;
+ --body-loud-color: #16302e; --header-color: #16302e; --header-bg: #fbfbf9;
+ --header-link-color: #086c86; --header-branding-color: #16302e;
+ --breadcrumbs-fg: #16302e; --breadcrumbs-link-fg: #07566a; --breadcrumbs-bg: #c8e1e8;
+ --link-fg: #086c86; --link-hover-color: #07566a; --link-selected-fg: #07566a;
+ --hairline-color: #d5e0d8; --border-color: #d5e0d8;
+ --darkened-bg: #edf4ef; --selected-bg: #e6f0ea; --selected-row: #e6f0ea;
+ --button-bg: #086c86; --button-hover-bg: #07566a; --default-button-bg: #07566a;
+ --default-button-hover-bg: #16302e; --object-tools-bg: #086c86;
+ --object-tools-hover-bg: #07566a; --delete-button-bg: #a32a30; --delete-button-hover-bg: #801d23;
+ --font-family-primary: Roboto, system-ui, sans-serif;
+}
+html[data-theme="dark"] {
+ --body-fg: #eaf2ed; --body-bg: #152b2c; --body-quiet-color: #bdd0c8;
+ --body-loud-color: #eaf2ed; --header-bg: #152b2c; --header-color: #eaf2ed;
+ --header-link-color: #8bcbd7; --header-branding-color: #eaf2ed;
+ --link-fg: #8bcbd7; --darkened-bg: #203c3d; --selected-bg: #28494a;
+ --selected-row: #28494a; --border-color: #537574; --hairline-color: #537574;
+}
+body { font-family: Roboto, system-ui, sans-serif; font-size: 15px; line-height: 1.55; }
+h1,h2,h3,fieldset .fieldset-heading { font-family: "Roboto Condensed", Roboto, sans-serif; font-weight: 700; }
+h1 { font-size: 2.2rem; margin-bottom: 1.4rem; }
+#header { padding: 1.3rem 2rem; border-bottom: 1px solid var(--border-color); }
+#site-name a.admin-brand { color: var(--header-color); font-family: "Roboto Condensed", Roboto, sans-serif; font-weight: 700; }
+#site-name a.admin-brand:hover,#site-name a.admin-brand:focus { color: var(--header-color); }
+.admin-brand-logo { height: 38px; background: transparent; }
+#user-tools { font-size: .8rem; line-height: 1.8; }
+#content { padding: 2rem; }
+div.breadcrumbs { padding: .8rem 2rem; font-size: .92rem; }
+.module { border: 1px solid var(--border-color); border-radius: .8rem; overflow: hidden; background: var(--body-bg); margin-bottom: 1.5rem; }
+.module h2,.module caption,.inline-group h2 { padding: .8rem 1rem; font-size: 1rem; background: var(--darkened-bg); color: var(--body-loud-color); }
+.module caption a { color: var(--link-fg); }
+#content-main .module { box-shadow: 0 4px 18px rgb(22 48 46 / 4%); }
+td,th { padding: .75rem 1rem; font-size: .92rem; line-height: 1.5; }
+input,select,textarea { font: inherit; border-radius: .45rem; padding: .5rem .65rem; }
+input[type="submit"],button,.button,a.button { border-radius: 1.5rem; padding: .65rem 1.1rem; text-transform: none !important; font-size: .95rem; }
+.form-row { padding: 1rem; }
+.form-row label { font-size: 1rem; }
+.form-row div.help,.password-status .help { color: var(--body-quiet-color); font-size: .9rem; line-height: 1.55; max-width: 70ch; }
+.readonly-guidance { background: var(--darkened-bg); border-color: var(--border-color); border-left-color: #a3cc32; border-radius: .5rem; padding: 1rem; }
+.submit-row { border-radius: .8rem; padding: 1rem; border-color: var(--border-color); }
+#nav-sidebar { background: var(--body-bg); border-color: var(--border-color); }
+#nav-sidebar .current-app .section { color: var(--link-fg); }
+#nav-sidebar .current-model { background: var(--selected-bg); }
+#footer { padding: 1.2rem 2rem; color: var(--body-quiet-color); }
+#footer .footer-identity { color: var(--body-quiet-color); }
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline: 3px solid #1885a3; outline-offset: 3px; }
+.login #container { border-radius: 1rem; overflow: hidden; box-shadow: 0 8px 32px rgb(22 48 46 / 8%); margin-top: 6vh; }
+.login #header { background: #c8e1e8; --header-color: #16302e; }
+.login #content { padding: 1.5rem; }
+.login #header #site-name a { font-size: 1.45rem; }
+.login .submit-row input { width: 100%; }
+.selector { max-width: 100%; }
+.selector .selector-available h2,.selector .selector-chosen h2 { font-size: .92rem; }
+@media (max-width: 1024px) { #header,#content { padding: 1.25rem; } div.breadcrumbs { padding: .8rem 1.25rem; } }
+@media (max-width: 767px) {
+ #header { align-items: flex-start; } #site-name a.admin-brand { font-size: 1.2rem; }
+ .form-row label { margin-bottom: .4rem; }
+ .aligned .form-row input:not([type="checkbox"]):not([type="radio"]), .aligned .form-row textarea { max-width: 100%; box-sizing: border-box; }
+ .selector { width: 100%; } .selector-available,.selector-chosen { width: 100%; }
+ .selector select { width: 100%; } .login #container { width: auto; margin: 1rem; }
+ #changelist .results { overflow-x: auto; } #changelist table { min-width: 34rem; }
+ #footer { padding: 1rem; }
+}
+input:not([type="submit"]):not([type="checkbox"]):not([type="radio"]),select,textarea { border-color: #6b8a7c; }
+
+.selector .selector-chosen h2 { background: var(--selected-bg); color: var(--body-loud-color); }
+.selector .selector-chosen h2 span { color: var(--body-quiet-color); }
+@media (max-width: 767px) {
+ .aligned .form-row, .form-row { padding: 1rem; }
+ .aligned .form-row > div { padding: 0; }
+ .aligned .form-row .flex-container { flex-wrap: wrap; }
+}
+
+.selector .selector-chosen-title { background: var(--selected-bg); color: var(--body-loud-color); }
+.selector .selector-chosen-title label { color: var(--body-loud-color); }
+#header .theme-toggle { color: var(--header-link-color); }
+
+.login #header .theme-toggle { color: #16302e; }
+
+.select2-selection:focus-visible { outline: 3px solid #1885a3; outline-offset: 3px; }
+
+.selector button.selector-add, .selector button.selector-remove { color: var(--link-fg); }
+.selector button:disabled { color: var(--body-quiet-color); opacity: .6; }

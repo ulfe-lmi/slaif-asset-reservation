@@ -216,7 +216,7 @@ def test_browser_landing_login_action_reaches_dashboard(
     page.get_by_role("button", name="Log in").click()
     page.wait_for_url(f"{live_server.url}/")
 
-    assert page.title() == "Dashboard"
+    assert page.title() == "Dashboard — SLAIF Asset Reservation"
     for label in ("Dashboard", "Assets", "My reservations", "API tokens", "Profile"):
         assert page.get_by_role("link", name=label, exact=True).is_visible()
     assert page.get_by_role("link", name="Management", exact=True).count() == 0
@@ -343,7 +343,7 @@ def test_browser_admin_login_rejects_non_staff_members(
 
     # Normal member access survives the denied administration attempt.
     page.goto(f"{live_server.url}/")
-    assert page.title() == "Dashboard"
+    assert page.title() == "Dashboard — SLAIF Asset Reservation"
 
 
 @pytest.mark.django_db(transaction=True)

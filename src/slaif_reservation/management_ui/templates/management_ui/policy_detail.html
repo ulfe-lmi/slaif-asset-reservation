@@ -1,6 +1,6 @@
 {% extends "web/base.html" %}
 {% load i18n form_guidance %}
-{% block title %}{{ policy.name }}{% endblock %}
+{% block title %}{{ policy.name }} — SLAIF Asset Reservation{% endblock %}
 {% block content %}
   {% include "management_ui/_nav.html" %}
   <h1>{{ policy.name }}</h1>
@@ -19,7 +19,7 @@
     <p class="status-warning">{% trans "Deactivating stops this policy applying to new bookings immediately. Existing bookings are not changed; if it was the only matching policy, new bookings fail closed." %}</p>
     <form method="post" action="{% url 'management-ui:policy-deactivate' policy.id %}">
       {% csrf_token %}
-      <button type="submit">{% trans "Deactivate policy" %}</button>
+      <button class="button-danger" type="submit">{% trans "Deactivate policy" %}</button>
     </form>
   {% endif %}
 {% endblock %}

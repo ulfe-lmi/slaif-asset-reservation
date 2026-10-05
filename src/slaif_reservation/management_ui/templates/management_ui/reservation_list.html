@@ -1,6 +1,6 @@
 {% extends "web/base.html" %}
 {% load i18n form_guidance %}
-{% block title %}{% trans "Managed reservations" %}{% endblock %}
+{% block title %}{% trans "Managed reservations" %} — SLAIF Asset Reservation{% endblock %}
 {% block content %}
   {% include "management_ui/_nav.html" %}
   <h1>{% trans "Managed reservations" %}</h1>
@@ -16,7 +16,7 @@
     {% endfor %}
     <button type="submit">{% trans "Filter" %}</button>
   </form>
-  <table>
+  <div class="table-scroll" role="region" aria-label="Scrollable table" tabindex="0"><table>
     <thead><tr><th>{% trans "Reservation" %}</th><th>{% trans "Owner" %}</th><th>{% trans "Asset" %}</th><th>{% trans "Status" %}</th><th>{% trans "Start" %}</th></tr></thead>
     <tbody>
       {% for reservation in page.object_list %}
@@ -31,5 +31,5 @@
         <tr><td colspan="5">{% trans "No reservations." %}</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 {% endblock %}

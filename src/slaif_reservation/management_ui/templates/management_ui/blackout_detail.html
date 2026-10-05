@@ -1,6 +1,6 @@
 {% extends "web/base.html" %}
 {% load i18n %}
-{% block title %}{% trans "Maintenance blackout" %}{% endblock %}
+{% block title %}{% trans "Maintenance blackout" %} — SLAIF Asset Reservation{% endblock %}
 {% block content %}
   {% include "management_ui/_nav.html" %}
   <h1>{% trans "Maintenance blackout" %}</h1>
@@ -24,7 +24,7 @@
     <p class="status-warning">{% trans "Deactivating lets new overlapping bookings on this asset through immediately. The blackout history is preserved." %}</p>
     <form method="post" action="{% url 'management-ui:blackout-deactivate' blackout.id %}">
       {% csrf_token %}
-      <button type="submit">{% trans "Deactivate blackout" %}</button>
+      <button class="button-danger" type="submit">{% trans "Deactivate blackout" %}</button>
     </form>
   {% endif %}
 {% endblock %}

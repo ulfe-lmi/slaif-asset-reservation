@@ -5,6 +5,7 @@
    form structure, admission and error behavior are unchanged; nearby help is
    rendered with matching IDs for aria-describedby. #}
 {% block content %}
+<h1>{% translate "Administration sign in" %}</h1>
 {% if form.errors and not form.non_field_errors %}
 <p class="errornote">
 {% blocktranslate count counter=form.errors.items|length %}Please correct the error below.{% plural %}Please correct the errors below.{% endblocktranslate %}

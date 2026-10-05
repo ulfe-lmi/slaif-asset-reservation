@@ -1,5 +1,5 @@
 {% load i18n tz web_time %}
-<table>
+<div class="table-scroll" role="region" aria-label="Scrollable table" tabindex="0"><table>
   <thead>
     <tr>
       <th scope="col">{% trans "Asset" %}</th>
@@ -22,4 +22,4 @@
       <tr><td colspan="4">{% trans "No reservations in this section." %}</td></tr>
     {% endfor %}
   </tbody>
-</table>
+</table></div>

@@ -295,3 +295,28 @@ valuable checkout; unique owned test database per run; child envs with
   logo switch at narrow widths, the safe invalid-override fallback,
   labels/keyboard/no overflow, CSRF and no framework branding. Screenshots
   are privacy-safe and land in the ignored `test-results/` directory.
+
+## Responsive visual design
+
+Run the real-browser matrix from an owned disposable source checkout and test
+PostgreSQL instance, following the isolation rules above:
+
+```bash
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  --browser chromium tests/browser/test_slaif_design.py --output test-results
+```
+
+The matrix seeds synthetic member/staff accounts, assets, reservations,
+a default policy, maintenance, audit records and token rows. It visits anonymous,
+member, management and administration screens using the default SLAIF theme and
+an institutional override at 1440, 1024, 768 and 390 pixels. It checks privacy,
+visible product identity, heading structure, help associations, decoded images,
+page overflow, foreground/background contrast and focusable controls. Mobile
+navigation and the public Administration action are exercised directly.
+
+Full-page PNGs are written under ignored `test-results/`. Review screenshots
+across all roles, both themes and every viewport class; passing assertions alone
+cannot establish visual quality. Never capture token plaintext, passwords,
+cookies, verifiers, CSRF values, traces or private data. The matrix does not visit
+the one-time token response. [Visual design](docs/ux/visual-design.md) describes
+the design and typography.

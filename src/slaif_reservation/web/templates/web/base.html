@@ -18,7 +18,10 @@
           <img class="brand-logo-compact" src="{% branding_src 'logo-compact' %}" alt="" width="40" height="31">
           <span class="brand-name">{% trans "SLAIF Asset Reservation" %}</span>
         </a>
-        <nav aria-label="{% trans 'Primary navigation' %}">
+        {% if request.user.is_authenticated and request.user.is_active and not request.user.is_service_account %}
+          <button type="button" class="nav-toggle" aria-controls="primary-navigation" aria-expanded="false">{% trans "Menu" %}</button>
+        {% endif %}
+        <nav id="primary-navigation" {% if not request.user.is_authenticated %}class="anonymous-nav"{% endif %} aria-label="{% trans 'Primary navigation' %}">
           {% if request.user.is_authenticated and request.user.is_active and not request.user.is_service_account %}
             <a href="{% url 'web:dashboard' %}">{% trans "Dashboard" %}</a>
             <a href="{% url 'web:asset-list' %}">{% trans "Assets" %}</a>
@@ -55,6 +58,11 @@
       {% endif %}
       {% block content %}{% endblock %}
     </main>
+    <footer class="site-footer"><div class="site-footer-inner">
+      <span>{% trans "SLAIF Asset Reservation" %} · {% trans "Shared resources, clearly reserved." %}</span>
+      <a href="https://slaif.si/">{% trans "Slovenian AI Factory" %}</a>
+    </div></footer>
+    <script src="{% static 'web/navigation.js' %}" defer></script>
     {% block scripts %}{% endblock %}
   </body>
 </html>
