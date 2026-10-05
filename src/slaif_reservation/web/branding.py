@@ -7,26 +7,12 @@ every slot is discovered and validated independently, fail closed.
 
 Security boundary
 -----------------
-* Only fixed slot names under the configured directory are ever read; there
-  is no request-selected file name, so traversal cannot reach a path.
-* The directory itself must be a real (non-symlink) directory. Every slot
-  file is checked with ``lstat`` (regular file, not a symlink, within the
-  size cap) and opened with ``O_NOFOLLOW``, then ``fstat``-checked on the
-  open descriptor, so a swap to a symlink or special file between check and
-  open is refused.
-* Image slots accept only local inert formats (static SVG with a strict
-  element/attribute allowlist, PNG, JPEG, WebP) with magic-byte
-  verification; HTML, scripts, remote references, active SVG, data URIs and
-  unknown MIME content are rejected.
-* The CSS slot must be strict UTF-8 and must not contain imports, ``url()``
-  resources, data URIs or other active content.
-* Responses carry the correct MIME type with the global
-  ``X-Content-Type-Options: nosniff`` header and ``Cache-Control: no-cache``
-  so the browser revalidates on every load (see docs/branding.md for the
-  exact refresh semantics).
-* Overrides are trusted operator inputs only; they are never member
-  uploads, never derived from private data, and no sensitive path or
-  content is logged or rendered in errors.
+Fixed slots are read relative to verified no-follow directory descriptors,
+including each ancestor. Special files cannot block reads. Every resolution
+reads and validates bounded bytes anew; operator assets are never cached.
+CSS conservatively rejects escaped/resource-loading syntax. SVG has bounded,
+namespace-aware inert validation; raster overrides support bounded RGB/RGBA
+PNG only. Expected file/parse failures silently select packaged defaults.
 
 The ``/branding/`` endpoints are total: they serve the override bytes when
 the slot is currently valid and the packaged fallback otherwise (empty
@@ -49,9 +35,11 @@ from pathlib import Path
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 
+from slaif_reservation.web.branding_png import png_is_valid
+
 STYLE_CSS = "style.css"
 IMAGE_SLOTS = ("logo", "logo-compact", "favicon", "hero")
-IMAGE_EXTENSIONS = (".svg", ".png", ".jpg", ".jpeg", ".webp")
+IMAGE_EXTENSIONS = (".svg", ".png")
 
 MAX_CSS_BYTES = 256 * 1024
 MAX_IMAGE_BYTES = 256 * 1024
@@ -60,9 +48,6 @@ _CONTENT_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".svg": "image/svg+xml",
     ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
 }
 
 SLOT_URLS = {
@@ -82,25 +67,51 @@ _DEFAULT_BRAND_FILE = (
 
 _CSS_ACTIVE_MARKERS = (
     "@import",
+    "@charset",
     "url(",
+    "image-set(",
+    "image(",
+    "src(",
     "data:",
     "javascript:",
     "vbscript:",
     "expression(",
     "behavior:",
     "-moz-binding",
-    "<script",
+    "<",
 )
 
 
 def _css_is_valid(data: bytes) -> bool:
-    """Strict UTF-8, no imports/resource loads/data URIs or active content."""
+    """Conservative CSS subset: no escapes, resource functions or imports.
+
+    Remove complete comments then whitespace for token sensitivity. Rejecting
+    escapes rather than decoding them also covers escaped keywords/strings,
+    line continuations and alternate browser escape normalization.
+    """
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
         return False
-    lowered = text.lower()
-    return all(marker not in lowered for marker in _CSS_ACTIVE_MARKERS)
+    if "\\" in text or any(ord(char) < 32 and char not in "\t\r\n" for char in text):
+        return False
+    parts: list[str] = []
+    cursor = 0
+    while True:
+        opening = text.find("/*", cursor)
+        if opening == -1:
+            parts.append(text[cursor:])
+            break
+        parts.append(text[cursor:opening])
+        closing = text.find("*/", opening + 2)
+        if closing == -1:
+            return False
+        cursor = closing + 2
+    text = "".join(parts)
+    if "*/" in text:
+        return False
+    normalized = re.sub(r"\s+", "", text).lower()
+    return all(marker not in normalized for marker in _CSS_ACTIVE_MARKERS)
 
 
 _SVG_NS = "http://www.w3.org/2000/svg"
@@ -204,99 +215,117 @@ _SVG_RAW_REJECT_MARKERS = (
 )
 
 
+MAX_SVG_DEPTH = 32
+MAX_SVG_NODES = 2048
+MAX_SVG_ATTRIBUTES = 64
+
+
 def _svg_is_valid(data: bytes) -> bool:
-    """Inert static SVG: strict element/attribute allowlist, no remote refs."""
+    """Bounded inert SVG in the actual SVG namespace; no recursive walk."""
     try:
         text = data.decode("utf-8")
-    except UnicodeDecodeError:
-        return False
-    lowered = text.lower()
-    if any(marker in lowered for marker in _SVG_RAW_REJECT_MARKERS):
-        return False
-    try:
+        if any(marker in text.lower() for marker in _SVG_RAW_REJECT_MARKERS):
+            return False
+        declaration_free = re.sub(r"^\s*<\?xml\s+[^?]*\?>", "", text, count=1)
+        if "<?" in declaration_free:
+            return False
         root = ET.fromstring(text)
-    except ET.ParseError:
+    except (UnicodeDecodeError, ET.ParseError, ValueError, RecursionError):
         return False
-    if _local_name(root.tag) != "svg":
+    if root.tag != f"{{{_SVG_NS}}}svg":
         return False
-    return _svg_node_is_inert(root)
-
-
-def _local_name(tag: object) -> str:
-    """Local (namespace-free) name, case preserved: SVG names are camelCase."""
-    if not isinstance(tag, str):
-        return ""
-    return tag.rsplit("}", 1)[-1]
-
-
-def _svg_node_is_inert(node: ET.Element) -> bool:
-    if _local_name(node.tag) not in _SVG_ALLOWED_TAGS:
-        return False
-    for raw_name, value in node.attrib.items():
-        name = _local_name(raw_name)
-        if not (name in _SVG_ALLOWED_ATTRS or name.startswith("data-")):
+    stack = [(root, 1)]
+    count = 0
+    while stack:
+        node, depth = stack.pop()
+        count += 1
+        if depth > MAX_SVG_DEPTH or count > MAX_SVG_NODES:
             return False
-        lowered_value = value.lower()
-        if "javascript:" in lowered_value:
+        if node.tag not in {f"{{{_SVG_NS}}}{tag}" for tag in _SVG_ALLOWED_TAGS}:
             return False
-        if name == "xmlns" and value != _SVG_NS:
+        if len(node.attrib) > MAX_SVG_ATTRIBUTES:
             return False
-        if lowered_value.startswith("url("):
-            if not _SVG_URL_FRAGMENT_RE.match(value):
+        for name, value in node.attrib.items():
+            if not (name in _SVG_ALLOWED_ATTRS or name.startswith("data-")):
                 return False
-    return all(_svg_node_is_inert(child) for child in node)
-
-
-def _raster_is_valid(data: bytes, extension: str) -> bool:
-    if extension == ".png":
-        return data.startswith(b"\x89PNG\r\n\x1a\n")
-    if extension in (".jpg", ".jpeg"):
-        return data.startswith(b"\xff\xd8")
-    if extension == ".webp":
-        return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
-    return False
+            if "{" in name or len(value) > 8192:
+                return False
+            normalized = value.strip().lower()
+            if any(marker in normalized for marker in ("\\", "data:", "javascript:", "@import")):
+                return False
+            if "url" in normalized and not _SVG_URL_FRAGMENT_RE.fullmatch(normalized):
+                return False
+        stack.extend((child, depth + 1) for child in node)
+    return True
 
 
 def _image_is_valid(data: bytes, extension: str) -> bool:
     if extension == ".svg":
         return _svg_is_valid(data)
-    return _raster_is_valid(data, extension)
+    return extension == ".png" and png_is_valid(data)
 
 
 # --- bounded reads ----------------------------------------------------------
 
 
-def _root_is_real_dir(root: Path) -> bool:
+def _open_root(root: Path) -> int | None:
+    """Walk each directory component from /, refusing symlinks atomically."""
+    descriptor: int | None = None
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
     try:
-        st = os.lstat(root)
-    except OSError:
-        return False
-    return stat.S_ISDIR(st.st_mode)
-
-
-def _read_bounded(root: Path, name: str, cap: int) -> bytes | None:
-    """Descriptor-safe bounded read; None on any check failure."""
-    full = root / name
-    try:
-        st = os.lstat(full)
-    except OSError:
-        return None
-    if not stat.S_ISREG(st.st_mode) or st.st_size > cap:
-        return None
-    try:
-        fd = os.open(full, os.O_RDONLY | os.O_NOFOLLOW)
-    except OSError:
-        return None
-    try:
-        fst = os.fstat(fd)
-        if not stat.S_ISREG(fst.st_mode) or fst.st_size > cap:
+        absolute = Path(os.path.abspath(root))
+        descriptor = os.open("/", flags)
+        for component in absolute.parts[1:]:
+            child = os.open(component, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
             return None
-        data = os.read(fd, cap + 1)
-    finally:
-        os.close(fd)
-    if len(data) > cap:
+        return descriptor
+    except (OSError, ValueError):
+        if descriptor is not None:
+            os.close(descriptor)
         return None
-    return data
+
+
+def _read_bounded(root_fd: int, name: str, cap: int) -> bytes | None:
+    """No path re-resolution, no blocking FIFO opens, no unbounded reads."""
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+            dir_fd=root_fd,
+        )
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > cap:
+            return None
+        chunks = bytearray()
+        while len(chunks) <= cap:
+            chunk = os.read(descriptor, cap + 1 - len(chunks))
+            if not chunk:
+                break
+            chunks.extend(chunk)
+        after = os.fstat(descriptor)
+        if len(chunks) > cap or _stat_identity(before) != _stat_identity(after):
+            return None
+        return bytes(chunks)
+    except OSError:
+        return None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _stat_identity(status: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
 
 
 # --- resolution -------------------------------------------------------------
@@ -318,34 +347,16 @@ def _configured_root() -> Path | None:
     return Path(raw) if raw else None
 
 
-def _slot_file_name(root: Path, slot: str) -> str | None:
-    """Exactly one candidate file for the slot; ambiguous or absent -> None."""
-    if slot == STYLE_CSS:
+def _slot_file_name(root_fd: int, slot: str) -> str | None:
+    """Bounded fixed-name discovery relative to the anchored directory."""
+    names = [STYLE_CSS] if slot == STYLE_CSS else [slot + ext for ext in IMAGE_EXTENSIONS]
+    candidates = []
+    for name in names:
         try:
-            st = os.lstat(root / STYLE_CSS)
+            status = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
         except OSError:
-            return None
-        return STYLE_CSS if stat.S_ISREG(st.st_mode) else None
-
-    prefix = slot + "."
-    candidates: list[str] = []
-    try:
-        entries = os.scandir(root)
-    except OSError:
-        return None
-    with entries:
-        for entry in entries:
-            name = entry.name
-            if not name.startswith(prefix):
-                continue
-            extension = "." + name[len(prefix) :]
-            if extension not in IMAGE_EXTENSIONS:
-                continue
-            try:
-                if not entry.is_file(follow_symlinks=False):
-                    continue
-            except OSError:
-                continue
+            continue
+        if stat.S_ISREG(status.st_mode):
             candidates.append(name)
     return candidates[0] if len(candidates) == 1 else None
 
@@ -358,51 +369,29 @@ def _validate_slot_data(slot: str, file_name: str, data: bytes) -> str | None:
     return _CONTENT_TYPES.get(extension) if _image_is_valid(data, extension) else None
 
 
-# (root, slot) -> (file name, mtime_ns, size, resolved-or-None). Re-stat on
-# every call: a file change (mtime/size) revalidates immediately, so edits
-# are picked up on the next request without a restart.
-_cache: dict[tuple[str, str], tuple[str, int, int, ResolvedAsset | None]] = {}
-
-
 def resolve_slot(slot: str) -> ResolvedAsset | None:
     if slot not in SLOT_URLS:
         return None
     root = _configured_root()
-    if root is None or not _root_is_real_dir(root):
+    if root is None:
         return None
-    key = (str(root), slot)
-    file_name = _slot_file_name(root, slot)
-    if file_name is None:
-        _cache.pop(key, None)
+    root_fd = _open_root(root)
+    if root_fd is None:
         return None
-    cap = MAX_CSS_BYTES if slot == STYLE_CSS else MAX_IMAGE_BYTES
     try:
-        st = os.lstat(root / file_name)
-    except OSError:
-        return None
-    cached = _cache.get(key)
-    if (
-        cached is not None
-        and cached[0] == file_name
-        and cached[1] == st.st_mtime_ns
-        and cached[2] == st.st_size
-    ):
-        return cached[3]
-    data = _read_bounded(root, file_name, cap)
-    resolved: ResolvedAsset | None = None
-    if data is not None:
+        file_name = _slot_file_name(root_fd, slot)
+        if file_name is None:
+            return None
+        cap = MAX_CSS_BYTES if slot == STYLE_CSS else MAX_IMAGE_BYTES
+        data = _read_bounded(root_fd, file_name, cap)
+        if data is None:
+            return None
         content_type = _validate_slot_data(slot, file_name, data)
-        if content_type is not None:
-            resolved = ResolvedAsset(
-                slot=slot,
-                file_name=file_name,
-                content_type=content_type,
-                data=data,
-            )
-    if len(_cache) > 32:
-        _cache.clear()
-    _cache[key] = (file_name, st.st_mtime_ns, st.st_size, resolved)
-    return resolved
+        if content_type is None:
+            return None
+        return ResolvedAsset(slot, file_name, content_type, data)
+    finally:
+        os.close(root_fd)
 
 
 def asset_url(slot: str) -> str:

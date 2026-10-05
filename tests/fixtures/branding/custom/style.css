@@ -11,3 +11,5 @@
 .site-header {
   border-bottom: 4px double #e2b13c;
 }
+
+.site-header button, .site-main button, .site-main .button:not(.button-secondary) { color: #10233f; }

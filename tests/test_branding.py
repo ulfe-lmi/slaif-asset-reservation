@@ -19,13 +19,16 @@ import os
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
 import zlib
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+import yaml
 from django.test import Client, override_settings
 
 from slaif_reservation.web import branding
@@ -485,15 +488,245 @@ def test_auth_and_error_behavior_unchanged(client: Client) -> None:
         assert "/branding/favicon" in response.content.decode()
 
 
+@pytest.mark.parametrize(
+    "data",
+    [
+        rb'@\69mport "https://branding-probe.invalid/x.css";',
+        b'body { background: image-set("https://branding-probe.invalid/x.png" 1x) }',
+        b'body { background: -webkit-image-set("https://branding-probe.invalid/x.png" 1x) }',
+        b'@im/**/port "https://branding-probe.invalid/x.css";',
+    ],
+)
+def test_normalized_css_resource_constructs_refused(data: bytes) -> None:
+    assert not branding._css_is_valid(data)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"<svg><rect/></svg>",
+        b'<?xml-stylesheet type="text/css" href="https://branding-probe.invalid/x.css"?>'
+        + VALID_SVG,
+        _svg('<rect fill=" url(https://branding-probe.invalid/x.svg#paint)"/>'),
+        _svg('<rect fill="url(https://branding-probe.invalid/x.svg#paint)"/>'),
+        _svg("<g>" * 1200 + "</g>" * 1200),
+    ],
+)
+def test_svg_namespace_resources_and_depth_refused(data: bytes) -> None:
+    assert not branding._svg_is_valid(data)
+
+
+@pytest.mark.parametrize("data", [b"\x89PNG\r\n\x1a\n", VALID_PNG[:-1], VALID_PNG + b"garbage"])
+def test_truncated_or_trailing_png_refused(data: bytes) -> None:
+    assert not branding._image_is_valid(data, ".png")
+
+
+def test_root_directory_swap_cannot_read_outside(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "branding"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    original = b"body { color: blue; }"
+    (root / "style.css").write_bytes(original)
+    (outside / "style.css").write_bytes(b"body { color: red; }")
+    real_open = os.open
+    swapped = False
+
+    def swap(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if Path(path).name == "style.css" and not swapped:
+            swapped = True
+            root.rename(tmp_path / "original")
+            root.symlink_to(outside, target_is_directory=True)
+        return real_open(path, flags, *args, **kwargs)
+
+    with override_settings(BRANDING_DIR=str(root)), monkeypatch.context() as patch:
+        patch.setattr(branding.os, "open", swap)
+        result = branding.resolve_slot("style.css")
+        assert swapped
+        assert result is None or result.data == original
+
+
+def test_ancestor_symlink_refused(tmp_path: Path) -> None:
+    actual = tmp_path / "actual"
+    (actual / "branding").mkdir(parents=True)
+    (actual / "branding" / "style.css").write_bytes(VALID_CSS)
+    link = tmp_path / "link"
+    link.symlink_to(actual, target_is_directory=True)
+    with override_settings(BRANDING_DIR=str(link / "branding")):
+        assert branding.resolve_slot("style.css") is None
+
+
+def test_regular_file_swapped_to_fifo_is_nonblocking(tmp_path: Path, monkeypatch) -> None:
+    slot = tmp_path / "style.css"
+    slot.write_bytes(VALID_CSS)
+    real_open = os.open
+
+    def swap(path, flags, *args, **kwargs):
+        if Path(path).name == "style.css":
+            slot.unlink()
+            os.mkfifo(slot)
+            assert flags & os.O_NONBLOCK, "special-file opens must not block"
+        return real_open(path, flags, *args, **kwargs)
+
+    with override_settings(BRANDING_DIR=str(tmp_path)), monkeypatch.context() as patch:
+        patch.setattr(branding.os, "open", swap)
+        assert branding.resolve_slot("style.css") is None
+
+
+def test_fifo_swap_finishes_in_real_bounded_child(tmp_path: Path) -> None:
+    (tmp_path / "style.css").write_bytes(VALID_CSS)
+    code = """import os,sys,pathlib,django
+from unittest.mock import patch
+django.setup()
+from django.test import override_settings
+from slaif_reservation.web import branding
+root=pathlib.Path(sys.argv[1]); slot=root/'style.css'; original=os.open
+def swap(path,flags,*args,**kwargs):
+    if pathlib.Path(path).name=='style.css':
+        slot.unlink(); os.mkfifo(slot)
+    return original(path,flags,*args,**kwargs)
+with override_settings(BRANDING_DIR=str(root)),patch.object(branding.os,'open',swap):
+    assert branding.resolve_slot('style.css') is None
+"""
+    environment = {
+        key: os.environ[key]
+        for key in (
+            "PATH",
+            "PYTHONPATH",
+            "DJANGO_SETTINGS_MODULE",
+            "DATABASE_URL",
+            "TEST_DATABASE_URL",
+        )
+        if key in os.environ
+    }
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", code, str(tmp_path)],
+            env=environment,
+            capture_output=True,
+            timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("FIFO replacement blocked the owned child")
+    assert result.returncode == 0, "bounded FIFO refusal failed"
+
+
+@pytest.mark.django_db
+def test_read_error_does_not_break_login_or_errors(
+    client: Client, tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / "style.css").write_bytes(VALID_CSS)
+
+    def failed_read(*args):
+        raise OSError("synthetic read failure")
+
+    with override_settings(BRANDING_DIR=str(tmp_path)), monkeypatch.context() as patch:
+        patch.setattr(branding.os, "read", failed_read)
+        assert client.get("/branding/style.css").content == b""
+        assert client.get("/login/").status_code == 200
+        assert client.get("/missing-page/").status_code == 404
+
+
+def test_same_size_and_mtime_replacement_revalidates(tmp_path: Path) -> None:
+    slot = tmp_path / "style.css"
+    first = b"body { color: blue; }"
+    second = b"body { color: pink; }"
+    assert len(first) == len(second)
+    slot.write_bytes(first)
+    stamp = slot.stat().st_mtime_ns
+    with override_settings(BRANDING_DIR=str(tmp_path)):
+        assert branding.resolve_slot("style.css").data == first
+        replacement = tmp_path / "replacement"
+        replacement.write_bytes(second)
+        os.utime(replacement, ns=(stamp, stamp))
+        replacement.replace(slot)
+        assert branding.resolve_slot("style.css").data == second
+        slot.write_bytes(b'@import "x";')
+        os.utime(slot, ns=(stamp, stamp))
+        assert branding.resolve_slot("style.css") is None
+
+
 # --- owned production-overlay Docker qualification -------------------------------
+
+
+OWNER_LABEL = "slaif.qualification.owner"
+
+
+def _docker_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    environment = {key: os.environ[key] for key in ("PATH", "TMPDIR") if key in os.environ}
+    environment["DOCKER_HOST"] = "unix:///var/run/docker.sock"
+    if extra:
+        assert set(extra) <= {"SLAIF_APP_HOST_PORT"}
+        environment.update(extra)
+    return environment
+
+
+class _OwnedDocker:
+    """Identity receipts for this test only; never cleanup by project selector."""
+
+    def __init__(self, nonce: str) -> None:
+        self.nonce = nonce
+        self.started = datetime.now(UTC).replace(microsecond=0)
+        self.objects: dict[tuple[str, str], tuple[str, str]] = {}
+
+    def inspect(self, kind: str, reference: str) -> dict | None:
+        command = (
+            ["docker", "inspect", reference]
+            if kind == "container"
+            else ["docker", kind, "inspect", reference]
+        )
+        result = _run(command, timeout=30)
+        if result.returncode:
+            return None
+        try:
+            return json.loads(result.stdout)[0]
+        except (ValueError, IndexError):
+            return None
+
+    def absent(self, kind: str, reference: str) -> None:
+        assert self.inspect(kind, reference) is None, "qualification name already exists"
+
+    def remember(self, kind: str, reference: str) -> None:
+        metadata = self.inspect(kind, reference)
+        if metadata is None:
+            return
+        labels = metadata.get("Labels") or metadata.get("Config", {}).get("Labels") or {}
+        if labels.get(OWNER_LABEL) != self.nonce:
+            raise AssertionError("qualification refused an unowned object")
+        created = metadata.get("CreatedAt") or metadata.get("Created")
+        if not created or datetime.fromisoformat(created.replace("Z", "+00:00")) < self.started:
+            raise AssertionError("qualification refused an old object")
+        identity = metadata.get("Id") or metadata.get("ID") or metadata.get("Name")
+        assert identity
+        self.objects[(kind, identity)] = (self.nonce, created)
+
+    def cleanup(self) -> None:
+        for kind in ("container", "network", "volume", "image"):
+            for (object_kind, identity), (nonce, created) in list(self.objects.items()):
+                if object_kind != kind:
+                    continue
+                metadata = self.inspect(kind, identity)
+                if metadata is None:
+                    continue
+                labels = metadata.get("Labels") or metadata.get("Config", {}).get("Labels") or {}
+                if (
+                    labels.get(OWNER_LABEL) != nonce
+                    or (metadata.get("CreatedAt") or metadata.get("Created")) != created
+                ):
+                    raise AssertionError("cleanup refused a changed ownership receipt")
+                command = (
+                    ["docker", "rm", "-f", identity]
+                    if kind == "container"
+                    else ["docker", kind, "rm", identity]
+                )
+                assert _run(command, timeout=120).returncode == 0, "owned cleanup failed"
 
 
 def _run(
     cmd: list[str], *, env: dict[str, str] | None = None, timeout: int = 600
 ) -> subprocess.CompletedProcess:
-    full_env = dict(os.environ)
-    if env:
-        full_env.update(env)
+    full_env = _docker_env(env)
     return subprocess.run(cmd, capture_output=True, text=True, env=full_env, timeout=timeout)
 
 
@@ -505,6 +738,7 @@ def _docker_available() -> bool:
         capture_output=True,
         text=True,
         timeout=30,
+        env=_docker_env(),
     )
     return result.returncode == 0
 
@@ -557,6 +791,7 @@ def _in_app_get(
         ],
         capture_output=True,
         timeout=60,
+        env=_docker_env(),
     )
     if result.returncode != 0:
         raise AssertionError(
@@ -577,14 +812,28 @@ def test_docker_production_overlay_qualification() -> None:
     if not _docker_available():
         pytest.skip("docker or git prerequisites missing")
 
-    nonce = uuid.uuid4().hex[:12]
+    nonce = uuid.uuid4().hex
     tag = f"slaif038a-{nonce}:test"
     project = f"slaif038a{nonce}"
     root = Path(tempfile.mkdtemp(prefix=f"slaif038a-{nonce}-"))
     snapshot = root / "snapshot"
     snapshot.mkdir()
     compose_base: list[str] | None = None
+    owned = _OwnedDocker(nonce)
+    sentinel_owner = _OwnedDocker(nonce + "-sentinel")
+    sentinel = f"{project}_foreign"
+    volume = f"{project}_postgres-data"
+    network = f"{project}_default"
     try:
+        for kind, name in (
+            ("image", tag),
+            ("volume", volume),
+            ("network", network),
+            ("container", f"{project}-app-1"),
+            ("container", f"{project}-db-1"),
+            ("container", f"{project}-migrate"),
+        ):
+            owned.absent(kind, name)
         # 1. Tracked-file snapshot (exactly the tracked content at HEAD).
         archive = subprocess.run(
             ["git", "-C", str(REPO_ROOT), "archive", "HEAD"],
@@ -613,10 +862,24 @@ def test_docker_production_overlay_qualification() -> None:
         assert sorted(on_disk) == sorted(tracked_files), "snapshot must be tracked-only"
 
         # 2. Build the image once; both runs share it (no rebuild).
-        build = _run(["docker", "build", "--tag", tag, str(snapshot)], timeout=1800)
-        assert build.returncode == 0, build.stderr[-2000:]
+        build = _run(
+            ["docker", "build", "--label", f"{OWNER_LABEL}={nonce}", "--tag", tag, str(snapshot)],
+            timeout=1800,
+        )
+        owned.remember("image", tag)
+        assert build.returncode == 0, "owned image build failed"
         inspect = _run(["docker", "image", "inspect", tag, "--format", "{{.Config.User}}"])
         assert inspect.stdout.strip() == "10001:10001"
+        # A separately owned disposable sentinel must never be adopted or
+        # deleted by this qualification's primary owner.
+        sentinel_owner.absent("volume", sentinel)
+        created = _run(
+            ["docker", "volume", "create", "--label", f"{OWNER_LABEL}={nonce}-sentinel", sentinel]
+        )
+        assert created.returncode == 0, "sentinel creation failed"
+        sentinel_owner.remember("volume", sentinel)
+        with pytest.raises(AssertionError, match="unowned object"):
+            owned.remember("volume", sentinel)
 
         # 3. Rendered overlay topology against BOTH supported base files.
         for base in ("compose.yaml", "compose.production.example.yaml"):
@@ -690,10 +953,17 @@ def test_docker_production_overlay_qualification() -> None:
         prod_yaml = root / "prod.yaml"
         prod_text = (snapshot / "compose.production.example.yaml").read_text(encoding="utf-8")
         assert "slaif-asset-reservation:internal-alpha" in prod_text
-        prod_yaml.write_text(
-            prod_text.replace("slaif-asset-reservation:internal-alpha", tag),
-            encoding="utf-8",
-        )
+        document = yaml.safe_load(prod_text)
+        document["services"]["app"]["image"] = tag
+        for service in ("app", "db"):
+            document["services"][service]["labels"] = {OWNER_LABEL: nonce}
+        document["volumes"]["postgres-data"] = {"external": True, "name": volume}
+        document["networks"] = {"default": {"external": True, "name": network}}
+        prod_yaml.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+        for kind, name in (("volume", volume), ("network", network)):
+            result = _run(["docker", kind, "create", "--label", f"{OWNER_LABEL}={nonce}", name])
+            assert result.returncode == 0, "owned resource creation failed"
+            owned.remember(kind, name)
         deploy = root / "deploy"
         (deploy / "secrets").mkdir(parents=True, exist_ok=True)
         env_file = deploy / "env.production"
@@ -738,13 +1008,19 @@ def test_docker_production_overlay_qualification() -> None:
 
         # 5. Default run first: the same built image without the overlay.
         up = _run(compose_base + ["up", "-d", "db"], env=compose_env, timeout=300)
-        assert up.returncode == 0, up.stderr[-2000:]
+        for name in (f"{project}-app-1", f"{project}-db-1"):
+            owned.remember("container", name)
+        assert up.returncode == 0, "owned application start failed"
         _wait_healthy(f"{project}-db-1")
         migrate = _run(
             [
                 "docker",
                 "run",
                 "--rm",
+                "--name",
+                f"{project}-migrate",
+                "--label",
+                f"{OWNER_LABEL}={nonce}",
                 "--network",
                 f"{project}_default",
                 "--env-file",
@@ -759,7 +1035,9 @@ def test_docker_production_overlay_qualification() -> None:
         )
         assert migrate.returncode == 0, (migrate.stdout + migrate.stderr)[-2000:]
         up = _run(compose_base + ["up", "-d"], env=compose_env, timeout=300)
-        assert up.returncode == 0, up.stderr[-2000:]
+        for name in (f"{project}-app-1", f"{project}-db-1"):
+            owned.remember("container", name)
+        assert up.returncode == 0, "owned application start failed"
         _wait_healthy(f"{project}-app-1")
 
         app_container = f"{project}-app-1"
@@ -791,7 +1069,9 @@ def test_docker_production_overlay_qualification() -> None:
 
         # 6. Branding run: same project and image, overlay added.
         up = _run(compose_brand + ["up", "-d"], env=compose_env, timeout=300)
-        assert up.returncode == 0, up.stderr[-2000:]
+        for name in (f"{project}-app-1", f"{project}-db-1"):
+            owned.remember("container", name)
+        assert up.returncode == 0, "owned application start failed"
         _wait_healthy(app_container)
 
         status, body = _in_app_get(app_container, "/")
@@ -840,23 +1120,85 @@ def test_docker_production_overlay_qualification() -> None:
         status, compact_body = _in_app_get(app_container, "/branding/logo-compact")
         assert status == 200 and compact_body == DEFAULT_LOGO_BYTES
     finally:
-        if compose_base is not None:
-            _run(compose_base + ["down"], timeout=300)
-        _run(["docker", "volume", "rm", f"{project}_postgres-data"], timeout=60)
-        _run(["docker", "rmi", tag], timeout=120)
-        shutil.rmtree(root, ignore_errors=True)
-        residue = _run(
-            [
-                "docker",
-                "ps",
-                "-a",
-                "--filter",
-                f"name={project}",
-                "--format",
-                "{{.Names}}",
-            ],
-            timeout=60,
-        )
-        assert residue.stdout.strip() == "", f"residue: {residue.stdout!r}"
-        images = _run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}", tag])
-        assert tag not in images.stdout, "owned image residue"
+        # Record partial creations too; never adopt foreign objects or delete
+        # names for which this run has no verified creation receipt.
+        try:
+            for kind, name in (
+                ("image", tag),
+                ("container", f"{project}-app-1"),
+                ("container", f"{project}-db-1"),
+                ("container", f"{project}-migrate"),
+            ):
+                if owned.inspect(kind, name) is not None:
+                    owned.remember(kind, name)
+        finally:
+            try:
+                owned.cleanup()
+                if sentinel_owner.objects:
+                    metadata = sentinel_owner.inspect("volume", sentinel)
+                    assert metadata is not None, "foreign sentinel was removed"
+                    assert metadata["Labels"][OWNER_LABEL] == nonce + "-sentinel"
+            finally:
+                sentinel_owner.cleanup()
+                shutil.rmtree(root, ignore_errors=True)
+
+
+def test_docker_children_ignore_foreign_configuration(monkeypatch) -> None:
+    for key in (
+        "DOCKER_HOST",
+        "DOCKER_CONTEXT",
+        "DOCKER_CERT_PATH",
+        "DOCKER_CONFIG",
+        "DATABASE_URL",
+        "OAP_ROLE",
+    ):
+        monkeypatch.setenv(key, "foreign-synthetic-fixture")
+    environment = _docker_env()
+    assert environment["DOCKER_HOST"] == "unix:///var/run/docker.sock"
+    assert set(environment) <= {"PATH", "TMPDIR", "DOCKER_HOST"}
+
+
+def test_cleanup_never_deletes_uncreated_resources(monkeypatch) -> None:
+    calls = []
+
+    def refused(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1, "", "synthetic refusal")
+
+    monkeypatch.setattr(__import__(__name__, fromlist=["_run"]), "_run", refused)
+    owned = _OwnedDocker("synthetic-owner")
+    owned.cleanup()
+    assert calls == []
+
+
+def test_cleanup_refuses_changed_ownership(monkeypatch) -> None:
+    owned = _OwnedDocker("synthetic-owner")
+    owned.objects[("volume", "synthetic-volume")] = ("synthetic-owner", "2026-10-05T00:00:00Z")
+    monkeypatch.setattr(
+        owned,
+        "inspect",
+        lambda *args: {
+            "Name": "synthetic-volume",
+            "Labels": {OWNER_LABEL: "foreign"},
+            "CreatedAt": "2026-10-05T00:00:00Z",
+        },
+    )
+    with pytest.raises(AssertionError, match="changed ownership"):
+        owned.cleanup()
+
+
+def test_early_build_failure_never_deletes_names(monkeypatch) -> None:
+    calls = []
+
+    def failed(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1, "", "synthetic refusal")
+
+    module = __import__(__name__, fromlist=["_run"])
+    monkeypatch.setattr(module, "_docker_available", lambda: True)
+    monkeypatch.setattr(module, "_run", failed)
+    with pytest.raises(AssertionError, match="build failed"):
+        test_docker_production_overlay_qualification()
+    assert not any(
+        command[1:3] in (["volume", "rm"], ["image", "rm"], ["rm", "-f"]) for command in calls
+    )

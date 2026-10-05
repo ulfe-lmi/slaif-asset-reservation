@@ -277,7 +277,8 @@ valuable checkout; unique owned test database per run; child envs with
   disabled/missing/empty directories, real response bytes/MIME/headers,
   CSS/image/SVG content and size negatives, wrong-magic and ambiguity,
   symlink/special-file/traversal refusals, per-slot fallback independence,
-  safe refresh (mtime) semantics, and preserved auth/error behavior.
+  uncached refresh semantics, descriptor-swap and non-blocking FIFO races,
+  bounded PNG decoding and CSS resource-load sensitivity, and preserved auth/error behavior.
   Its final test is the owned Docker qualification: a tracked-file
   snapshot build, rendered overlay topology against BOTH base Compose
   files, and the same built image run in production topology (private

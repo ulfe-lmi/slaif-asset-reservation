@@ -1,8 +1,8 @@
 # Operator branding (optional, same image, no rebuild)
 
-**Status:** implemented optional appearance mechanism (038-a, SAR-045).
-Off by default; when enabled, overrides are read-only, operator-owned and
-validated on use.
+Appearance overrides are optional and off by default. Operators can supply
+local CSS and images through a read-only directory without rebuilding the
+application image.
 
 ## What it changes
 
@@ -13,15 +13,18 @@ that replaces the corresponding default:
 | Slot             | File names (one per slot)                     | Formats            | Max size  | Where it appears                                                                  |
 |------------------|-----------------------------------------------|--------------------|-----------|-----------------------------------------------------------------------------------|
 | `style.css`      | `style.css`                                   | CSS (strict UTF-8) | 256 KiB   | Loaded AFTER the built-in styles on public, member, staff and admin surfaces and the standalone error pages |
-| `logo`           | `logo.svg` / `logo.png` / `logo.jpg` / `logo.webp` | inert image      | 256 KiB   | Site header (wide viewports), standalone error pages, administration header |
-| `logo-compact`   | `logo-compact.svg` / `.png` / `.jpg` / `.webp` | inert image        | 256 KiB   | Site header and administration header on narrow viewports (≤ 480 px)              |
-| `favicon`        | `favicon.svg` / `.png` / `.jpg` / `.webp`      | inert image        | 256 KiB   | Browser tab identity on all browser surfaces                                      |
-| `hero`           | `hero.svg` / `.png` / `.jpg` / `.webp`         | inert image        | 256 KiB   | The public landing hero image                                                     |
+| `logo`           | `logo.svg` / `logo.png` | inert image      | 256 KiB   | Site header (wide viewports), standalone error pages, administration header |
+| `logo-compact`   | `logo-compact.svg` / `.png` | inert image        | 256 KiB   | Site header and administration header on narrow viewports (≤ 480 px)              |
+| `favicon`        | `favicon.svg` / `.png`      | inert image        | 256 KiB   | Browser tab identity on all browser surfaces                                      |
+| `hero`           | `hero.svg` / `.png`         | inert image        | 256 KiB   | The public landing hero image                                                     |
 
 Slots are fixed: there is no request-selected file name, no directory
 listing and no way to address a path. Unknown files in the directory are
 ignored. Two files for the same slot are ambiguous: that slot falls back
 (closed failure), the other slots are unaffected.
+
+Branding assets are available before login. Keep credentials and private data
+out of this directory.
 
 The product title remains **SLAIF Asset Reservation** on all surfaces;
 branding changes imagery and presentation only.
@@ -46,7 +49,7 @@ docker compose -f compose.yaml -f compose.branding.example.yaml up -d
 ```
 
 The overlay sets `SLAIF_BRANDING_DIR=/branding` and mounts
-`./deploy/branding:/branding:ro`. The application runs as UID:GID
+`./deploy/branding:/branding:ro`. The production-shaped application runs as UID:GID
 10001:10001 on a read-only rootfs; it cannot write to the mounted
 directory, and the host directory is never replaced or created by the
 application.
@@ -54,7 +57,8 @@ application.
 ## Refresh and cache semantics
 
 - **Server side:** each request re-stats the directory and the slot file;
-  a change (content, size or mtime) is picked up on the next request.
+  every slot is read and validated again without an operator-asset cache.
+  Content changes are picked up even when size and modification time stay the same.
   Editing or replacing a file therefore takes effect on the next page
   load; no container restart, no rebuild, no re-deploy is required (and
   restarting the same image is harmless).
@@ -87,23 +91,29 @@ uploads and never derived from private data. The mechanism enforces:
 
 - **Directory:** must be a real directory (a symlinked directory is
   refused). Only single-level, fixed slot file names are ever opened.
-- **File access:** each candidate is `lstat`-checked (regular file, not a
-  symlink, within the size cap), opened with `O_NOFOLLOW`, and re-checked
-  with `fstat` on the open descriptor before a bounded read — a swap to a
-  symlink, directory or special file (including FIFOs) between check and
-  open is refused. A directory or FIFO named like a slot file is never
-  opened.
-- **Image formats:** PNG, JPEG and WebP are magic-byte verified; SVG must
+- **File access:** every directory component is opened with no-follow
+  semantics. Files are opened relative to the verified directory descriptor,
+  with `O_NOFOLLOW` and non-blocking mode. Only regular files within the size
+  limit are read. File identity is checked before and after the bounded read;
+  changes and I/O failures fall back safely. A directory swap cannot redirect
+  a read, and a FIFO swap cannot block an application worker.
+- **Image formats:** PNG must be non-interlaced, 8-bit RGB/RGBA with complete
+  chunk framing, checksums and valid bounded scanlines (at most 1,048,576 pixels
+  and 4096 pixels in either dimension). Ancillary PNG chunks, palette/grayscale
+  modes, JPEG and WebP are not supported; export a plain RGB/RGBA PNG or use
+  SVG. SVG must
   be a well-formed, **static, inert** document: only an allowlist of
   geometry/paint/text elements and attributes (plus `data-*`), the SVG
-  namespace only, no DOCTYPE or comments, no scripts, no event handlers,
+  namespace only, at most 32 levels and 2048 nodes, no processing instructions, DOCTYPE or comments, no scripts, no event handlers,
   no `<image>`, `<use>`, `<a>`, `<style>`, filters or animation, no
   `xlink:href`, no remote or `data:` references, and `url()` limited to
   local `#fragment` gradient/clip references. HTML, active SVG and
   unknown MIME content are rejected.
-- **CSS:** strict UTF-8; `@import`, any `url(...)` resource, `data:` URIs
-  and other active content (`javascript:`, `expression(`, `behavior:`,
-  `<script`) are rejected.
+- **CSS:** strict UTF-8 without backslash escapes or malformed comments.
+  Imports, resource functions (`url`, `image-set`, `image`, `src`), data URIs
+  and active content are rejected, including comment/whitespace variants.
+  Ordinary selectors, CSS variables and media rules remain available.
+  Branding images use the fixed slots rather than CSS resource URLs.
 - **Responses:** correct `Content-Type` per slot plus the global
   `X-Content-Type-Options: nosniff`; no server-side template or code
   execution is involved in serving an override.
@@ -114,6 +124,8 @@ uploads and never derived from private data. The mechanism enforces:
 ## Limits and troubleshooting
 
 - Max 256 KiB per file; five slots (≤ 1.25 MiB total) per deployment.
+- The branding mount is read-only with both Compose examples. Only the
+  production example also sets the entire application root filesystem read-only.
 - If a slot silently keeps its default, the file was rejected: check the
   name (exact slot + allowed extension), that only one file uses that
   slot, the format (the SVG rules above are strict), the size, and that

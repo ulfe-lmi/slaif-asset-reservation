@@ -13,15 +13,18 @@ project with cleared OAP_ROLE (see TESTING.md).
 
 from __future__ import annotations
 
+import re
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from django.test import override_settings
+from django.utils import timezone
 from playwright.sync_api import Page
 
 from slaif_reservation.accounts.models import User
 from slaif_reservation.assets.models import Asset, AssetTag
-from slaif_reservation.reservations.models import ReservationPolicy
+from slaif_reservation.reservations.models import Reservation, ReservationPolicy
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CUSTOM = REPO_ROOT / "tests" / "fixtures" / "branding" / "custom"
@@ -142,6 +145,10 @@ def _login(page: Page, live_server, user: User) -> None:
 
 def _screenshot(page: Page, output_path, name: str) -> None:
     path = f"{output_path}/{name}.png"
+    page.wait_for_function(
+        "Array.from(document.images).every(i => "
+        "i.complete && i.naturalWidth > 0 && i.naturalHeight > 0)"
+    )
     page.screenshot(path=path)
 
 
@@ -356,6 +363,16 @@ def test_member_dashboard_and_form_default(
     asset: Asset,
     policy: ReservationPolicy,
 ) -> None:
+    now = timezone.now()
+    Reservation.objects.create(
+        asset=asset,
+        requested_by_user=member_user,
+        source=Reservation.SOURCE_WEB,
+        status=Reservation.STATUS_CONFIRMED,
+        start_at=now + timedelta(hours=3),
+        end_at=now + timedelta(hours=4),
+        effective_end_at=now + timedelta(hours=4),
+    )
     page.set_viewport_size(DESKTOP)
     _login(page, live_server, member_user)
     _assert_css_loaded_after_defaults(page, custom=False)
@@ -367,6 +384,10 @@ def test_member_dashboard_and_form_default(
     _assert_no_horizontal_overflow(page)
     _screenshot(page, output_path, "branding-default-member-form-1440")
     page.set_viewport_size(MOBILE)
+    _assert_no_horizontal_overflow(page)
+    assert page.get_by_label(re.compile(r"^Start:?$")).is_visible()
+    assert page.locator("#id_start-help").is_visible()
+    _screenshot(page, output_path, "branding-default-member-form-390")
     page.goto(f"{live_server.url}/")
     _assert_logo_slot(page, compact_visible=True)
     _assert_no_horizontal_overflow(page)
@@ -383,6 +404,16 @@ def test_member_dashboard_and_form_custom(
     asset: Asset,
     policy: ReservationPolicy,
 ) -> None:
+    now = timezone.now()
+    Reservation.objects.create(
+        asset=asset,
+        requested_by_user=member_user,
+        source=Reservation.SOURCE_WEB,
+        status=Reservation.STATUS_CONFIRMED,
+        start_at=now + timedelta(hours=3),
+        end_at=now + timedelta(hours=4),
+        effective_end_at=now + timedelta(hours=4),
+    )
     page.set_viewport_size(DESKTOP)
     _login(page, live_server, member_user)
     _assert_css_loaded_after_defaults(page, custom=True)
@@ -395,6 +426,10 @@ def test_member_dashboard_and_form_custom(
     _assert_no_horizontal_overflow(page)
     _screenshot(page, output_path, "branding-custom-member-form-1440")
     page.set_viewport_size(MOBILE)
+    _assert_no_horizontal_overflow(page)
+    assert page.get_by_label(re.compile(r"^Start:?$")).is_visible()
+    assert page.locator("#id_start-help").is_visible()
+    _screenshot(page, output_path, "branding-custom-member-form-390")
     page.goto(f"{live_server.url}/")
     _assert_logo_slot(page, compact_visible=True)
     _assert_no_horizontal_overflow(page)
@@ -406,7 +441,7 @@ def test_member_dashboard_and_form_custom(
 
 @pytest.mark.django_db(transaction=True)
 def test_staff_page_default(
-    page: Page, branding_off, live_server, output_path, staff_user: User
+    page: Page, branding_off, live_server, output_path, staff_user: User, policy: ReservationPolicy
 ) -> None:
     page.set_viewport_size(DESKTOP)
     _login(page, live_server, staff_user)
@@ -423,7 +458,12 @@ def test_staff_page_default(
 
 @pytest.mark.django_db(transaction=True)
 def test_staff_page_custom(
-    page: Page, branding_custom, live_server, output_path, staff_user: User
+    page: Page,
+    branding_custom,
+    live_server,
+    output_path,
+    staff_user: User,
+    policy: ReservationPolicy,
 ) -> None:
     page.set_viewport_size(DESKTOP)
     _login(page, live_server, staff_user)
@@ -444,7 +484,7 @@ def test_staff_page_custom(
 
 @pytest.mark.django_db(transaction=True)
 def test_admin_index_default(
-    page: Page, branding_off, live_server, output_path, staff_user: User
+    page: Page, branding_off, live_server, output_path, staff_user: User, policy: ReservationPolicy
 ) -> None:
     page.set_viewport_size(DESKTOP)
     _login(page, live_server, staff_user)
@@ -460,7 +500,12 @@ def test_admin_index_default(
 
 @pytest.mark.django_db(transaction=True)
 def test_admin_index_custom(
-    page: Page, branding_custom, live_server, output_path, staff_user: User
+    page: Page,
+    branding_custom,
+    live_server,
+    output_path,
+    staff_user: User,
+    policy: ReservationPolicy,
 ) -> None:
     page.set_viewport_size(DESKTOP)
     _login(page, live_server, staff_user)
@@ -496,3 +541,49 @@ def test_invalid_compact_override_falls_back_safely(
     _screenshot(page, output_path, "branding-fallback-compact-390")
     page.set_viewport_size(DESKTOP)
     _screenshot(page, output_path, "branding-fallback-compact-1440")
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "css",
+    [
+        r'@\69mport "http://branding-probe.invalid/slot.css";',
+        'body {background-image:image-set("http://branding-probe.invalid/image.png" 1x)}',
+    ],
+)
+def test_resource_gate_has_browser_sensitivity(
+    page: Page, live_server, tmp_path: Path, css: str
+) -> None:
+    attempted: list[str] = []
+
+    def intercept(route):
+        attempted.append(route.request.url)
+        route.abort()
+
+    page.route("http://branding-probe.invalid/**", intercept)
+    # The actual browser recognizes the unsafe construct; no external request
+    # leaves the intercepted context.
+    page.set_content(f"<style>{css}</style><body>Owned fixture</body>")
+    page.wait_for_function("document.readyState === 'complete'")
+    page.wait_for_timeout(150)
+    assert attempted, "negative control did not exercise a browser resource load"
+    attempted.clear()
+    (tmp_path / "style.css").write_text(css)
+    with override_settings(BRANDING_DIR=str(tmp_path)):
+        page.goto(live_server.url + "/login/")
+        assert page.locator('link[href="/branding/style.css"]').count() == 0
+        assert page.get_by_role("button", name="Log in").is_visible()
+        assert not attempted
+
+
+@pytest.mark.django_db(transaction=True)
+def test_magic_only_png_falls_back_and_decodes(
+    page: Page, live_server, tmp_path: Path, output_path
+) -> None:
+    (tmp_path / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (tmp_path / "favicon.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    with override_settings(BRANDING_DIR=str(tmp_path)):
+        page.goto(live_server.url + "/login/")
+        assert page.locator('link[rel="icon"]').get_attribute("href") == STATIC_LOGO
+        assert page.locator("img.brand-logo").get_attribute("src") == STATIC_LOGO
+        _screenshot(page, output_path, "branding-malformed-png-fallback")
