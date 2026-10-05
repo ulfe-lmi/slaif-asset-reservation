@@ -600,6 +600,8 @@ with override_settings(BRANDING_DIR=str(root)),patch.object(branding.os,'open',s
         )
         if key in os.environ
     }
+    environment["PYTHONPATH"] = str(REPO_ROOT / "src")
+    environment["DJANGO_SETTINGS_MODULE"] = "slaif_reservation.config.settings.test"
     try:
         result = subprocess.run(
             [sys.executable, "-c", code, str(tmp_path)],
