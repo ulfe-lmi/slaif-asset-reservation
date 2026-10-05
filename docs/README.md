@@ -7,7 +7,7 @@
 - [QUICKSTART.md](../QUICKSTART.md) — the essential Docker path to a running
   local evaluation instance (loopback-only, development settings).
 - [INSTALL.md](../INSTALL.md) — the full operator installation and deployment
-  guide (production-shaped Compose, protected secrets, proxy, backup/restore,
+  guide for the authenticated HTTPS pilot (private Compose services, protected secrets, proxy, backup/restore,
   upgrades, rollback).
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — the canonical system architecture.
 
@@ -31,14 +31,15 @@
   scheduled work, release process, rollback, readiness gates.
 - [branding.md](branding.md) — optional same-image operator branding
   (CSS/logo/favicon/images): slots, limits, fallback, refresh semantics.
-- [runbooks/](runbooks/) — operator runbooks: first internal-alpha deployment
-  checklist, pilot preparation and readiness gates, backup and restore,
+- [ux/visual-design.md](ux/visual-design.md) — default SLAIF visual system,
+  responsive layouts, appearance tokens and packaged font provenance.
+- [runbooks/](runbooks/) — operator checklists, pilot readiness, backup and restore,
   database-unavailable response, token/pepper incidents, blackouts,
   idempotency cleanup, SmartScheduling migration.
 - [runbooks/internal-alpha-pilot-preparation.md](runbooks/internal-alpha-pilot-preparation.md) —
-  pilot preparation pack.
+  internal-network preparation pack; use INSTALL for the current Internet-facing boundary.
 - [runbooks/internal-alpha-pilot-readiness.md](runbooks/internal-alpha-pilot-readiness.md) —
-  pilot readiness gates.
+  database/inventory readiness gates, complementing current HTTPS/security qualification.
 - [runbooks/backup-and-restore.md](runbooks/backup-and-restore.md) — backup
   and restore runbook.
 - [runbooks/smartscheduling-migration.md](runbooks/smartscheduling-migration.md) —
@@ -92,7 +93,7 @@ Specialist and historical material, not installation instructions:
   the sanitized migration plan (the real migration/cutover remains separate
   and human-supervised).
 - [roadmap.md](roadmap.md) — historical work-order sequence and milestone
-  language.
+  language; current selected product scope is in PLAN.md.
 - [project-handoff.md](project-handoff.md) — historical strategic snapshot
   (see its header); live state is GitHub `main` plus `oap/`.
 - [work-orders/](work-orders/) — historical accepted work-order baselines.

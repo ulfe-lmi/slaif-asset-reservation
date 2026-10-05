@@ -218,5 +218,6 @@ exports, phone numbers, or private notes in this incident note.
 - No execution gateway or automatic machine enforcement exists.
 - No production monitoring stack or backup scheduler exists.
 - No real SmartScheduling import or cutover has been performed.
-- No production API throttling implementation exists.
+- Login and API abuse budgets coordinate through PostgreSQL across workers;
+  configure and monitor them under the current [installation contract](../../INSTALL.md#shared-authentication-and-api-budgets).
 - The pilot remains internal alpha and must not be described as production-ready.

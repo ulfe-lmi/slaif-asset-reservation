@@ -1,7 +1,7 @@
 # Deployment and Operations
 
-**Status:** CI-green, production-shaped internal-alpha candidate; a real deployment has not yet
-been evidenced
+Supported model: an authenticated HTTPS pilot on one Linux host, with a
+private application/database and an operator-owned reverse proxy.
 
 ## 1. Target
 
@@ -14,15 +14,15 @@ reverse proxy (Caddy or Nginx)
   -> Django/Gunicorn application
   -> PostgreSQL 17 on a private network
 
-systemd timer or cron
-  -> idempotent Django management commands
+optional operator-configured systemd timer or cron
+  -> idempotent management commands
 ```
 
 Do not run PostgreSQL on a public interface. Do not colocate production secrets in the repository or image.
 
 ## 3. Development environment
 
-Work Order 0001 provides a repeatable development path using:
+The developer workflow uses:
 
 - Python 3.13 managed by `uv`;
 - committed `uv.lock`;
@@ -36,32 +36,31 @@ The committed Compose file is development-only. It publishes PostgreSQL and the 
 `127.0.0.1` only, while keeping app-to-database communication on the internal Compose network.
 
 The complete development installation procedure (database, locked dependencies, env file,
-migrations, bootstrap import, runserver, superuser, health checks) is owned by `INSTALL.md`,
-sections 3 and 4. The standard verification command set for changes is in `TESTING.md`.
+migrations, bootstrap import, runserver, superuser, health checks) is documented in CONTRIBUTING.md. The standard verification command set for changes is in `TESTING.md`.
 
 Migrations are a deliberate command. They are not hidden inside the application worker startup.
 
-Work Order 0003 adds PostgreSQL-specific reservation migrations. The migration chain installs the
+The PostgreSQL migration chain installs the
 `btree_gist` extension with `BtreeGistExtension()` and creates the
 `reservation_no_overlap_per_asset` exclusion constraint. The deployment/migration role must be
 allowed to create this extension, or an operator must preinstall it in the target database before
 running migrations.
 
-Work Order 0007 adds maintenance-blackout tables and audit action constraints. No background cleanup
+Migrations include maintenance-blackout tables and audit action constraints. No background cleanup
 or notification scheduler is introduced; blackout creation/deactivation is synchronous through the
 staff management UI.
 
-Work Order 0008 adds example-only production deployment artifacts:
+The supported service-deployment examples are:
 
 - `compose.production.example.yaml`;
 - `deploy/env.production.example`;
 - `deploy/Caddyfile.example`;
 - operator runbooks under `docs/runbooks/`.
 
-These files describe the supported first internal-alpha shape but are not a real deployment. The
+These files describe the authenticated-pilot shape; operator installation is described in INSTALL.md. The
 development Compose file remains unchanged and loopback-only.
 
-Work Order 0011 adds the disposable internal-alpha rehearsal entry point
+The disposable production-shaped rehearsal entry point is
 `deploy/rehearse_internal_alpha_deployment.sh`. The script creates temporary ignored
 `deploy/env.production` and `deploy/secrets/postgres_password` files with synthetic values,
 validates `compose.production.example.yaml`, builds the runtime image, applies migrations to
@@ -71,7 +70,7 @@ env/secret files and Compose volume. It is local rehearsal evidence only, not a 
 deployment. Its full behavior, modes (`--config-only`, `--status`, `--cleanup-owned`), and
 evidence boundaries are documented in `INSTALL.md`, section 6.
 
-Work Order 0004 adds local browser workflow tests. Development and CI install Chromium with:
+Development and CI install Chromium for browser verification with:
 
 ```bash
 uv run playwright install --with-deps chromium
@@ -99,21 +98,27 @@ Implemented variables:
 - `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`;
 - `SLAIF_SECURE_HSTS_PRELOAD`.
 - `SLAIF_API_TOKEN_PEPPER`;
-- `SLAIF_API_TOKEN_MAX_LIFETIME_DAYS`.
+- `SLAIF_API_TOKEN_MAX_LIFETIME_DAYS`;
+- `SLAIF_LOGIN_IP_LIMIT`, `SLAIF_LOGIN_IDENTITY_LIMIT`, `SLAIF_LOGIN_WINDOW_SECONDS`;
+- `SLAIF_API_IP_LIMIT`, `SLAIF_API_OWNER_LIMIT`, `SLAIF_API_TOKEN_LIMIT`, `SLAIF_API_WINDOW_SECONDS`;
+- `SLAIF_BRANDING_DIR` (optional read-only appearance assets).
 
 `SLAIF_SECURE_HSTS_SECONDS`, `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`, and
 `SLAIF_SECURE_HSTS_PRELOAD` default to disabled in production settings. Enable them only after
 the final HTTPS hostname, redirects, and subdomain ownership are verified. `SECURE_SSL_REDIRECT`
-and secure session/CSRF cookies remain enabled by default in production settings.
+is enabled by default and must stay enabled for the Internet-facing contract;
+secure session/CSRF cookies are mandatory in production settings. The isolated
+HTTP-only rehearsal disables the redirect for local checks only.
 
 `SLAIF_TRUSTED_PROXY_PEERS` is required in production settings. It is the explicit list of
 reverse-proxy peer addresses (comma-separated) whose `X-Forwarded-Proto` and single-value
 `X-Forwarded-For` the application honors; every other peer is treated as a direct client with
 all forwarding headers stripped (see section 8). Each entry must be an explicit IP address or a
 point-to-point network (IPv4 `/31`, IPv6 `/127`); broad ranges are rejected because they would
-let any host in the range impersonate the proxy. For a host-side proxy the value is the loopback
-peer (`127.0.0.1`); for a proxy in a Docker network the value is the network's gateway address
-(see section 8 for discovery).
+let any host in the range impersonate the proxy. Use the peer actually observed by the
+application; a host proxy dialing a Docker-published loopback port normally arrives as the
+bridge gateway (see section 8 for discovery). Keep the in-container loopback health probe
+trusted separately.
 
 `SLAIF_ALLOWED_HOSTS` must list explicit hosts; the wildcard `*` is rejected in production
 settings. `SLAIF_CSRF_TRUSTED_ORIGINS` must be non-empty and every entry must be a bare origin
@@ -130,7 +135,8 @@ pepper invalidates all existing API tokens until a future key-ring/rotation desi
 Deferred variables:
 
 - canonical external URL, email relay, structured-log destination, OIDC, and backup destination.
-- login throttling/rate-limit configuration, because public local-auth hardening is deferred.
+Shared login/API budget configuration and failure/cleanup behavior are described in
+[Installation](../INSTALL.md#shared-authentication-and-api-budgets).
 
 `.env.example` is for host-side local commands run explicitly as `uv run --env-file .env ...`;
 Django does not automatically load it. Its `DATABASE_URL` points at the loopback-published
@@ -152,7 +158,7 @@ smoke checks probe only the configured rehearsal port.
 
 ## 5. Containers
 
-The scaffold image:
+The application image:
 
 - uses the Python 3.13 slim image;
 - run as a non-root user;
@@ -318,7 +324,7 @@ initialize or broaden an installation.
 
 ### Backup
 
-Work Order 0008 adds PostgreSQL-native wrappers:
+PostgreSQL-native operational wrappers:
 
 ```bash
 python manage.py backup_database --output /backups/slaif-YYYYMMDD.dump
@@ -356,12 +362,12 @@ docs/runbooks/internal-alpha-pilot-preparation.md
 - API access logs redacted according to the security model;
 - optional network restriction for `/admin/`.
 
-Caddy (pinned v2.11.6) is the documented first internal-alpha example in
+Caddy (qualified at v2.11.6) is the supported operator example in
 `deploy/Caddyfile.example`; Nginx remains acceptable if already operated
 institutionally. The proxy must terminate HTTPS and be the single trusted
 peer of the private application; it must not expose the app on any address
-other than the one the proxy uses to reach it (container-internal
-`127.0.0.1:8000` or the published loopback port).
+outside the private boundary. Gunicorn binds `0.0.0.0:8000` inside its
+container; the host publication remains `127.0.0.1` only.
 
 ### Trust contract
 
@@ -370,14 +376,18 @@ listed in `SLAIF_TRUSTED_PROXY_PEERS` (see section 4 for the strict entry
 validation). The supported topology is one operator-owned proxy in front of
 a private Gunicorn:
 
-- **Host-side proxy (loopback app port):** the proxy dials the app at
-  `127.0.0.1`, so the app's trusted peer is `127.0.0.1` (and `::1` where
-  the dial could use IPv6).
-- **Proxy in a Docker network:** the app sees the proxy as the network's
-  gateway address. Discover it with
-  `ip route show default dev <bridge>` on the host, or
-  `docker network inspect <network>` (`.IPAM.Config[].Gateway`) when using
-  the compose network. Configure exactly that address.
+- **Canonical host-side proxy:** Caddy dials the Docker-published
+  `127.0.0.1:8000` port. The application usually observes the Docker bridge
+  gateway as the socket peer; configure and verify the address actually
+  observed, rather than assuming the public client or host dial address.
+  Discover the bridge gateway with `docker network inspect <network>`
+  (`.IPAM.Config[].Gateway`). Keep `127.0.0.1` separately trusted for the
+  in-container health probe.
+- **Equivalent container-side proxy:** a proxy dialing the app directly on
+  its private network presents the proxy container's own IP, not the gateway.
+  Use a stable explicitly trusted peer and qualify the same contract. No public
+  proxy Compose service/profile is shipped; the operator-owned host proxy is
+  the supported and rehearsed path.
 
 From a **trusted peer**, the app honors `X-Forwarded-Proto` only when it is
 exactly `http` or `https`, and `X-Forwarded-For` only as a single valid IP
@@ -411,8 +421,7 @@ one-hop client identity is `request.client_ip`, written back to
 `REMOTE_ADDR` so downstream code sees a single canonical value, and it is
 the source for the safe `client` field in application request logs (an IP
 address, never a credential; there is no diagnostic endpoint that exposes
-identities). It is the intended single source for the next limiter
-objective.
+identities). Shared login/API budgets use this normalized client identity.
 
 Ambiguous forwarding from a trusted peer (a chain instead of a single IP,
 or a non-`http(s)` proto) falls back to the safe value with a
@@ -549,7 +558,7 @@ echoing the configured value).
 
 Minimum implemented application-side posture:
 
-- production JSON logs to stdout/stderr with timestamp, level, logger, message, request path,
+- production JSON logs to stdout/stderr with timestamp, level, logger, message, matched route,
   method, status, duration, and request ID where available;
 - defensive redaction of Authorization, bearer-token-shaped values, token secrets, verifiers,
   peppers, cookies, CSRF values, passwords, raw request bodies, reservation purposes, and
@@ -579,11 +588,12 @@ Remaining operator monitoring minimum:
 - alerts for sustained 5xx, failed readiness, backup failure, and disk pressure;
 - reservation conflict metrics treated as product signal, not necessarily errors.
 
-Prometheus/Grafana integration is optional until an operator requirement is confirmed.
+No monitoring stack is installed. Operators integrate health checks and safe logs
+with their own monitoring/alerting system.
 
 ## 10. Scheduled work
 
-Use idempotent management commands for:
+Available management commands support:
 
 - cleanup of expired idempotency records:
 
@@ -593,11 +603,12 @@ Use idempotent management commands for:
   ```
 
   The default mode is dry-run. Scheduling remains operator responsibility;
-- notifications/reminders if approved;
 - audit/consistency checks;
 - export and backup verification helpers.
 
-Every command supports dry-run where mutation risk exists and returns a non-zero exit status on failure. A queue system requires a later ADR.
+Cleanup commands are dry-run by default and require explicit application.
+Scheduling them and reviewing failures is an operator task; no queue or notification
+worker is installed.
 
 ## 11. Release process
 
@@ -616,16 +627,12 @@ Codex may prepare changes and evidence. A human operator authorizes production d
 
 ## 12. Rollback
 
-Before beta, document:
-
-- application image rollback;
-- database compatibility window;
-- when migration rollback is unsafe;
-- restore-from-backup escalation;
-- how to put the service into read-only/maintenance mode;
-- how to communicate reservation uncertainty during an incident.
-
-Do not promise automatic rollback until tested.
+[Installation](../INSTALL.md#9-upgrading-to-a-new-reviewed-revision-manual-alpha-procedure)
+describes application image rollback and database restoration. Preserve the previous
+image and a verified pre-upgrade backup. An older image is safe only while the
+current schema remains compatible; otherwise use the approved restore procedure.
+A failed restore leaves the application stopped until the database is verified.
+There is no automatic rollback or general application read-only mode.
 
 ## 13. Production-readiness gates
 
@@ -643,21 +650,21 @@ Do not label the service production-ready until all are evidenced:
 - migration/cutover plan from SmartScheduling;
 - human security and release approval.
 
-## 14. Remaining Production Gaps
+## 14. Operating limits and responsibilities
 
-The scaffold is intentionally not production-ready. Remaining gaps include:
+This is a controlled authenticated pilot, not an unrestricted production-maturity
+claim. Operators own real host/DNS/TLS configuration, secret retention/rotation,
+account creation, capacity/perimeter protection, backup scheduling and off-host
+storage, restore drills, monitoring, incident response and privacy/retention policy.
+The repository provides commands and rehearsals, not an installed operations stack.
 
-- accepted production host, DNS, TLS, and reverse-proxy configuration;
-- production secret-management integration and operator-managed secret rotation;
-- administrator verification of imported asset hardware identity and capabilities;
-- no real deployment performed and no live TLS/DNS/certificate issuance;
-- no backup scheduler or restore drill against a production copy;
-- no production monitoring stack or alert routing;
-- no OIDC, email, password reset, or notifications;
-- no real SmartScheduling export processed, production import performed, or cutover rehearsed;
-- no execution gateway integration;
-- reverse-proxy static-asset strategy for production if WhiteNoise is later replaced;
-- no projects/resource restrictions or delegated resource-manager roles beyond active staff.
+The database role is shared and privileged under the Compose defaults; role
+separation remains deferred. Authenticated humans have broad reservation access
+under policy rules; site groups do not implement project/membership or per-token
+asset restrictions. Institutional OIDC, password reset/email, notifications,
+workload execution/gateway/scheduler integration and private SmartScheduling
+cutover are outside the current service. Imported inventory is not evidence of
+hardware availability or verification.
 
 ### Shared abuse budgets
 

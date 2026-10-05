@@ -1,15 +1,15 @@
 # INSTALL — Installation and Deployment
 
-**Status:** controlled internal-alpha deployment path; a real deployment has
-not yet been evidenced.
+**Target:** an authenticated HTTPS pilot on a single Linux host. Keep the
+application and database private behind an operator-owned reverse proxy.
 
 This is the operator guide for SLAIF Asset Reservation. Docker/Compose is
 the deployment path; the `uv` workflow is the development path. For the
 shortest local evaluation, see [QUICKSTART.md](QUICKSTART.md). Deeper
-configuration reference and rationale: `docs/deployment.md`. Operator
-checklists and gates: `docs/runbooks/`.
+configuration reference and rationale: [Deployment reference](docs/deployment.md). Operator
+checklists and recovery procedures: [runbooks](docs/runbooks/).
 
-**Contents:** [1. Supported deployment shape](#1-supported-deployment-shape) · [2. Prerequisites](#2-prerequisites) · [3. Fast local evaluation](#3-fast-local-evaluation-docker-loopback-only) · [4. Development installation](#4-development-installation-uv--development-path) · [5. Internal-alpha Docker deployment](#5-internal-alpha-docker-deployment-canonical-procedure) · [6. Rehearsal](#6-rehearsal-what-it-does-and-does-not-prove) · [7. Persistence](#7-persistence) · [8. Backup and restore](#8-backup-and-restore) · [9. Upgrades and rollback](#9-upgrading-to-a-new-reviewed-revision-manual-alpha-procedure) · [10. Shutdown and restart](#10-shutdown-and-restart) · [11. Security boundaries](#11-security-boundaries) · [12. Known alpha limitations](#12-known-alpha-limitations-operator-relevant) · [13. Documentation map](#13-documentation-map) · [14. Uninstall and data retention](#14-uninstall-and-data-retention) · [15. Troubleshooting](#15-troubleshooting)
+**Contents:** [1. Supported deployment shape](#1-supported-deployment-shape) · [2. Prerequisites](#2-prerequisites) · [3. Fast local evaluation](#3-fast-local-evaluation-docker-loopback-only) · [4. Development installation](#4-development-installation-uv--development-path) · [5. Authenticated pilot deployment](#5-authenticated-pilot-docker-deployment-canonical-procedure) · [6. Rehearsal](#6-rehearsal-what-it-does-and-does-not-prove) · [7. Persistence](#7-persistence) · [8. Backup and restore](#8-backup-and-restore) · [9. Upgrades and rollback](#9-upgrading-to-a-new-reviewed-revision-manual-alpha-procedure) · [10. Shutdown and restart](#10-shutdown-and-restart) · [11. Security boundaries](#11-security-boundaries) · [12. Operating limits](#12-operating-limits) · [13. Documentation map](#13-documentation-map) · [14. Uninstall and data retention](#14-uninstall-and-data-retention) · [15. Troubleshooting](#15-troubleshooting)
 
 ## 1. Supported deployment shape
 
@@ -56,7 +56,8 @@ rationale and the responsiveness regression.
 What this deployment actually requires:
 
 - A Linux host (`x86_64`/amd64, see section 1).
-- Docker Engine with the Docker Compose v2 plugin.
+- Docker Engine with Docker Compose v2.24.0 or later (the examples use
+  [optional `env_file` entries](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/#additional-information-1)).
 - Git, curl, and Bash for the commands below.
 - Outbound connectivity to pull `python:3.13-slim` (pinned by digest in the
   `Dockerfile`) and the PostgreSQL service image (pinned by digest in the
@@ -89,16 +90,18 @@ The developer workflow — Python 3.13 managed by `uv` with the committed
 handling, and the standard verification command set — is documented in
 [CONTRIBUTING.md](CONTRIBUTING.md), with required test tooling and
 evidence rules in [TESTING.md](TESTING.md). It is not the recommended
-long-running service deployment; use the Docker path in sections 3 and 5
-for anything that will stay up.
+long-running service deployment; use the controlled operator procedure in
+section 5 for a service.
 
-## 5. Internal-alpha Docker deployment (canonical procedure)
+## 5. Authenticated pilot Docker deployment (canonical procedure)
 
-Entry gates before starting: CI green on the reviewed commit, the local
-rehearsal passed (section 6), and human approval of the reviewed commit.
+Before deployment, select a reviewed immutable commit with green checks and
+current qualification/audit evidence, complete the local rehearsals (section 6),
+and approve the real host, accounts, secrets, DNS/TLS and operating responsibilities.
+Development checks and local rehearsal do not perform those real actions.
 
 1. **Clone and checkout the reviewed commit.** The reviewed commit is
-   operator-selected (the commit strategy approved, with green CI). The
+   operator-selected (reviewed and qualified, with green CI). The
    read prompt keeps it out of any committed command and requires the
    full commit, not a prefix:
 
@@ -126,7 +129,7 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
 
    - `SLAIF_DJANGO_SECRET_KEY` (at least 32 bytes);
    - `SLAIF_ALLOWED_HOSTS` — **both** the approved service hostname
-     (the internal-pilot hostname served through the proxy) **and**
+     (the service hostname served through the HTTPS proxy) **and**
      `127.0.0.1`. The service hostname serves browser/API traffic through
      the proxy; `127.0.0.1` is required because the Compose app
      healthcheck probes `http://127.0.0.1:8000/health/live` from inside
@@ -143,17 +146,12 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
      `SLAIF_DJANGO_SECRET_KEY`);
    - `DATABASE_URL` — the database password here **must match** the secret
      file from step 3.
-   - `SLAIF_TRUSTED_PROXY_PEERS` — the explicit list of reverse-proxy peer
-     addresses whose `X-Forwarded-Proto` / `X-Forwarded-For` the
-     application honors (comma-separated). Entries must be explicit IP
-     addresses or point-to-point networks (IPv4 `/31`, IPv6 `/127`); broad
-     ranges are rejected. Set `127.0.0.1` (the in-container healthcheck
-     probe below) **and** the Docker bridge gateway IP — the peer the host
-     proxy presents when it dials the published app port. Discover the
-     gateway on the host: `ip route show default dev docker0` (substitute
-     the actual bridge device), or
-     `docker network inspect <network> --format
-     '{{range .IPAM.Config}}{{.Gateway}}{{end}}'` for the compose network.
+   - `SLAIF_TRUSTED_PROXY_PEERS` — start with `127.0.0.1` for the
+     in-container probe. After PostgreSQL creates the Compose network in
+     step 6, discover and add the actual host-proxy socket peer before
+     starting the application. Entries are explicit IP addresses or
+     point-to-point networks (IPv4 `/31`, IPv6 `/127`); broad ranges are
+     rejected.
 
    Do not weaken `SLAIF_SECURE_SSL_REDIRECT` or the trusted-peer list to
    make the healthcheck pass: the probe dials `127.0.0.1` from inside the
@@ -165,11 +163,15 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
    overwrite `X-Forwarded-Proto` / `X-Forwarded-For` from the real
    connection (step 12).
 
-3. **Create the PostgreSQL secret file.**
+3. **Prepare the PostgreSQL secret file.** If it already exists, retain it and
+   verify that it matches the existing database role and application URL. Do not
+   rotate it as an installation step: changing the file does not change the
+   password in an initialized PostgreSQL volume. For a new installation only:
 
    ```bash
    install -d -m 700 deploy/secrets
    umask 077
+   test ! -e deploy/secrets/postgres_password || { echo "Existing secret: review and reuse it." >&2; exit 1; }
    head -c 32 /dev/urandom | base64 | tr -d '=+/\n' | head -c 32 \
      > deploy/secrets/postgres_password
    ```
@@ -213,7 +215,21 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
    docker compose -f compose.production.example.yaml ps
    ```
 
-   Wait until the `db` service is healthy.
+   Wait until the `db` service is healthy. Its private network now exists;
+   inspect the network name and gateway without printing application secrets:
+
+   ```bash
+   SAR_DB_CONTAINER=$(docker compose -f compose.production.example.yaml ps -q db)
+   SAR_COMPOSE_NETWORK=$(docker inspect "$SAR_DB_CONTAINER" --format '{{range $name, $network := .NetworkSettings.Networks}}{{$name}}{{end}}')
+   docker network inspect "$SAR_COMPOSE_NETWORK" --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+   ```
+
+   For the canonical host-side Caddy proxy dialing the published loopback port,
+   the app normally observes this bridge gateway as its peer. Add that explicit
+   IP to `SLAIF_TRUSTED_PROXY_PEERS` in the protected application environment,
+   retaining `127.0.0.1` for the in-container probe. Verify the actual peer during
+   the HTTPS checks; Docker forwarding behavior can vary. Do not trust the whole
+   subnet or copy an address from another installation.
 
 7. **Run migrations deliberately.**
 
@@ -300,9 +316,9 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
     one-time token page's `no-referrer` / `no-store, private` contract —
     pass through the proxy unchanged. Set
     `SLAIF_TRUSTED_PROXY_PEERS` to the source peer the application actually
-    sees from the proxy — `127.0.0.1` for a host-side proxy dialing the
-    published loopback port, plus the Docker bridge gateway IP if the proxy
-    dials the published loopback port (discovery in step 2): the application
+    sees from the proxy. For a host proxy dialing a Docker-published loopback
+    port, this is normally the bridge gateway; discover and verify it as
+    in step 6. Keep `127.0.0.1` separately for the in-container probe: the application
     honors that peer's forwarding and treats every other peer as a direct
     client. In both cases the application strips every forwarding header it
     does not consume (trusted and untrusted alike), keeps the original
@@ -347,6 +363,51 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
       python manage.py pilot_readiness_check --strict
     ```
 
+    This checks database/inventory/account/policy readiness; it does not qualify
+    public TLS, proxy trust, abuse capacity or the operator's incident/backup
+    arrangements. Pair it with the current HTTPS/security qualification.
+
+### Shared authentication and API budgets
+
+Member and administration login share PostgreSQL counters across workers. API
+budgets apply before authentication (including invalid bearer attempts) and also
+per authenticated bearer owner/token. Defaults are:
+
+| Budget | Limit | Window | Environment variable |
+| --- | --- | --- | --- |
+| Login source IP | 30 POST attempts | 300 seconds | `SLAIF_LOGIN_IP_LIMIT` |
+| Login identity | 10 POST attempts | 300 seconds | `SLAIF_LOGIN_IDENTITY_LIMIT` |
+| API source IP | 1200 requests | 60 seconds | `SLAIF_API_IP_LIMIT` |
+| API bearer owner | 600 requests | 60 seconds | `SLAIF_API_OWNER_LIMIT` |
+| API token | 300 requests | 60 seconds | `SLAIF_API_TOKEN_LIMIT` |
+
+`SLAIF_LOGIN_WINDOW_SECONDS` and `SLAIF_API_WINDOW_SECONDS` set the respective
+windows. All are bounded positive integers validated at settings load. Choose
+rates for the expected users/agents and shared network addresses; do not disable
+or weaken the protection to work around proxy identity errors. The trusted proxy
+must supply the real single-hop client address. Fixed windows can admit a burst
+across their boundary; these are application budgets, not distributed-DDoS protection.
+
+Denials return 429, `Retry-After` and `Cache-Control: no-store`; API denials retain
+machine-readable problem details and request correlation. An unavailable security
+database fails closed with a generic 503. Identity keys are HMAC-derived rather
+than raw email/token values. There is no permanent automatic account lockout.
+The counter operations bound lock wait to one second and statement execution to
+two seconds; production database connection timeouts must be 1–30 seconds
+(default five). A small opportunistic cleanup accompanies normal traffic.
+
+Expired counters can also be purged deliberately (dry run, then a bounded batch):
+
+```bash
+docker compose -f compose.production.example.yaml run --rm app \
+  python manage.py purge_expired_abuse_buckets
+docker compose -f compose.production.example.yaml run --rm app \
+  python manage.py purge_expired_abuse_buckets --apply --batch-size 1000
+```
+
+Scheduling cleanup, monitoring denials and protecting the public perimeter are
+operator responsibilities. See [Security model](docs/security-model.md).
+
 ### Optional operator branding (same image, no rebuild)
 
 Appearance overrides (CSS, logos, favicon, one public image) are optional
@@ -382,7 +443,7 @@ synthetic-value, production-shaped rehearsal on this machine:
   on a loopback port (default 18080; `SLAIF_REHEARSAL_PORT` overrides it);
   a port occupied by a non-rehearsal process is never killed — the script
   refuses to start and asks for another port;
-- applies migrations, validates the bootstrap import, runs
+- applies migrations and the explicit default-policy initializer, validates the bootstrap import, runs
   `operational_check`, validates OpenAPI, and smokes
   `/health/live`, `/health/ready`, `/login/`, anonymous `/manage/` redirect,
   and unauthenticated `/api/v1/me/` failure;
@@ -396,18 +457,33 @@ An opt-in `.github/workflows/deployment-rehearsal.yml` workflow (manual
 `workflow_dispatch`) runs the same rehearsal in CI, separately from the four
 standard jobs.
 
-The rehearsal proves that the documented deployment procedure coheres with
+The rehearsal checks the documented deployment procedure using
 synthetic disposable resources. It is not a deployment: it uses no real DNS,
 TLS certificates, secrets, or host, and it cleans itself up. Distinguish the
 three evidence levels:
 
-1. **CI** renders the production Compose config, builds the production
-   image, and checks the runtime user and bundled assets. CI deliberately
-   does not bring up the production-shaped stack in the standard jobs.
+1. **CI** renders/builds the production image and checks its runtime user and
+   assets. The standard test job also drives owned production-shaped,
+   same-image branding and real-HTTPS boundary qualifications, including
+   failure/cleanup paths. It never deploys a real service.
 2. **Full local rehearsal** (this script, no flag) runs the production-shaped
    stack with synthetic values. Local evidence only.
 3. **A real deployment** is a human-authorized host with real DNS/TLS and
-   real secrets from the operator's secret store. It has not been performed.
+   real secrets from the operator's secret store. It is separate from disposable qualification.
+
+### Real HTTPS boundary qualification
+
+`deploy/rehearse_https_boundary.sh` builds a tracked-source image and drives the
+production-shaped application through a pinned Caddy v2.11.6 instance. It uses
+loopback-only ports, temporary self-signed certificates, synthetic configuration,
+private PostgreSQL and exact owned cleanup. It tests forwarding spoof/ambiguity,
+TLS/CSRF/cookies, private schema/docs, error/header/log privacy, body/deadline
+bounds and direct untrusted-container access.
+
+Run rehearsals only from an owned disposable checkout. The full scripts may
+create/remove deployment configuration and volumes; existing files or foreign
+resources are refused. Neither modifies DNS, issues real certificates, changes
+host trust or publishes a service. See [Testing](TESTING.md) for the isolation rules.
 
 ## 7. Persistence
 
@@ -585,16 +661,17 @@ docker compose -f compose.production.example.yaml restart app
   all forwarding headers stripped. Secure session/CSRF
   cookies and SSL redirect are on by default; HSTS stays disabled until the
   final HTTPS hostname is verified, then must be enabled explicitly.
-- Local Django accounts, created by administrators, are acceptable for the
-  deliberately constrained internal alpha but are not the final
-  institutional identity solution (institutional OIDC is deferred).
-- Public Internet exposure requires additional authentication, rate-limiting,
-  and monitoring decisions that are currently deferred; do not expose this
-  service publicly without them.
+- Administrator-created local accounts support the authenticated pilot.
+  Institutional OIDC and password-reset/email workflows remain deferred.
+- Internet access uses the qualified HTTPS proxy boundary and shared PostgreSQL
+  budgets for member/admin login and API traffic. Keep the application listener
+  private; configure explicit proxy peers, overwrite forwarding headers, preserve
+  secure cookies/CSRF and review logs. Perimeter protection, monitoring, account
+  administration and incident response remain operator responsibilities.
 - No real secret, token, credential, or private export may ever enter the
   repository, the image, logs, or this document.
 
-## 12. Known alpha limitations (operator-relevant)
+## 12. Operating limits
 
 - No institutional OIDC or SSO; accounts are administrator-created only.
 - No password reset or email workflow; lost credentials require
@@ -613,8 +690,8 @@ docker compose -f compose.production.example.yaml restart app
   Compose defaults). Role separation is a known operational limitation.
 - No project/group authorization: every active human account may browse
   active assets and request any active, reservable, exclusive asset with an
-  effective policy. This is temporary internal-alpha behavior, not the final
-  authorization model.
+  effective policy. This is the current authenticated-pilot authorization
+  model; account creation does not create project-scoped resource permissions.
 
 ## 13. Documentation map
 

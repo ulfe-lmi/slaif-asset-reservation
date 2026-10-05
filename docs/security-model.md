@@ -1,6 +1,8 @@
 # Security Model
 
-**Status:** baseline threat model; update when trust boundaries change
+Security boundaries for the authenticated HTTPS pilot. See [Installation](../INSTALL.md)
+for the operator contract; institutional identity and deeper resource authorization
+remain deferred.
 
 ## 1. Protected assets
 
@@ -49,7 +51,7 @@ The application must not store machine SSH private keys, SmartScheduling credent
 | Double booking race | PostgreSQL exclusion constraint and real concurrent integration tests |
 | Booking hoarding | duration/horizon/concurrency policy, rate limits, audit, administrator controls |
 | Privilege escalation | explicit roles/scopes, deny by default, no implicit admin API, tests for every role boundary |
-| Audit tampering | append-only application model, restricted database role, backup, no ordinary delete/update path |
+| Audit tampering | append-only application model and protected ordinary/admin paths; runtime database-role separation remains deferred, so privileged DB operators can alter records |
 | Secret leakage in logs | structured allowlist logging, token/cookie/header filtering, tests and scans |
 | Personal-data overcollection | email-centered identity, no required phone, approved retention and migration scope |
 | Malicious metadata/XSS | server-side validation, template autoescaping, output encoding, safe Markdown policy if ever added |
@@ -116,7 +118,7 @@ routes.
 - derive verifier using `SLAIF_API_TOKEN_PEPPER`, a dedicated server-side secret distinct from
   Django `SECRET_KEY`;
 - constant-time compare;
-- check expiry, revocation, owner state, service-account denial, scopes, and restrictions;
+- check expiry, revocation, owner state, service-account denial, scopes;
 - fail closed if token configuration is incomplete;
 - update last-use metadata best-effort; authentication must not fail solely because last-use
   recording fails;
@@ -133,10 +135,10 @@ routes.
 - replacing the single pepper invalidates all existing tokens until a future key-ring/rotation ADR
   is accepted.
 
-Work Order 0005 implements owner-only self-service token issue/list/revoke pages for active human
-users. There is no administrative or service-account token issuance in this slice. The bearer
-authenticator primitive exists for direct tests but is not enabled on the asset API, API root,
-schema/docs, or reservation routes.
+Active human owners can issue, list and revoke tokens through their own member pages.
+Administration exposes protected token records read-only; it provides no token issuance
+or secret recovery. Bearer authentication applies only to the explicitly scoped
+versioned endpoints described below.
 
 API token ORM protections block ordinary instance overwrite, reconstructed overwrite, queryset
 update/delete, bulk create/update, and instance delete paths, including paths through the base
@@ -145,11 +147,11 @@ owner, name, verifier, scopes, expiry, and creation time are compared with the s
 write. Only revocation fields together or `last_used_at` may change through service update
 authorization.
 
-Work Order 0006 enables bearer authentication only on `/api/v1/me/`, advisory availability, and
+Bearer authentication is enabled only on `/api/v1/me/`, advisory availability, and
 owner-scoped reservation endpoints. The staff asset list/detail API remains staff-session-only.
 Every bearer endpoint checks explicit scopes; authentication alone is not authorization.
 
-Work Order 0007 adds a separate staff management UI under `/manage/`. Management routes require an
+The separate staff management UI is under `/manage/`. Management routes require an
 authenticated active staff user and reject service accounts. This does not grant staff any hidden
 bypass on ordinary member routes; member selectors remain owner-scoped. Management mutations use
 POST plus CSRF and call audited/domain services rather than direct model mutation.
@@ -172,7 +174,7 @@ deferred. Idempotency records never store bearer plaintext, Authorization header
 bodies, session cookies, CSRF values, token secrets, verifiers, peppers, passwords, or private
 reservation/audit internals.
 
-Work Order 0008 adds explicit expired-row cleanup through
+Explicit expired-row cleanup uses
 `purge_expired_idempotency_records`. The command defaults to dry-run, requires `--apply` for
 deletion, deletes only expired rows, and remains operator-scheduled. No queue or background worker is
 introduced.
@@ -182,7 +184,7 @@ They do not expose ORM exception text, SQL, constraint names, stack traces, toke
 secret material.
 
 Production-shaped logging uses JSON lines with allowlisted operational fields. Request logging
-records method, path, status, duration, and a validated request ID where available; it does not log
+records method, matched route template, status, duration, and a validated request ID where available; it does not log
 headers, cookies, request bodies, reservation purposes, cancellation reasons, bearer tokens,
 verifiers, peppers, passwords, or CSRF values. The formatter also redacts known secret field names
 and complete SLAIF bearer-token-shaped values defensively.
@@ -190,7 +192,7 @@ and complete SLAIF bearer-token-shaped values defensively.
 Backup/restore wrappers use PostgreSQL-native tools and avoid printing database passwords. Backup
 artifacts and backup destinations are operator-controlled sensitive storage and must not be
 committed. The repository provides runbooks but no automated backup scheduler, encryption layer,
-off-host copy, or monitoring stack in this slice.
+off-host copy, or monitoring stack.
 
 SmartScheduling migration tooling accepts only local JSON/YAML files and synthetic fixtures in this
 repository. Commands reject URLs, unsupported extensions, unknown private fields, duplicate legacy
@@ -205,12 +207,10 @@ asset ID, and time range.
 
 Authorization is action-specific. A principal may be able to see an asset but not reserve it, or read own reservations but not another user's purpose.
 
-Every reservation command evaluates:
+Depending on the action, reservation commands evaluate:
 
 - principal active state;
 - human role or token scopes;
-- project/group membership;
-- token resource restrictions;
 - asset active/reservable state;
 - effective policy;
 - ownership for cancel/release;
@@ -218,9 +218,11 @@ Every reservation command evaluates:
 
 Django admin permission is not automatically equivalent to domain authorization for custom APIs.
 
-The human MVP uses temporary broad authenticated-human access: every active non-service-account
+The current product uses broad authenticated-human access: every active non-service-account
 user may browse active assets and request any active, reservable, exclusive asset with an effective
-policy. This is internal-alpha behavior until project/group authorization exists. Member reservation
+policy. Project/group and per-token asset restrictions are not implemented; token scopes
+grant actions, with reservation reads/mutations constrained to the owner. Site permission groups
+control administration model permissions, not reservation entitlements. Member reservation
 selectors always filter by current owner before retrieval; staff users on member routes cannot view,
 cancel, or release another user's reservation.
 
@@ -231,8 +233,8 @@ Availability windows fail closed when the requested local-day boundary cannot be
 user's configured IANA timezone. The UI returns a privacy-safe bad-request response and does not
 guess an offset or substitute `Europe/Ljubljana`/UTC.
 
-Work Order 0003 implements the internal reservation command layer and keeps reservation HTTP
-mutations deferred. Successful reservation and policy mutations append `AuditEvent` rows in the same
+Browser and API mutations share the reservation command layer. Successful reservation
+and policy mutations append `AuditEvent` rows in the same
 database transaction. Creation locks the requesting principal, authoritative asset, and selected
 effective policy. Cancellation locks requester, reservation, asset, and selected policy before
 cutoff evaluation. Release is entitlement-reducing and does not depend on the asset or policy still
@@ -257,7 +259,6 @@ Core personal data:
 
 - display name;
 - institutional/contact email;
-- project/group membership;
 - reservation purpose and lifecycle;
 - safe audit metadata.
 
@@ -308,11 +309,12 @@ Add tests that capture logs on authentication and failure paths.
 
 ## 9. Database and backup
 
-- application DB role uses only required privileges;
-- migrations use a controlled deployment role if separation is practical;
+- the current Compose role is privileged and shared by runtime/migrations;
+  separate least-privilege runtime/migration roles are deferred operational hardening;
 - PostgreSQL is private to the app/server network;
 - backups are encrypted or stored in a protected institutional location;
-- restore procedure is tested before beta;
+- restore procedures are exercised on owned disposable databases; real backup
+  scheduling, protected/off-host storage and regular restore drills remain operator duties;
 - production data is not copied into Codex/CI environments;
 - test fixtures are synthetic.
 
@@ -324,7 +326,8 @@ Reverse proxy and app must set or support:
 - HSTS after validation;
 - `X-Content-Type-Options: nosniff`;
 - frame-ancestor/Clickjacking protection (`X-Frame-Options: DENY`);
-- a Content Security Policy appropriate to local assets;
+- no application Content Security Policy is currently emitted; any operator CSP
+  must be qualified against member, administration and local Swagger assets;
 - `Referrer-Policy: strict-origin-when-cross-origin` as a DEFERRED edge
   default (Caddy `?` semantics): the edge policy applies only when the
   application response sets none, so stricter per-view policies - in
@@ -354,7 +357,8 @@ Codex and CI environments:
 - contain no production credentials or personal exports;
 - use disposable PostgreSQL data;
 - may install development tools;
-- cannot deploy or merge;
+- CI and coding roles do not deploy or merge; strategic development merge requires
+  explicit scoped delegation and exact-head evidence; real deployment remains human-owned;
 - use least-privilege GitHub tokens;
 - must not print secrets from repository settings;
 - report dependency/audit findings honestly.
