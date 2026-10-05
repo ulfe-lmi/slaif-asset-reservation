@@ -12,7 +12,7 @@ presentation only.
 from __future__ import annotations
 
 import re
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from html import unescape
 
 import pytest
@@ -111,21 +111,29 @@ def _assert_no_dangling_aria(html: str) -> None:
             assert f'id="{target}"' in html, f"aria-describedby target missing: {target}"
 
 
+def _control_binds_help(html: str, control_id: str, help_id: str) -> None:
+    """The control's own element carries aria-describedby naming the help."""
+    tag = re.search(r"<[a-zA-Z][^>]*\bid=" + re.escape(control_id) + r'"[^>]*>', html)
+    described = re.search(r'aria-describedby="([^"]*)"', tag.group(0))
+    assert described, f"control #{control_id} has no aria-describedby"
+    assert help_id in described.group(1).split(), (
+        f"control #{control_id} does not bind help #{help_id}"
+    )
+
+
 def _assert_guided(
     html: str,
     help_id: str,
     fragment: str,
     *,
-    aria: str | None = None,
+    control_id: str,
 ) -> None:
-    """Help paragraph with the given ID renders the fragment, optionally
-    wired via aria-describedby on the control."""
+    """Help element with the given ID renders the fragment and is bound to
+    the control's own element via its aria-describedby."""
     assert f'id="{help_id}"' in html, f"missing help element id={help_id}"
     text = unescape(html)
     assert fragment in text, f"missing guidance fragment: {fragment!r}"
-    if aria is not None:
-        assert f'aria-describedby="{help_id}"' in html
-        assert f'aria-describedby="{aria}"' in html if aria != help_id else True
+    _control_binds_help(html, control_id, help_id)
 
 
 # --- Member surfaces -----------------------------------------------------
@@ -141,7 +149,7 @@ def test_member_login_guidance_and_invalid_post(client: Client) -> None:
         html,
         "id_username-help",
         "Accounts are created by an administrator; self-registration is not available.",
-        aria="id_username-help",
+        control_id="id_username",
     )
 
     # Invalid credentials keep the guidance and the generic denial.
@@ -162,13 +170,13 @@ def test_profile_guidance_and_invalid_timezone_post(client: Client, member_user:
         html,
         "id_display_name-help",
         "Shown to staff in management views and on reservation records.",
-        aria="id_display_name-help",
+        control_id="id_display_name",
     )
     _assert_guided(
         html,
         "id_timezone-help",
         "Required. IANA time zone name",
-        aria="id_timezone-help",
+        control_id="id_timezone",
     )
 
     # Unchanged negative: an invalid IANA name is still rejected.
@@ -206,25 +214,31 @@ def test_reservation_form_guidance_and_invalid_post(
         html,
         "id_start-help",
         "Local date and time the asset is needed, in Europe/Ljubljana",
-        aria="id_start-help",
+        control_id="id_start",
     )
     _assert_guided(
         html,
         "id_end-help",
         "Local end date and time, in Europe/Ljubljana, after the start",
-        aria="id_end-help",
+        control_id="id_end",
     )
     _assert_guided(
         html,
         "id_start_fold-help",
-        "Only needed when this local time falls on a daylight-saving transition",
-        aria="id_start_fold-help",
+        "On fall-back the clock time repeats and Automatic is then rejected",
+        control_id="id_start_fold",
+    )
+    _assert_guided(
+        html,
+        "id_end_fold-help",
+        "A time inside the spring-forward gap does not exist and is always rejected",
+        control_id="id_end_fold",
     )
     _assert_guided(
         html,
         "id_purpose-help",
         "Optional unless the policy for this asset requires it",
-        aria="id_purpose-help",
+        control_id="id_purpose",
     )
     # Fold choice values stay machine strings.
     for value in ('value=""', 'value="0"', 'value="1"'):
@@ -243,6 +257,112 @@ def test_reservation_form_guidance_and_invalid_post(
     assert "start" in html
     assert "id_start-help" in html
     assert Reservation.objects.count() == 0
+
+
+def test_human_duration_preserves_remainder_minutes() -> None:
+    from slaif_reservation.web.templatetags.form_guidance import human_duration
+
+    cases = {
+        0: "0 minutes",
+        1: "1 minute",
+        59: "59 minutes",
+        60: "1 hour",
+        90: "1 hour, 30 minutes",
+        1440: "1 day",
+        1441: "1 day, 1 minute",
+        1501: "1 day, 1 hour, 1 minute",
+        2880: "2 days",
+        2881: "2 days, 1 minute",
+        2890: "2 days, 10 minutes",
+    }
+    for minutes, expected in cases.items():
+        assert human_duration(minutes) == expected, minutes
+    # Non-numeric and negative input renders nothing (unchanged).
+    assert human_duration(None) == ""
+    assert human_duration("nope") == ""
+    assert human_duration(-5) == ""
+
+
+@pytest.mark.django_db
+def test_policy_detail_nonround_minutes_humanized(
+    client: Client,
+    staff_user: User,
+) -> None:
+    policy = ReservationPolicy.objects.create(
+        name="nonround",
+        asset=None,
+        active=True,
+        min_duration_minutes=1441,
+        max_duration_minutes=2890,
+        booking_horizon_days=7,
+        min_lead_minutes=90,
+        cancellation_cutoff_minutes=30,
+        max_upcoming_per_principal=50,
+        max_concurrent_per_principal=8,
+        purpose_required=False,
+    )
+    client.force_login(staff_user)
+    html = client.get(f"/manage/policies/{policy.id}/").content.decode()
+    assert "1441 to 2890 minutes" in html
+    assert "1 day, 1 minute - 2 days, 10 minutes" in html
+    assert "90 minutes (1 hour, 30 minutes)" in html
+    assert "30 minutes before start (30 minutes)" in html
+
+
+@pytest.mark.django_db
+def test_reservation_ambiguous_automatic_post_keeps_help(
+    client: Client,
+    member_user: User,
+    asset: Asset,
+    default_policy: ReservationPolicy,
+) -> None:
+    """An ambiguous fall-back wall time with Automatic is rejected at the
+    form boundary and the corrected occurrence help stays on the page."""
+    client.force_login(member_user)
+    response = client.post(
+        f"/assets/{asset.id}/reserve/",
+        {
+            "start": "2025-10-26T02:30",
+            "end": "2025-10-26T04:30",
+            "purpose": "dst check",
+        },
+    )
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "Local wall time is ambiguous; specify fold." in html
+    assert "id_start_fold-help" in html
+    assert "On fall-back the clock time repeats and Automatic is then rejected" in html
+    assert Reservation.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_reservation_form_fold_semantics(
+    asset: Asset,
+    default_policy: ReservationPolicy,
+    member_user: User,
+) -> None:
+    from slaif_reservation.web.forms import ReservationForm
+
+    base = {"start": "2025-10-26T02:30", "end": "2025-10-26T04:30", "purpose": ""}
+
+    # The repeated fall-back time is resolvable with an explicit occurrence;
+    # the two choices pick the two real instants.
+    form = ReservationForm({**base, "start_fold": "0"}, timezone_name="Europe/Ljubljana")
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["start_instant"] == datetime(2025, 10, 26, 0, 30, tzinfo=UTC)
+    assert form.cleaned_data["end_instant"] == datetime(2025, 10, 26, 3, 30, tzinfo=UTC)
+    form = ReservationForm({**base, "start_fold": "1"}, timezone_name="Europe/Ljubljana")
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["start_instant"] == datetime(2025, 10, 26, 1, 30, tzinfo=UTC)
+
+    # A nonexistent spring-forward wall time is rejected however it is chosen.
+    for fold in ("", "0", "1"):
+        form = ReservationForm(
+            {**base, "start": "2025-03-30T02:30", "start_fold": fold},
+            timezone_name="Europe/Ljubljana",
+        )
+        assert not form.is_valid()
+        assert "Local wall time does not exist in this timezone." in str(form.errors)
 
 
 @pytest.mark.django_db
@@ -279,7 +399,7 @@ def test_reservation_detail_cancel_and_release_guidance(
         html,
         "id_reason-help",
         "Optional. Recorded with the cancellation and visible to staff.",
-        aria="id_reason-help",
+        control_id="id_reason",
     )
     assert "Cancelling frees the reserved time for other bookings and cannot be undone." in html
 
@@ -303,7 +423,7 @@ def test_token_create_guidance_wire_values_and_invalid_post(
         html,
         "id_name-help",
         "It never changes what the token can do.",
-        aria="id_name-help",
+        control_id="id_name",
     )
     assert "<legend>Scopes (what the token may do)</legend>" in html
     for scope, label in [
@@ -323,7 +443,7 @@ def test_token_create_guidance_wire_values_and_invalid_post(
         html,
         "id_lifetime_days-help",
         "Days until the token expires on its own, between 1 and",
-        aria="id_lifetime_days-help",
+        control_id="id_lifetime_days",
     )
 
     # Unchanged negative: an unknown scope is still rejected.
@@ -370,14 +490,26 @@ def test_asset_list_filter_guidance(
     client.force_login(member_user)
     html = client.get("/assets/").content.decode()
     _assert_no_dangling_aria(html)
-    _assert_guided(html, "filter-q-help", "Matches the asset name, slug or description.")
     _assert_guided(
-        html, "filter-kind-help", "One asset kind: Machine, GPU, CPU pool, Service or Other."
+        html, "filter-q-help", "Matches the asset name, slug or description.", control_id="filter-q"
     )
-    _assert_guided(html, "filter-parent-help", "Only child assets of that machine.")
-    _assert_guided(html, "filter-tag-help", "Only assets carrying that tag.")
     _assert_guided(
-        html, "filter-reservable-help", "Only assets you can book, or only assets you cannot book."
+        html,
+        "filter-kind-help",
+        "One asset kind: Machine, GPU, CPU pool, Service or Other.",
+        control_id="filter-kind",
+    )
+    _assert_guided(
+        html, "filter-parent-help", "Only child assets of that machine.", control_id="filter-parent"
+    )
+    _assert_guided(
+        html, "filter-tag-help", "Only assets carrying that tag.", control_id="filter-tag"
+    )
+    _assert_guided(
+        html,
+        "filter-reservable-help",
+        "Only assets you can book, or only assets you cannot book.",
+        control_id="filter-reservable",
     )
 
     # The filters still work (behavior unchanged).
@@ -411,32 +543,66 @@ def test_policy_form_guidance_and_invalid_post(
     client.force_login(staff_user)
     html = client.get("/manage/policies/new/").content.decode()
     _assert_no_dangling_aria(html)
-    _assert_guided(html, "id_name-help", "Short unique name for this policy")
+    _assert_guided(
+        html,
+        "id_name-help",
+        "Names are not unique; only the active target is constrained",
+        control_id="id_name",
+    )
     _assert_guided(
         html,
         "id_asset-help",
         "Bookings check the exact asset first, then its parent machine, then the global policy",
+        control_id="id_asset",
     )
-    _assert_guided(html, "id_min_duration_minutes-help", "1440 minutes = 24 hours = 1 day")
-    _assert_guided(html, "id_max_duration_minutes-help", "2880 minutes = 48 hours = 2 days")
     _assert_guided(
-        html, "id_booking_horizon_days-help", "How far into the future a booking may START"
+        html,
+        "id_min_duration_minutes-help",
+        "1440 minutes = 24 hours = 1 day",
+        control_id="id_min_duration_minutes",
     )
-    _assert_guided(html, "id_min_lead_minutes-help", "0 allows bookings that start right now")
+    _assert_guided(
+        html,
+        "id_max_duration_minutes-help",
+        "2880 minutes = 48 hours = 2 days",
+        control_id="id_max_duration_minutes",
+    )
+    _assert_guided(
+        html,
+        "id_booking_horizon_days-help",
+        "How far into the future a booking may START",
+        control_id="id_booking_horizon_days",
+    )
+    _assert_guided(
+        html,
+        "id_min_lead_minutes-help",
+        "0 allows bookings that start right now",
+        control_id="id_min_lead_minutes",
+    )
     _assert_guided(
         html,
         "id_cancellation_cutoff_minutes-help",
         "0 means cancellation stays possible up to the start time.",
+        control_id="id_cancellation_cutoff_minutes",
     )
     _assert_guided(
-        html, "id_max_upcoming_per_principal-help", "not-yet-started reservations one principal"
+        html,
+        "id_max_upcoming_per_principal-help",
+        "not-yet-started reservations one principal",
+        control_id="id_max_upcoming_per_principal",
     )
     _assert_guided(
         html,
         "id_max_concurrent_per_principal-help",
         "8 rejects a new booking when 8 or more existing records already intersect it",
+        control_id="id_max_concurrent_per_principal",
     )
-    _assert_guided(html, "id_purpose_required-help", "Require members to enter a purpose")
+    _assert_guided(
+        html,
+        "id_purpose_required-help",
+        "Require members to enter a purpose",
+        control_id="id_purpose_required",
+    )
 
     # Unchanged negative: min > max is still rejected with guidance kept.
     response = client.post(
@@ -491,17 +657,29 @@ def test_blackout_form_guidance_and_invalid_post(
         html,
         "id_asset-help",
         "The single asset that stops accepting new bookings during the blackout",
+        control_id="id_asset",
     )
-    _assert_guided(html, "id_timezone-help", "IANA time zone name")
-    _assert_guided(html, "id_start-help", "Local start date and time in the selected timezone.")
+    _assert_guided(html, "id_timezone-help", "IANA time zone name", control_id="id_timezone")
     _assert_guided(
-        html, "id_end-help", "New overlapping bookings are blocked from the start until the end"
+        html,
+        "id_start-help",
+        "Local start date and time in the selected timezone.",
+        control_id="id_start",
     )
-    _assert_guided(html, "id_reason-help", "Required. Explains the maintenance")
+    _assert_guided(
+        html,
+        "id_end-help",
+        "New overlapping bookings are blocked from the start until the end",
+        control_id="id_end",
+    )
+    _assert_guided(
+        html, "id_reason-help", "Required. Explains the maintenance", control_id="id_reason"
+    )
     _assert_guided(
         html,
         "id_confirm_overlaps-help",
         "Creating the blackout never cancels or releases them",
+        control_id="id_confirm_overlaps",
     )
 
     # Unchanged negative: end before start is still rejected.
@@ -523,6 +701,56 @@ def test_blackout_form_guidance_and_invalid_post(
     assert response.status_code == 200
     assert "id_end-help" in html
     assert MaintenanceBlackout.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_blackout_ambiguous_automatic_post_keeps_help(
+    client: Client,
+    staff_user: User,
+    asset: Asset,
+) -> None:
+    """The staff blackout form rejects the ambiguous Automatic wall time
+    and keeps the corrected occurrence help."""
+    client.force_login(staff_user)
+    response = client.post(
+        "/manage/blackouts/new/",
+        {
+            "asset": str(asset.id),
+            "timezone": "Europe/Ljubljana",
+            "start": "2025-10-26T02:30",
+            "end": "2025-10-26T04:30",
+            "reason": "maintenance",
+            "confirm_overlaps": "on",
+        },
+    )
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "Local wall time is ambiguous; specify fold." in html
+    assert "id_start_fold-help" in html
+    assert "On fall-back the clock time repeats and Automatic is then rejected" in html
+    assert MaintenanceBlackout.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_blackout_form_fold_semantics(asset: Asset) -> None:
+    from slaif_reservation.management_ui.forms import MaintenanceBlackoutForm
+
+    base = {
+        "asset": str(asset.id),
+        "timezone": "Europe/Ljubljana",
+        "start": "2025-10-26T02:30",
+        "end": "2025-10-26T04:30",
+        "reason": "maintenance",
+    }
+    # Explicit occurrences resolve the repeated fall-back time.
+    for fold in ("0", "1"):
+        form = MaintenanceBlackoutForm({**base, "start_fold": fold})
+        assert form.is_valid(), form.errors
+    # Nonexistent spring-forward time is rejected however it is chosen.
+    for fold in ("", "0", "1"):
+        form = MaintenanceBlackoutForm({**base, "start": "2025-03-30T02:30", "start_fold": fold})
+        assert not form.is_valid()
+        assert "Local wall time does not exist in this timezone." in str(form.errors)
 
 
 @pytest.mark.django_db
@@ -563,12 +791,23 @@ def test_reservation_filter_guidance(client: Client, staff_user: User) -> None:
     client.force_login(staff_user)
     html = client.get("/manage/reservations/").content.decode()
     _assert_no_dangling_aria(html)
-    _assert_guided(html, "id_asset-help", "Narrow the list to one asset")
-    _assert_guided(html, "id_q-help", "Matches the owner's email or display name")
-    _assert_guided(html, "id_status-help", "Confirmed, cancelled or released.")
-    _assert_guided(html, "id_lifecycle-help", "Active = started and still running")
-    _assert_guided(html, "id_from-help", "Aware ISO-8601 timestamp")
-    _assert_guided(html, "id_to-help", "Keep reservations whose start is before this.")
+    _assert_guided(html, "id_asset-help", "Narrow the list to one asset", control_id="id_asset")
+    _assert_guided(
+        html, "id_q-help", "Matches the owner's email or display name", control_id="id_q"
+    )
+    _assert_guided(
+        html, "id_status-help", "Confirmed, cancelled or released.", control_id="id_status"
+    )
+    _assert_guided(
+        html, "id_lifecycle-help", "Active = started and still running", control_id="id_lifecycle"
+    )
+    _assert_guided(html, "id_from-help", "Aware ISO-8601 timestamp", control_id="id_from")
+    _assert_guided(
+        html,
+        "id_to-help",
+        "Keep reservations whose start is before this.",
+        control_id="id_to",
+    )
     assert "From (start at or after)" in html
     assert "To (start before)" in html
 
@@ -578,13 +817,38 @@ def test_audit_filter_guidance(client: Client, staff_user: User) -> None:
     client.force_login(staff_user)
     html = client.get("/manage/audit/").content.decode()
     _assert_no_dangling_aria(html)
-    _assert_guided(html, "id_action-help", "Which operation was recorded.")
-    _assert_guided(html, "id_target_type-help", "The record type the action applied to")
-    _assert_guided(html, "id_actor-help", "part of a display name or email, or an exact user UUID")
-    _assert_guided(html, "id_source-help", "Where the action came from")
-    _assert_guided(html, "id_correlation_id-help", "UUID that links the events of one operation")
-    _assert_guided(html, "id_occurred_from-help", "Keep events that happened at or after this.")
-    _assert_guided(html, "id_occurred_to-help", "Keep events that happened at or before this.")
+    _assert_guided(html, "id_action-help", "Which operation was recorded.", control_id="id_action")
+    _assert_guided(
+        html,
+        "id_target_type-help",
+        "The record type the action applied to",
+        control_id="id_target_type",
+    )
+    _assert_guided(
+        html,
+        "id_actor-help",
+        "part of a display name or email, or an exact user UUID",
+        control_id="id_actor",
+    )
+    _assert_guided(html, "id_source-help", "Where the action came from", control_id="id_source")
+    _assert_guided(
+        html,
+        "id_correlation_id-help",
+        "UUID that links the events of one operation",
+        control_id="id_correlation_id",
+    )
+    _assert_guided(
+        html,
+        "id_occurred_from-help",
+        "Keep events that happened at or after this.",
+        control_id="id_occurred_from",
+    )
+    _assert_guided(
+        html,
+        "id_occurred_to-help",
+        "Keep events that happened at or before this.",
+        control_id="id_occurred_to",
+    )
     assert "Downloads the current filtered view as CSV." in html
 
 
@@ -626,11 +890,17 @@ def test_admin_login_guidance(client: Client) -> None:
     html = response.content.decode()
     assert response.status_code == 200
     _assert_no_dangling_aria(html)
-    _assert_guided(html, "id_username-help", "The email address of your administration account.")
+    _assert_guided(
+        html,
+        "id_username-help",
+        "The email address of your administration account.",
+        control_id="id_username",
+    )
     _assert_guided(
         html,
         "id_password-help",
         "The same generic error appears for a wrong password",
+        control_id="id_password",
     )
     # Admission wording law: no credential-class disclosure on the page.
     lowered = html.lower()
@@ -643,16 +913,32 @@ def test_admin_user_add_guidance(client: Client, admin_user: User) -> None:
     client.force_login(admin_user)
     html = client.get("/admin/accounts/user/add/").content.decode()
     _assert_no_dangling_aria(html)
-    _assert_guided(html, "id_email_helptext", "Accounts are created by an administrator")
-    _assert_guided(html, "id_password1_helptext", "Choose the initial password for this account")
-    _assert_guided(html, "id_password2_helptext", "Re-enter the same password to confirm it.")
+    _assert_guided(
+        html, "id_email_helptext", "Accounts are created by an administrator", control_id="id_email"
+    )
+    _assert_guided(
+        html,
+        "id_password1_helptext",
+        "Members cannot change their own password",
+        control_id="id_password1",
+    )
+    _assert_guided(
+        html,
+        "id_password2_helptext",
+        "Re-enter the same password to confirm it.",
+        control_id="id_password2",
+    )
     _assert_guided(
         html,
         "id_is_staff_helptext",
-        "Grants access to the management area and this administration.",
+        "not granted by individual permission selections",
+        control_id="id_is_staff",
     )
     _assert_guided(
-        html, "id_is_superuser_helptext", "Full administrative rights, including managing users."
+        html,
+        "id_is_superuser_helptext",
+        "does not bypass the active-human/staff admission gate",
+        control_id="id_is_superuser",
     )
 
 
@@ -681,12 +967,25 @@ def test_admin_user_change_safe_password_status_and_help(
         ("timezone", "IANA time zone name"),
         ("is_service_account", "Machine account for API automation"),
         ("is_active", "Inactive accounts cannot sign in anywhere"),
-        ("is_staff", "Grants access to the management area"),
-        ("is_superuser", "Full administrative rights"),
+        ("is_staff", "not granted by individual permission selections"),
+        ("is_superuser", "does not bypass the active-human/staff admission gate"),
         ("groups", "Groups are NOT project or membership authorization"),
-        ("user_permissions", "administration and management access only"),
+        ("user_permissions", "per-model administration and management access only"),
     ]:
-        _assert_guided(html, f"id_{name}_helptext", fragment)
+        _assert_guided(html, f"id_{name}_helptext", fragment, control_id=f"id_{name}")
+    # Editable important dates: real help, bound to the split date subwidget.
+    _assert_guided(
+        html,
+        "id_last_login_helptext",
+        "Booking and availability logic never reads it",
+        control_id="id_last_login_0",
+    )
+    _assert_guided(
+        html,
+        "id_date_joined_helptext",
+        "the separate created_at timestamp is the immutable product record",
+        control_id="id_date_joined_0",
+    )
 
     # A valid change POST preserves the stored hash. The admin renders the
     # datetime fields with split date/time inputs.
@@ -737,12 +1036,26 @@ def test_admin_password_change_guidance(
         html,
         "id_password1_helptext",
         "Your password must contain at least 8 characters.",
+        control_id="id_password1",
     )
     _assert_guided(
         html,
         "id_password2_helptext",
         "Enter the same password as before, for verification.",
+        control_id="id_password2",
     )
+
+    # The dynamically added high-impact choice is explained with the
+    # product truth: no alternate human login backend exists here.
+    _assert_guided(
+        html,
+        "id_usable_password_helptext",
+        "This deployment provides no other human login backend",
+        control_id="id_usable_password",
+    )
+    assert "If disabled, the current password for this user will be lost." in html
+    assert 'id="id_unusable_warning"' in html
+    assert "they may still be able to authenticate using other backends" not in html
 
     # Unchanged negative: mismatched passwords are still rejected.
     response = client.post(
@@ -755,10 +1068,57 @@ def test_admin_password_change_guidance(
 
 
 @pytest.mark.django_db
+def test_admin_password_change_enable_disable_behavior(
+    client: Client, admin_user: User, staff_user: User
+) -> None:
+    url = f"/admin/accounts/user/{staff_user.pk}/password/"
+
+    # A user without a usable password gets the enable page: no
+    # usable_password choice, only the enable action.
+    staff_user.set_unusable_password()
+    staff_user.save(update_fields=["password"])
+    client.force_login(admin_user)
+    html = client.get(url).content.decode()
+    assert "enable password-based authentication for this user" in unescape(html)
+    assert 'id="id_usable_password"' not in html
+    assert "Enable password-based authentication" in html
+
+    # Enabling sets a real password through the unchanged validators.
+    response = client.post(
+        url,
+        {
+            "usable_password": "true",
+            "password1": "fresh-staff-passw0rd",
+            "password2": "fresh-staff-passw0rd",
+        },
+    )
+    assert response.status_code == 302
+    staff_user.refresh_from_db()
+    assert staff_user.has_usable_password()
+    assert staff_user.check_password("fresh-staff-passw0rd")
+
+    # Disabling removes the current password; no alternate backend exists.
+    response = client.post(url, {"usable_password": "false"})
+    assert response.status_code == 302
+    staff_user.refresh_from_db()
+    assert not staff_user.has_usable_password()
+    assert not staff_user.check_password("fresh-staff-passw0rd")
+
+    # The change page now shows the safe disabled status again.
+    html = client.get(f"/admin/accounts/user/{staff_user.pk}/change/").content.decode()
+    assert "Password disabled" in html
+
+
+@pytest.mark.django_db
 def test_admin_group_permissions_help(client: Client, admin_user: User) -> None:
     client.force_login(admin_user)
     html = client.get("/admin/auth/group/add/").content.decode()
-    assert "Site permissions granted through this group" in html
+    _assert_guided(
+        html,
+        "id_permissions_helptext",
+        "Site permissions granted through this group",
+        control_id="id_permissions",
+    )
     assert "NOT project or membership authorization" in html
 
 
@@ -767,16 +1127,54 @@ def test_admin_asset_forms_guidance(client: Client, admin_user: User) -> None:
     client.force_login(admin_user)
     html = client.get("/admin/assets/asset/add/").content.decode()
     _assert_no_dangling_aria(html)
-    _assert_guided(html, "id_parent_helptext", "The machine this asset belongs to")
-    _assert_guided(html, "id_slug_helptext", "Stable public identifier used in URLs and the API")
-    _assert_guided(html, "id_kind_helptext", "What kind of resource this is")
-    _assert_guided(html, "id_booking_mode_helptext", "Only 'Exclusive' is supported")
-    _assert_guided(html, "id_location_helptext", "Internal room or location label for staff")
-    _assert_guided(html, "id_physical_locator_helptext", "Internal physical location for operators")
+    _assert_guided(
+        html,
+        "id_parent_helptext",
+        "a machine itself never has a parent",
+        control_id="id_parent",
+    )
+    _assert_guided(
+        html,
+        "id_slug_helptext",
+        "changing the slug does not change those URLs",
+        control_id="id_slug",
+    )
+    _assert_guided(
+        html,
+        "id_kind_helptext",
+        "Only a machine can take children",
+        control_id="id_kind",
+    )
+    _assert_guided(
+        html,
+        "id_booking_mode_helptext",
+        "Only 'Exclusive' is supported",
+        control_id="id_booking_mode",
+    )
+    _assert_guided(
+        html,
+        "id_location_helptext",
+        "Internal room or location label for staff",
+        control_id="id_location",
+    )
+    _assert_guided(
+        html,
+        "id_timezone_helptext",
+        "availability is shown in each member's own profile timezone",
+        control_id="id_timezone",
+    )
+    _assert_guided(
+        html,
+        "id_physical_locator_helptext",
+        "Internal physical location for operators",
+        control_id="id_physical_locator",
+    )
 
     html = client.get("/admin/assets/assettag/add/").content.decode()
-    _assert_guided(html, "id_name_helptext", "Display name of the tag")
-    _assert_guided(html, "id_slug_helptext", "Stable identifier, generated from the name")
+    _assert_guided(html, "id_name_helptext", "Display name of the tag", control_id="id_name")
+    _assert_guided(
+        html, "id_slug_helptext", "Stable identifier, generated from the name", control_id="id_slug"
+    )
 
 
 @pytest.mark.django_db

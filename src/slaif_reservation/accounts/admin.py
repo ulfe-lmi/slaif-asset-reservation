@@ -6,6 +6,7 @@ from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.forms import AdminPasswordChangeForm
 from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX, identify_hasher
 from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.password_validation import password_validators_help_text_html
@@ -35,17 +36,37 @@ _USER_FIELD_HELP: dict[str, Any] = {
     "is_active": _("Inactive accounts cannot sign in anywhere, member or staff."),
     "is_staff": _(
         "Grants access to the management area and this administration. "
-        "Members without this flag cannot manage bookings, policies or "
-        "blackouts."
+        "Entry follows this flag with an active, non-service-account "
+        "session; it is not granted by individual permission selections. "
+        "Per-model operations additionally require the matching model "
+        "permissions."
     ),
-    "is_superuser": _("Full administrative rights, including managing users."),
+    "is_superuser": _(
+        "Full administrative rights, including managing users. Superuser "
+        "status does not bypass the active-human/staff admission gate: an "
+        "inactive or service-account superuser is still denied everywhere."
+    ),
     "groups": _(
-        "Site permission groups only. Groups are NOT project or membership "
-        "authorization and do not change who can reserve assets."
+        "Site permission groups only: they grant the group's per-model site "
+        "permissions. Groups are NOT project or membership authorization "
+        "and do not change who can reserve assets. They do not admit a "
+        "session by themselves; entry requires the active staff flag."
     ),
     "user_permissions": _(
-        "Individual site permissions. These control administration and "
-        "management access only, not reservable-asset policy."
+        "Individual site permissions. They control per-model administration "
+        "and management access only, not reservable-asset policy, and they "
+        "do not admit a session by themselves; entry requires the active "
+        "staff flag."
+    ),
+    "last_login": _(
+        "When the user last signed in successfully (stored in UTC). Updated "
+        "automatically on sign-in; edit only to correct a wrong value. "
+        "Booking and availability logic never reads it."
+    ),
+    "date_joined": _(
+        "When the account was created (stored in UTC). Editing it changes "
+        "only this value; the separate created_at timestamp is the "
+        "immutable product record."
     ),
 }
 
@@ -104,6 +125,38 @@ def _wire_user_field_help(form: Any, names: tuple[str, ...]) -> None:
             field.widget.attrs["aria-describedby"] = f"id_{name}_helptext"
 
 
+class SlaifAdminPasswordChangeForm(AdminPasswordChangeForm):  # type: ignore[type-arg]
+    """Per-user password change with product-accurate guidance.
+
+    Only the ``usable_password`` help text and its accessibility wiring
+    change. The built-in warning, validators, hashing, the conditional
+    field (present only while the user has a usable password), the
+    submit actions and all admin permissions are inherited unchanged.
+    """
+
+    # The built-in Django warning is preserved verbatim at the end of the
+    # product help; only the generic backend sentence is replaced.
+    usable_password_help_text = _(
+        "Whether this user can sign in with a password. If you "
+        "disable it, the current password is lost and password sign-in "
+        "is blocked for this user. This deployment provides no other "
+        "human login backend (no single sign-on or LDAP), so a "
+        "disabled user cannot sign in until an administrator sets a "
+        "new password here."
+    ) + (
+        '<ul id="id_unusable_warning" class="messagelist"><li class="warning">'
+        "If disabled, the current password for this user will be lost."
+        "</li></ul>"
+    )
+
+    def __init__(self, user: Any, *args: Any, **kwargs: Any) -> None:
+        super().__init__(user, *args, **kwargs)
+        if "usable_password" in self.fields:
+            self.fields["usable_password"].widget.attrs["aria-describedby"] = (
+                "id_usable_password_helptext"
+            )
+
+
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
     ordering = ["email"]
@@ -128,6 +181,7 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
         ),
     )
     readonly_fields = ["created_at", "updated_at"]
+    password_change_form = SlaifAdminPasswordChangeForm
 
     def get_form(
         self,
@@ -153,14 +207,8 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
             )
             # Precise product effects override the generic inherited model
             # help for the permission flags.
-            form.base_fields["is_staff"].help_text = _(
-                "Grants access to the management area and this administration. "
-                "Members without this flag cannot manage bookings, policies or "
-                "blackouts."
-            )
-            form.base_fields["is_superuser"].help_text = _(
-                "Full administrative rights, including managing users."
-            )
+            form.base_fields["is_staff"].help_text = _USER_FIELD_HELP["is_staff"]
+            form.base_fields["is_superuser"].help_text = _USER_FIELD_HELP["is_superuser"]
             form.base_fields["groups"].help_text = _USER_FIELD_HELP["groups"]
             form.base_fields["user_permissions"].help_text = _USER_FIELD_HELP["user_permissions"]
             _wire_user_field_help(
@@ -175,15 +223,19 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                     "is_superuser",
                     "groups",
                     "user_permissions",
+                    "last_login",
+                    "date_joined",
                 ),
             )
         else:
             if form.base_fields.get("password1"):
                 form.base_fields["password1"].help_text = (
                     _(
-                        "Choose the initial password for this account; the user "
-                        "can change it later from their own session. It must "
-                        "satisfy the site password rules:"
+                        "Choose the initial password for this account. "
+                        "Members cannot change their own password: the "
+                        "profile page edits display name and timezone only, "
+                        "so an administrator sets or changes it from this "
+                        "user page. It must satisfy the site password rules:"
                     )
                     + password_validators_help_text_html()
                 )
@@ -191,14 +243,8 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 form.base_fields["password2"].help_text = _(
                     "Re-enter the same password to confirm it."
                 )
-            form.base_fields["is_staff"].help_text = _(
-                "Grants access to the management area and this administration. "
-                "Members without this flag cannot manage bookings, policies or "
-                "blackouts."
-            )
-            form.base_fields["is_superuser"].help_text = _(
-                "Full administrative rights, including managing users."
-            )
+            form.base_fields["is_staff"].help_text = _USER_FIELD_HELP["is_staff"]
+            form.base_fields["is_superuser"].help_text = _USER_FIELD_HELP["is_superuser"]
             _wire_user_field_help(
                 form, ("email", "password1", "password2", "is_staff", "is_superuser")
             )
@@ -218,6 +264,7 @@ class GroupAdmin(DjangoGroupAdmin):
                 "and management access). These are NOT project or membership "
                 "authorization and do not change who can reserve assets."
             )
+            kwargs["widget"].attrs["aria-describedby"] = "id_permissions_helptext"
         return super().formfield_for_manytomany(db_field, request=request, **kwargs)
 
 

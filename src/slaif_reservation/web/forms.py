@@ -101,9 +101,12 @@ class ReservationForm(forms.Form):
         required=False,
         choices=_FOLD_CHOICES,
         help_text=_(
-            "Only needed when this local time falls on a daylight-saving "
-            "transition in your timezone. Automatic uses the system default; "
-            "pick first or second to be explicit."
+            "Only relevant on a daylight-saving transition day in your "
+            "timezone. On fall-back the clock time repeats and Automatic is "
+            "then rejected: choose First occurrence (the earlier one) or "
+            "Second occurrence (the later one). A time inside the "
+            "spring-forward gap does not exist and is always rejected, "
+            "whatever you choose."
         ),
     )
     end = forms.CharField(
@@ -119,9 +122,12 @@ class ReservationForm(forms.Form):
         required=False,
         choices=_FOLD_CHOICES,
         help_text=_(
-            "Only needed when this local time falls on a daylight-saving "
-            "transition in your timezone. Automatic uses the system default; "
-            "pick first or second to be explicit."
+            "Only relevant on a daylight-saving transition day in your "
+            "timezone. On fall-back the clock time repeats and Automatic is "
+            "then rejected: choose First occurrence (the earlier one) or "
+            "Second occurrence (the later one). A time inside the "
+            "spring-forward gap does not exist and is always rejected, "
+            "whatever you choose."
         ),
     )
     purpose = forms.CharField(

@@ -69,19 +69,22 @@ class AssetAdminForm(forms.ModelForm):  # type: ignore[type-arg]
             self,
             {
                 "parent": _(
-                    "The machine this asset belongs to. Top-level machines "
-                    "must be left empty; a machine that has children cannot "
-                    "be deleted."
+                    "The machine this asset belongs to. Only a machine can "
+                    "be the parent of a child asset, and a machine itself "
+                    "never has a parent, so leave this empty for machines."
                 ),
                 "slug": _(
-                    "Stable public identifier used in URLs and the API. It "
-                    "must stay unique; changing it breaks saved links."
+                    "Stable label used for display and search (lists, "
+                    "filters and search boxes). It must stay unique. The "
+                    "current detail and API routes address assets by UUID, "
+                    "so changing the slug does not change those URLs; it "
+                    "changes what searches and filters match."
                 ),
                 "name": _("Human-readable name shown to members and staff."),
                 "kind": _(
-                    "What kind of resource this is. Only machines, GPUs, CPU "
-                    "pools and services can take children; booking rules "
-                    "apply per policy."
+                    "What kind of resource this is. Only a machine can take "
+                    "children; a machine itself cannot have a parent. "
+                    "Booking rules apply per policy."
                 ),
                 "booking_mode": _(
                     "How the asset is shared. Only 'Exclusive' is supported: "
@@ -96,8 +99,10 @@ class AssetAdminForm(forms.ModelForm):  # type: ignore[type-arg]
                     "members and not part of the API."
                 ),
                 "timezone": _(
-                    "IANA time zone name (for example Europe/Ljubljana) used "
-                    "when displaying availability for this asset."
+                    "Stored display metadata, shown as 'Asset timezone' on "
+                    "the asset page. It does not drive booking or "
+                    "availability: availability is shown in each member's "
+                    "own profile timezone."
                 ),
                 "active": _(
                     "Inactive assets are hidden from members and cannot be "
@@ -118,9 +123,6 @@ class AssetAdminForm(forms.ModelForm):  # type: ignore[type-arg]
                     "Internal physical location for operators. Never shown "
                     "to members or in the API."
                 ),
-                "legacy_source": _("Provenance of the legacy import. Read-only."),
-                "legacy_id": _("Identifier in the legacy system. Read-only."),
-                "legacy_metadata": _("Extra legacy import data. Read-only."),
             },
         )
 

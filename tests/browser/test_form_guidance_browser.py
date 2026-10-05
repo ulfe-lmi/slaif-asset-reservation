@@ -116,20 +116,32 @@ def _assert_no_horizontal_overflow(page: Page) -> None:
 
 
 def _assert_help_near_control(page: Page, control_selector: str, help_id: str) -> None:
-    """The help element exists and lives inside the same field container as
-    the control (nearby, not floating at the bottom of the page)."""
-    assert page.locator(f"#{help_id}").count() == 1, f"missing help #{help_id}"
-    nearby = page.evaluate(
-        """([control, help]) => {
+    """Substantive nearby-help check.
+
+    The control exists and is visible; the help element exists and is
+    visible; the control's own aria-describedby binds this exact help
+    element; and both live in the same real field container (nearby, not
+    floating at the bottom of the page).
+    """
+    control = page.locator(control_selector)
+    assert control.count() == 1, f"ambiguous or missing control {control_selector}"
+    assert control.first.is_visible(), f"control {control_selector} is not visible"
+    help_el = page.locator(f"#{help_id}")
+    assert help_el.count() == 1, f"missing help #{help_id}"
+    assert help_el.first.is_visible(), f"help #{help_id} is not visible"
+    bound_and_near = page.evaluate(
+        r"""([control, help]) => {
             const c = document.querySelector(control);
             const h = document.getElementById(help);
             if (!c || !h) return false;
+            const described = (c.getAttribute("aria-describedby") || "").split(/\s+/);
+            if (!described.includes(h.id)) return false;
             const box = c.closest(".field, .filter, .form-row, fieldset");
-            return box ? box.contains(h) : true;
+            return box !== null && box.contains(h);
         }""",
         [control_selector, help_id],
     )
-    assert nearby, f"help #{help_id} is not near {control_selector}"
+    assert bound_and_near, f"help #{help_id} is not bound to and near {control_selector}"
 
 
 def _keyboard_walk(page: Page, start_selector: str, hops: int) -> list[str]:
@@ -143,8 +155,8 @@ def _keyboard_walk(page: Page, start_selector: str, hops: int) -> list[str]:
     return tags
 
 
-def _capture(page: Page, output_path, name: str) -> None:
-    page.screenshot(path=f"{output_path}/{name}.png")
+def _capture(page: Page, output_path, name: str, *, full_page: bool = False) -> None:
+    page.screenshot(path=f"{output_path}/{name}.png", full_page=full_page)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -164,7 +176,11 @@ def test_browser_reservation_and_profile_guidance(
     for selector, help_id, fragment in [
         ("#id_start", "id_start-help", "Local date and time the asset is needed"),
         ("#id_end", "id_end-help", "Local end date and time"),
-        ("#id_start_fold", "id_start_fold-help", "daylight-saving transition"),
+        (
+            "#id_start_fold",
+            "id_start_fold-help",
+            "On fall-back the clock time repeats and Automatic is then rejected",
+        ),
         ("#id_purpose", "id_purpose-help", "Optional unless the policy"),
     ]:
         assert page.locator(f"#{help_id}").inner_text()
@@ -401,57 +417,92 @@ def test_browser_admin_user_forms_guidance(
     admin_user: User,
     member_user: User,
 ) -> None:
-    page.set_viewport_size(DESKTOP)
-    page.goto(f"{live_server.url}/admin/login/")
-    assert "The email address of your administration account." in page.content()
-    _assert_help_near_control(page, "#id_username", "id_username-help")
-    _assert_help_near_control(page, "#id_password", "id_password-help")
-    _assert_no_horizontal_overflow(page)
-    _capture(page, output_path, "admin-login-1440")
+    # Admin login at 1440 and 390.
+    for viewport, name in ((DESKTOP, "admin-login-1440"), (MOBILE, "admin-login-390")):
+        page.set_viewport_size(viewport)
+        page.goto(f"{live_server.url}/admin/login/")
+        _assert_help_near_control(page, "#id_username", "id_username-help")
+        _assert_help_near_control(page, "#id_password", "id_password-help")
+        assert "The email address of your administration account." in page.content()
+        _assert_no_horizontal_overflow(page)
+        _capture(page, output_path, name)
 
     _admin_login(page, live_server, admin_user)
 
-    # User add: guided initial fields.
+    # User add: guided initial fields at 1440 (full page) and 390.
     page.goto(f"{live_server.url}/admin/accounts/user/add/")
-    for help_id, fragment in [
-        ("id_email_helptext", "Accounts are created by an administrator"),
-        ("id_password1_helptext", "Choose the initial password"),
-        ("id_password2_helptext", "Re-enter the same password"),
-        ("id_is_staff_helptext", "Grants access to the management area"),
-    ]:
-        assert page.locator(f"#{help_id}").inner_text()
-        assert fragment in page.locator(f"#{help_id}").inner_text()
-    _assert_no_horizontal_overflow(page)
-    _capture(page, output_path, "admin-user-add-1440")
-
-    # User change: safe password status, no hash material, guided flags.
-    page.goto(f"{live_server.url}/admin/accounts/user/{member_user.pk}/change/")
-    assert "Password set." in page.content()
-    assert "pbkdf2_sha256" not in page.content()
+    page.set_viewport_size(DESKTOP)
+    _assert_help_near_control(page, "#id_email", "id_email_helptext")
+    _assert_help_near_control(page, "#id_password1", "id_password1_helptext")
+    _assert_help_near_control(page, "#id_password2", "id_password2_helptext")
+    _assert_help_near_control(page, "#id_is_staff", "id_is_staff_helptext")
     assert (
-        "Machine account for API automation"
-        in page.locator("#id_is_service_account_helptext").inner_text()
+        "Members cannot change their own password"
+        in page.locator("#id_password1_helptext").inner_text()
     )
     assert (
-        "NOT project or membership authorization"
-        in page.locator("#id_groups_helptext").inner_text()
+        "not granted by individual permission selections"
+        in page.locator("#id_is_staff_helptext").inner_text()
+    )
+    _assert_no_horizontal_overflow(page)
+    _capture(page, output_path, "admin-user-add-1440", full_page=True)
+    page.set_viewport_size(MOBILE)
+    _assert_help_near_control(page, "#id_email", "id_email_helptext")
+    _assert_help_near_control(page, "#id_password1", "id_password1_helptext")
+    _assert_no_horizontal_overflow(page)
+    _capture(page, output_path, "admin-user-add-390", full_page=True)
+
+    # User change: safe password status, no hash material, guided flags and
+    # editable important dates, at 1440 (full page) and 390.
+    page.goto(f"{live_server.url}/admin/accounts/user/{member_user.pk}/change/")
+    page.set_viewport_size(DESKTOP)
+    assert "Password set." in page.content()
+    assert "pbkdf2_sha256" not in page.content()
+    _assert_help_near_control(page, "#id_email", "id_email_helptext")
+    _assert_help_near_control(page, "#id_is_service_account", "id_is_service_account_helptext")
+    _assert_help_near_control(page, "#id_is_staff", "id_is_staff_helptext")
+    _assert_help_near_control(page, "#id_is_superuser", "id_is_superuser_helptext")
+    _assert_help_near_control(page, "#id_groups", "id_groups_helptext")
+    _assert_help_near_control(page, "#id_last_login_0", "id_last_login_helptext")
+    _assert_help_near_control(page, "#id_date_joined_0", "id_date_joined_helptext")
+    assert (
+        "does not bypass the active-human/staff admission gate"
+        in page.locator("#id_is_superuser_helptext").inner_text()
+    )
+    assert (
+        "Booking and availability logic never reads it"
+        in page.locator("#id_last_login_helptext").inner_text()
     )
     _assert_no_horizontal_overflow(page)
     assert "INPUT" in _keyboard_walk(page, "#id_email", 8)
-    _capture(page, output_path, "admin-user-change-1440")
+    _capture(page, output_path, "admin-user-change-1440", full_page=True)
+    page.set_viewport_size(MOBILE)
+    _assert_help_near_control(page, "#id_email", "id_email_helptext")
+    _assert_help_near_control(page, "#id_last_login_0", "id_last_login_helptext")
+    _assert_no_horizontal_overflow(page)
+    _capture(page, output_path, "admin-user-change-390", full_page=True)
 
-    # Per-user password change: guided, no secrets displayed.
+    # Per-user password change: guided high-impact choice, no secrets
+    # displayed, at 1440 and 390.
     page.goto(f"{live_server.url}/admin/accounts/user/{member_user.pk}/password/")
+    page.set_viewport_size(DESKTOP)
     assert (
         "Your password must contain at least 8 characters"
         in page.locator("#id_password1_helptext").inner_text()
     )
+    _assert_help_near_control(page, "#id_password2", "id_password2_helptext")
+    _assert_help_near_control(page, "#id_usable_password", "id_usable_password_helptext")
     assert (
-        "Enter the same password as before, for verification."
-        in page.locator("#id_password2_helptext").inner_text()
+        "This deployment provides no other human login backend"
+        in page.locator("#id_usable_password_helptext").inner_text()
     )
+    assert "If disabled, the current password for this user will be lost." in page.content()
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-password-change-1440")
+    page.set_viewport_size(MOBILE)
+    _assert_help_near_control(page, "#id_usable_password", "id_usable_password_helptext")
+    _assert_no_horizontal_overflow(page)
+    _capture(page, output_path, "admin-password-change-390")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -463,31 +514,64 @@ def test_browser_admin_group_and_asset_forms_guidance(
     machine: Asset,
     asset: Asset,
 ) -> None:
-    page.set_viewport_size(DESKTOP)
     _admin_login(page, live_server, admin_user)
 
+    # Group add: permissions guidance at 1440 (full page) and 390.
     page.goto(f"{live_server.url}/admin/auth/group/add/")
+    page.set_viewport_size(DESKTOP)
+    _assert_help_near_control(page, "#id_permissions", "id_permissions_helptext")
     assert "Site permissions granted through this group" in page.content()
+    assert "NOT project or membership authorization" in page.content()
     _assert_no_horizontal_overflow(page)
-    _capture(page, output_path, "admin-group-add-1440")
+    _capture(page, output_path, "admin-group-add-1440", full_page=True)
+    page.set_viewport_size(MOBILE)
+    _assert_help_near_control(page, "#id_permissions", "id_permissions_helptext")
+    _assert_no_horizontal_overflow(page)
+    _capture(page, output_path, "admin-group-add-390", full_page=True)
 
+    # Asset add: corrected parent/slug/kind guidance at 1440 (full page) and
+    # 390.
     page.goto(f"{live_server.url}/admin/assets/asset/add/")
-    for help_id, fragment in [
-        ("id_parent_helptext", "The machine this asset belongs to"),
-        ("id_slug_helptext", "Stable public identifier"),
-        ("id_booking_mode_helptext", "Only 'Exclusive' is supported"),
-        ("id_physical_locator_helptext", "Internal physical location for operators"),
-    ]:
-        assert page.locator(f"#{help_id}").inner_text()
-        assert fragment in page.locator(f"#{help_id}").inner_text()
+    page.set_viewport_size(DESKTOP)
+    _assert_help_near_control(page, "#id_parent", "id_parent_helptext")
+    _assert_help_near_control(page, "#id_slug", "id_slug_helptext")
+    _assert_help_near_control(page, "#id_kind", "id_kind_helptext")
+    _assert_help_near_control(page, "#id_booking_mode", "id_booking_mode_helptext")
+    _assert_help_near_control(page, "#id_timezone", "id_timezone_helptext")
+    _assert_help_near_control(page, "#id_physical_locator", "id_physical_locator_helptext")
+    assert "a machine itself never has a parent" in page.locator("#id_parent_helptext").inner_text()
+    assert (
+        "changing the slug does not change those URLs"
+        in page.locator("#id_slug_helptext").inner_text()
+    )
     _assert_no_horizontal_overflow(page)
-    _capture(page, output_path, "admin-asset-add-1440")
+    _capture(page, output_path, "admin-asset-add-1440", full_page=True)
+    page.set_viewport_size(MOBILE)
+    _assert_help_near_control(page, "#id_parent", "id_parent_helptext")
+    _assert_help_near_control(page, "#id_slug", "id_slug_helptext")
+    _assert_no_horizontal_overflow(page)
+    _capture(page, output_path, "admin-asset-add-390", full_page=True)
 
+    # Asset change at 1440 and 390.
     page.goto(f"{live_server.url}/admin/assets/asset/{asset.pk}/change/")
-    assert "Stable public identifier used in URLs and the API" in page.content()
+    page.set_viewport_size(DESKTOP)
+    _assert_help_near_control(page, "#id_slug", "id_slug_helptext")
+    assert "Stable label used for display and search" in page.content()
     _assert_no_horizontal_overflow(page)
-    _capture(page, output_path, "admin-asset-change-1440")
+    _capture(page, output_path, "admin-asset-change-1440", full_page=True)
+    page.set_viewport_size(MOBILE)
+    _assert_help_near_control(page, "#id_slug", "id_slug_helptext")
+    _assert_no_horizontal_overflow(page)
+    _capture(page, output_path, "admin-asset-change-390", full_page=True)
 
+    # Tag add at 1440 and 390.
     page.goto(f"{live_server.url}/admin/assets/assettag/add/")
+    page.set_viewport_size(DESKTOP)
+    _assert_help_near_control(page, "#id_name", "id_name_helptext")
     assert "Display name of the tag" in page.content()
     _assert_no_horizontal_overflow(page)
+    _capture(page, output_path, "admin-tag-add-1440")
+    page.set_viewport_size(MOBILE)
+    _assert_help_near_control(page, "#id_name", "id_name_helptext")
+    _assert_no_horizontal_overflow(page)
+    _capture(page, output_path, "admin-tag-add-390")

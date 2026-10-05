@@ -54,10 +54,12 @@ The existing `/api/v1/assets/` and `/api/v1/assets/{asset_id}/` endpoints still 
 session. Bearer `assets:read` does not grant those endpoints in this slice.
 
 The human UI displays human-readable scope labels (for example
-"Create reservations" for `reservations:create`) plus a plain-language
-effect line per scope, including the one-time token display and the token
-list. Stored values, form values and wire values are always the exact
-machine strings above; nothing in the UI changes the scope contract.
+"Create reservations" for `reservations:create`) on the token creation form
+and the token list, and on the one-time token display. Only the token
+creation form adds a plain-language effect line per scope; the list and the
+one-time display show labels only. Stored values, form values and wire
+values are always the exact machine strings above; nothing in the UI
+changes the scope contract.
 
 ## Idempotency
 

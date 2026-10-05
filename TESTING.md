@@ -231,8 +231,16 @@ uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
 
 Same owned-disposable rules as above: never run product tests from the
 valuable checkout; unique owned test database per run. The server suite
-asserts rendered help, help-ID/`aria-describedby` wiring, human scope
-labels and humanized policy units on GET and invalid-POST pages; the browser
-suite checks nearby help, keyboard access and 1440/390 overflow with
-privacy-safe screenshots (never the one-time token page). The full control
-inventory and coverage map live in `docs/ux/form-guidance-inventory.md`.
+asserts rendered help with each help element bound to its own control's
+`aria-describedby`, human scope labels, humanized policy units (including
+non-round minutes), daylight-saving occurrence semantics (ambiguous
+Automatic rejected, explicit occurrences, nonexistent spring-forward
+times), and admin password-change enable/disable behavior on GET and
+invalid-POST pages; the browser suite checks visible, bound, nearby help at
+1440 and 390 — including every admin surface (login, user add/change,
+password change, group add, asset add/change, tag add) — with full-page
+captures for long admin forms, keyboard access and overflow checks, and
+privacy-safe screenshots (never the one-time token page, no
+credential/verifier/token/CSRF/cookie/HAR/trace material). The full control
+inventory and coverage map, including the unreachable legacy controls
+classification, live in `docs/ux/form-guidance-inventory.md`.

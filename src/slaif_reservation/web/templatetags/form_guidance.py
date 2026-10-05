@@ -61,6 +61,7 @@ def human_duration(value: Any) -> str:
     """Human-readable length for display; stored units stay minutes.
 
     30 -> "30 minutes"; 90 -> "1 hour, 30 minutes"; 1440 -> "1 day";
+    1441 -> "1 day, 1 minute"; 1501 -> "1 day, 1 hour, 1 minute";
     2880 -> "2 days"; 2890 -> "2 days, 10 minutes".
     """
     try:
@@ -79,7 +80,7 @@ def human_duration(value: Any) -> str:
             ngettext("%(count)d hour", "%(count)d hours", leftover_hours)
             % {"count": leftover_hours}
         )
-    if rem and not days:
+    if rem:
         parts.append(ngettext("%(count)d minute", "%(count)d minutes", rem) % {"count": rem})
     if not parts:
         parts.append("0 minutes")

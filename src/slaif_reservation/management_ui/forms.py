@@ -54,7 +54,12 @@ class ReservationPolicyForm(forms.Form):
     name = forms.CharField(
         label=_("Name"),
         max_length=180,
-        help_text=_("Short unique name for this policy, for example 'GPU A' or 'default'."),
+        help_text=_(
+            "Short name for this policy, for example 'GPU A' or 'default'. "
+            "Names are not unique; only the active target is constrained: at "
+            "most one active policy per exact asset and one active global "
+            "policy."
+        ),
     )
     asset = forms.ModelChoiceField(
         label=_("Asset target"),
@@ -228,9 +233,12 @@ class MaintenanceBlackoutForm(forms.Form):
         required=False,
         choices=_FOLD_CHOICES,
         help_text=_(
-            "Only needed when this local time falls on a daylight-saving "
-            "transition in the selected timezone. Automatic uses the system "
-            "default; pick first or second to be explicit."
+            "Only relevant on a daylight-saving transition day in the "
+            "selected timezone. On fall-back the clock time repeats and "
+            "Automatic is then rejected: choose First occurrence (the "
+            "earlier one) or Second occurrence (the later one). A time "
+            "inside the spring-forward gap does not exist and is always "
+            "rejected, whatever you choose."
         ),
     )
     end = forms.CharField(
@@ -247,9 +255,12 @@ class MaintenanceBlackoutForm(forms.Form):
         required=False,
         choices=_FOLD_CHOICES,
         help_text=_(
-            "Only needed when this local time falls on a daylight-saving "
-            "transition in the selected timezone. Automatic uses the system "
-            "default; pick first or second to be explicit."
+            "Only relevant on a daylight-saving transition day in the "
+            "selected timezone. On fall-back the clock time repeats and "
+            "Automatic is then rejected: choose First occurrence (the "
+            "earlier one) or Second occurrence (the later one). A time "
+            "inside the spring-forward gap does not exist and is always "
+            "rejected, whatever you choose."
         ),
     )
     reason = forms.CharField(

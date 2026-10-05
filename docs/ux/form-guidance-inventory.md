@@ -1,7 +1,7 @@
 # Form and choice guidance inventory
 
-**Order:** 037-a (SAR-044). This inventory was completed before the guidance
-edits and maps every ACTUAL runtime control (bound form fields, model-generated
+**Order:** 037-a (SAR-044), accuracy-closed in 037-b. This inventory maps every
+ACTUAL runtime control (bound form fields, model-generated
 admin add/change/password/group fields, dynamically renamed fields, and raw
 template filters/actions) to rendered, accessible guidance. The earlier
 39-declared-field AST baseline is superseded: it missed dynamically renamed
@@ -24,9 +24,9 @@ Wire values, validation, permissions, admission and crypto are unchanged.
 | Display name | `/profile/`, `ProfileForm.display_name` | yes | label only | help: shown to staff in management views, blank shows email only |
 | Timezone | `/profile/`, `ProfileForm.timezone` | yes | unassociated `<p class="help">` | help: required IANA name, drives all entered/shown times, blank/unknown rejected; `aria-describedby` wired |
 | Start | `/assets/<id>/reserve/`, `ReservationForm.start` | yes | label "Start" only | help: local date/time in the user's timezone, must be in the future |
-| Start occurrence | `ReservationForm.start_fold` | yes | label "Start occurrence" | help: only relevant at DST transitions (ambiguous/nonexistent local times); Automatic = system default |
+| Start occurrence | `ReservationForm.start_fold` | yes | label "Start occurrence" | help: relevant on DST transition days; on fall-back the clock time repeats and Automatic is rejected — pick First (earlier) or Second (later) occurrence; a spring-forward gap time does not exist and is always rejected |
 | End | `ReservationForm.end` | yes | label "End" only | help: local end; asset held from start until end, end instant free again |
-| End occurrence | `ReservationForm.end_fold` | yes | label "End occurrence" | same DST relevance as start occurrence |
+| End occurrence | `ReservationForm.end_fold` | yes | label "End occurrence" | same corrected semantics as start occurrence |
 | Purpose | `ReservationForm.purpose` | yes | label "Purpose" | help: optional unless the asset's policy requires it; staff can read it |
 | Cancel reason | reservation detail, `CancellationForm.reason` | yes | label "Reason" | help: optional, recorded with the cancellation, visible to staff; cancel warning line |
 | Release action | reservation detail (active) | button | bare button | warning: ends the reservation now, frees the remaining time, cannot be undone |
@@ -48,7 +48,7 @@ Wire values, validation, permissions, admission and crypto are unchanged.
 
 | Control | Route / template | Bound | State before 037-a | Guidance added |
 |---|---|---|---|---|
-| Policy name | policy form, `ReservationPolicyForm.name` | yes | label "Name" | help: short unique policy name |
+| Policy name | policy form, `ReservationPolicyForm.name` | yes | label "Name" | help: short policy name; names are NOT unique (only one active policy per exact asset and one active global) |
 | Policy asset target | `ReservationPolicyForm.asset` | yes | help "Leave empty for the global policy." | help: exact-asset → parent-machine → global resolution order; two active at one level fail closed |
 | Min duration | `min_duration_minutes` | yes | label "Minimum duration" | label "(minutes)" + help: shortest allowed booking, 1440 min = 24 h = 1 day |
 | Max duration | `max_duration_minutes` | yes | label "Maximum duration" | help: longest single booking, 2880 min = 48 h = 2 days |
@@ -60,7 +60,7 @@ Wire values, validation, permissions, admission and crypto are unchanged.
 | Purpose required | `purpose_required` | yes | label only | help: members must enter a purpose for new bookings |
 | Blackout asset | `MaintenanceBlackoutForm.asset` | yes | label "Asset" | help: the single exact asset that stops accepting new bookings |
 | Blackout timezone | `timezone` | yes | label "Timezone" | help: IANA name interpreting the entered start/end |
-| Blackout start/end + occurrence | `start`, `end`, `start_fold`, `end_fold` | yes | labels only | local wall-time help + DST occurrence relevance |
+| Blackout start/end + occurrence | `start`, `end`, `start_fold`, `end_fold` | yes | labels only | local wall-time help + same corrected DST occurrence semantics as the member reservation form |
 | Blackout reason | `reason` | yes | label "Reason" | help: required, stored and visible to staff |
 | Overlap confirm | `confirm_overlaps` | yes | label "Create despite overlapping reservations" | help: creating never cancels/releases overlapping reservations; it only blocks new bookings |
 | Policy deactivation | `policy_detail.html` | button | bare button | warning: stops applying to new bookings immediately, existing bookings unchanged, fail-closed if it was the only match |
@@ -88,27 +88,40 @@ Wire values, validation, permissions, admission and crypto are unchanged.
 |---|---|---|---|---|
 | Admin login email | `/admin/login/`, `SlaifAdminAuthenticationForm.username` | yes | label "Email" | help: the administration account email; `aria-describedby` wired |
 | Admin login password | same | yes | bare field | help: wrong/inactive/service-account identities get the same generic error |
-| User add: email / password1 / password2 / is_staff / is_superuser | `/admin/accounts/user/add/` | add form | bare fields | help on each: account email (admin-created), initial password + confirm, staff = management/administration access, superuser = full rights |
+| User add: email / password1 / password2 / is_staff / is_superuser | `/admin/accounts/user/add/` | add form | bare fields | help on each: account email (admin-created); initial password set by the administrator (members have no self-service password change — the profile page edits display name and timezone only) + confirm; staff = management/administration entry (active staff flag, not permission selections); superuser = full rights (does not bypass the active-human/staff gate) |
 | User change: email | `/admin/accounts/user/<id>/change/` | yes | bare | help: sign-in identifier, admin-created accounts |
 | User change: password | same | yes (read-only) | inherited hash summary (algorithm + masked salt/hash) + broken relative "Reset password" link | REPLACED: safe status only ("Password set" / "No password set" / unrecognized format) + real permitted action = per-user password-change form (`.../password/`, permission-checked, audited); no hash fragment rendered |
 | User change: display name / timezone | same | yes | bare | help: shown to staff / IANA name for web booking |
 | User change: is_service_account | same | yes | bare | help: machine account, cannot sign in to member site or administration |
-| User change: is_active / is_staff / is_superuser | same | yes | bare | precise flag effects |
-| User change: groups / user_permissions | same | yes (filter_horizontal) | bare | help: site permissions only — NOT project/membership authorization, do not change reservable-asset policy |
-| User password change form | `/admin/accounts/user/<id>/password/` | Django `AdminPasswordChangeForm` | meaningful built-in help already present | kept the built-in help (password1 = password rules list, password2 = confirm wording) with automatic `aria-describedby`; validation/hashing unchanged |
+| User change: is_active / is_staff / is_superuser | same | yes | bare | precise flag effects incl. entry follows the active staff flag (not individual permission selections) and superuser does not bypass the active-human/staff admission gate |
+| User change: groups / user_permissions | same | yes (filter_horizontal) | bare | help: per-model site permissions only — NOT project/membership authorization, do not change reservable-asset policy, and do not admit a session by themselves |
+| User password change form | `/admin/accounts/user/<id>/password/` | `SlaifAdminPasswordChangeForm` (subclass) | generic built-in `usable_password` help mentioned SSO/LDAP although no such backend is configured | `usable_password` (added dynamically only while the user has a usable password) carries product help: disabling loses the current password and blocks password sign-in; no alternate human login backend exists; the built-in warning is preserved verbatim and the control gets `aria-describedby`; password1/password2 keep the built-in rule list/confirm help; validators/hashing/conditional field/actions/permissions unchanged |
 | Group permissions | `/admin/auth/group/...` | Django `GroupAdmin` | bare multiselect | help: Django site permissions only, not project/membership authorization |
 | AssetTag name / slug / description | `/admin/assets/assettag/...` | yes | bare | help incl. prepopulated slug behavior |
-| Asset parent / slug / name / kind | `/admin/assets/asset/...` | yes | bare | help incl. machine-has-no-parent rule, stable slug, bookable kinds |
+| Asset parent / slug / name / kind | `/admin/assets/asset/...` | yes | bare | help: only a machine can be a child's parent and a machine itself never has a parent; slug = stable display/search label (must stay unique; current detail/API routes use UUIDs, so a slug change does not change those URLs); kind: only machines take children |
 | Asset booking mode | same | yes | bare | help: exclusive only — no overlapping bookings |
-| Asset description / location / timezone | same | yes | bare | description shown to members; location staff-only (not in member UI or API); IANA display timezone |
+| Asset description / location / timezone | same | yes | bare | description shown to members; location staff-only (not in member UI or API); timezone = stored display metadata shown as "Asset timezone" (does NOT drive availability: availability uses each member's profile timezone) |
 | Asset active / reservable / verification_required | same | yes | bare | precise effects: hidden+unbookable when inactive; reserve action only when reservable; verification is a display flag with no enforced workflow yet |
 | Asset capabilities / tags / physical_locator | same | yes | bare | capabilities = verified normalized JSON shown to members; tags = filter labels; locator = internal-only, never member/API visible |
-| Asset legacy_* read-only | same | read-only | bare | help: legacy import provenance, read-only |
+| Asset legacy_* read-only | same | read-only | bare | no field help renders: read-only admin fields show values only and the fields are excluded from the form (the leftover help constants are skipped by design); the read-only context is explained by the "Internal operations" fieldset |
 | ReservationPolicy / Reservation / MaintenanceBlackout / AuditEvent / ApiToken change pages | `/admin/...` | read-only | no explanation of protection | contextual read-only guidance banner on each change form naming the supported mutation path (management area / member token page / append-only audit) |
 | Admin changelist search + filters | all changelists | built-in | Django defaults | self-evident built-in search/filter controls; unchanged |
-| "Important dates" (user), timestamps | user/asset change | read-only | bare | self-evident read-only audit timestamps; unchanged |
+| "Important dates" (user) | user change | last_login/date_joined EDITABLE, created_at/updated_at read-only | bare (last_login/date_joined had empty help) | last_login: when the user last signed in (UTC), updated on sign-in, edit only to correct, booking logic never reads it; date_joined: account creation (UTC), editing changes only this value while created_at is the immutable product record; timestamps (user/asset) stay self-evident read-only |
 
-## 4. Out of scope (unchanged)
+## 4. Legacy (unreachable) controls
+
+The `assets` app ships its own staff inventory views and templates
+(`assets/views.py`, `assets/urls.py`, `assets/templates/assets/asset_list.html`,
+`assets/templates/assets/asset_detail.html`) and its own staff REST endpoints
+(`assets/api.py`, `assets/api_urls.py`). None of them is included by the
+current `config.urls` — the routed member/staff surfaces are the `web`
+app (asset list/detail with the raw filters documented in section 1) and the
+bearer `api/v1` surface. These legacy controls are therefore classified as
+UNREACHABLE: no current field coverage is claimed for them, no help was
+added, and no routes were added. They remain in the tree as preserved
+history.
+
+## 5. Out of scope (unchanged)
 
 - Token one-time plaintext display, no-store/private/no-referrer headers, history
   scrubbing, verifier/pepper handling (SAR-014/SAR-015).
@@ -116,16 +129,27 @@ Wire values, validation, permissions, admission and crypto are unchanged.
   admission, permissions, wire contracts, schema, migrations, dependencies.
 - Full theme and operator appearance overrides (038 scope).
 
-## 5. Verification
+## 6. Verification
 
 - `tests/test_form_guidance.py`: rendered GET + invalid-POST assertions for
-  member/management/admin/raw-filter controls (help present, IDs match,
-  `aria-describedby` wired, validation unchanged).
+  member/management/admin/raw-filter controls (help present, fragment
+  accurate, and the control's OWN `aria-describedby` binds the help element —
+  not just any aria on the page); human_duration boundary test (remainder
+  minutes preserved incl. days); policy detail with non-round minutes;
+  ambiguous-Automatic invalid POSTs keep the corrected occurrence help on
+  both the member reservation and staff blackout forms; form-level explicit
+  occurrence (two real instants) and nonexistent spring-forward negatives;
+  admin password-change page GET/invalid-POST and enable/disable behavior;
+  last_login/date_joined help. Validation negatives unchanged.
 - `tests/browser/test_form_guidance_browser.py`: Playwright seeded forms at
   1440/390 (reservation, token create, profile, policy, blackout, reservation/
-  audit filters, admin user add/change/password/groups, asset add/change);
-  keyboard access, nearby help, no horizontal overflow; privacy-safe
-  screenshots (no tokens/passwords/verifiers/CSRF/cookies/raw traces).
+  audit filters, and ALL admin surfaces: login, user add/change, password
+  change, group add, asset add/change, tag add); the nearby-help helper now
+  requires a visible control, a visible help element, the control's own
+  `aria-describedby` binding, and a real shared field container; long admin
+  forms are captured full-page so below-fold guidance and actions are in the
+  evidence; keyboard access, no horizontal overflow; privacy-safe
+  screenshots (no tokens/passwords/verifiers/CSRF/cookies/HAR/traces).
 - Existing negative suites (timezone/DST/duration/policy, roles, CSRF, scopes,
   protected admin, token secrecy) preserved unmodified where they assert
   behavior; label selectors adjusted semantically where text changed.
