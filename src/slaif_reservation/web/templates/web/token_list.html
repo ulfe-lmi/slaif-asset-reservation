@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n tz web_time %}
+{% load i18n tz web_time form_guidance %}
 
 {% block title %}{% trans "API tokens" %}{% endblock %}
 
@@ -27,7 +27,9 @@
           <tr>
             <td>{{ token.name }}</td>
             <td><code>{{ token.display_prefix }}</code></td>
-            <td>{{ token.scopes|join:", " }}</td>
+            <td>
+              {% for scope in token.scopes %}<span class="scope-label">{{ scope|scope_label }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}
+            </td>
             <td><time datetime="{{ token.created_at|utc_datetime }}">{{ token.created_at|date:"Y-m-d H:i" }}</time></td>
             <td><time datetime="{{ token.expires_at|utc_datetime }}">{{ token.expires_at|date:"Y-m-d H:i" }}</time></td>
             <td>

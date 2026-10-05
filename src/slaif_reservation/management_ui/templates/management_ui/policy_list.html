@@ -7,12 +7,13 @@
   <p><a href="{% url 'management-ui:policy-create' %}">{% trans "Create policy" %}</a></p>
   <form method="get">
     <label for="asset">{% trans "Show effective policy for asset" %}</label>
-    <select id="asset" name="asset">
+    <select id="asset" name="asset" aria-describedby="resolver-asset-help">
       <option value="">{% trans "Select asset" %}</option>
       {% for asset in assets %}
         <option value="{{ asset.id }}">{{ asset.slug }}</option>
       {% endfor %}
     </select>
+    <p class="help" id="resolver-asset-help">{% trans "Resolves the policy that applies to new bookings: exact asset first, then its parent machine, then the global policy." %}</p>
     <button type="submit">{% trans "Resolve" %}</button>
   </form>
   {% if asset_context %}

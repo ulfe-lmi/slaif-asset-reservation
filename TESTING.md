@@ -217,3 +217,42 @@ child envs with `OAP_ROLE` cleared and explicit `PYTHONPATH`/settings/DB
 URLs); never from the valuable working checkout. The browser suite captures
 privacy-safe 1440/390 screenshots for visual review; round chronology and
 results belong in the immutable OAP reports, not here.
+
+## Form guidance (SAR-044) (task guidance)
+
+Focused suites for the rendered form/choice guidance work:
+
+```bash
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  tests/test_form_guidance.py
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  --browser chromium tests/browser/test_form_guidance_browser.py
+```
+
+Same owned-disposable rules as above: never run product tests from the
+valuable checkout; unique owned test database per run. The server suite
+asserts rendered help bound to each control's own `aria-describedby`
+(including both rendered password-choice radios bound to the first choice's
+help id, kept on the invalid-POST re-render), human scope labels,
+humanized policy units (including non-round minutes and the
+fresh-install default policy rendered through the real initializer, minimum
+1 minute), daylight-saving occurrence semantics (ambiguous
+Automatic rejected, explicit occurrences, nonexistent spring-forward
+times), admin password-change enable/disable behavior on GET and
+invalid-POST pages, the rendered permission wording pinned against the real
+authorization (staff without model permissions reach the management area;
+administration model operations keep model-permission enforcement and
+protected models), and the live routing of the staff asset REST endpoints
+versus the unrouted legacy `assets/views.py` HTML views; the browser suite
+checks visible, nearby help at 1440 and 390 — bound where the control
+carries `aria-describedby`, and after the admin widgets initialize for the
+JS-generated select-filter list boxes (both from/to boxes of every
+permission/group selector) and both rendered password-choice radios, with
+the invalid password POST keeping the rendered, bound help — including every
+admin surface (login, user add/change,
+password change, group add, asset add/change, tag add) — with full-page
+captures for long admin forms, keyboard access and overflow checks, and
+privacy-safe screenshots (never the one-time token page, no
+credential/verifier/token/CSRF/cookie/HAR/trace material). The full control
+inventory and coverage map, including the legacy unrouted-controls
+classification, live in `docs/ux/form-guidance-inventory.md`.

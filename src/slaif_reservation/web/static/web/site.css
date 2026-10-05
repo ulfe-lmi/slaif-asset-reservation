@@ -207,6 +207,51 @@ dt {
   margin: 0;
 }
 
+.filter {
+  display: grid;
+  gap: 0.25rem;
+  align-content: start;
+}
+
+.field-group fieldset {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem 0.75rem;
+  margin: 0;
+}
+
+.field-group legend {
+  font-weight: 700;
+  padding-inline: 0.25rem;
+}
+
+.scope-option {
+  display: grid;
+  gap: 0.15rem;
+  margin-block: 0.35rem;
+}
+
+.scope-option input {
+  width: auto;
+}
+
+.scope-option label {
+  font-weight: 700;
+}
+
+.choice-help {
+  color: var(--muted);
+  margin: 0;
+  font-size: 0.95em;
+}
+
+.export-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
 
 .button-secondary {
   background: var(--surface);

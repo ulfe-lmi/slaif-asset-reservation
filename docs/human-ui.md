@@ -263,3 +263,67 @@ Before internal alpha, Playwright tests cover at least:
 Work Order 0004 adds headless Chromium tests for the implemented login/logout, member browsing,
 profile, reservation creation/conflict, own detail, cancellation, release, other-user denial, and
 keyboard smoke paths.
+## 11. Field and choice guidance (SAR-044)
+
+Every non-obvious form control renders meaningful help nearby, associated
+through matching element IDs and `aria-describedby` (checkbox groups use an
+accessible fieldset with a legend). The complete control inventory and
+coverage map — bound forms, inherited and model-generated admin fields,
+dynamically renamed fields and raw template filters — is
+`docs/ux/form-guidance-inventory.md`.
+
+Member surfaces: login explains that accounts are administrator-created and
+self-registration is not available; profile explains the required IANA
+timezone with no blank fallback; the reservation form explains start/end in
+the user's timezone, and the daylight-saving occurrence pickers explain the
+real rule: on a fall-back day the clock time repeats and Automatic is
+rejected (choose First = the earlier or Second = the later occurrence),
+while a time inside the spring-forward gap does not exist and is always
+rejected; purpose is marked optional unless the asset's policy requires it; cancel and release actions warn about their
+irreversible effects; the token form shows human-readable scope labels with
+a one-line effect per scope (`assets:read` is reserved and grants nothing
+today), and the token list and one-time display use the same human labels
+while stored and wire values stay the machine strings. Raw asset filters
+(search/kind/parent/tag/reservable) and the availability "latest valid
+start" note are explained in place.
+
+Staff surfaces: every policy field explains its effect in real units
+(duration in minutes with day equivalents that keep remainder minutes,
+horizon limits how far a booking may START, lead/cutoff semantics, upcoming
+versus overlapping-record counters — the overlap cap counts existing records
+intersecting the proposed interval, not simultaneous occupancy); policy
+names are presented as non-unique (only the active target is constrained);
+the policy detail renders humanized units (for example 2890 minutes as
+"2 days, 10 minutes"); the blackout form carries the same corrected
+daylight-saving occurrence rule as the member reservation form and explains
+exact-asset behavior and that creating a blackout never cancels or releases
+existing reservations; deactivation actions carry explicit warnings;
+reservation and audit filters label and explain every selector, including
+the renamed `from`/`to` start-range fields (aware ISO-8601).
+
+Administration: user add/change explains each flag's actual effect —
+entry to the management area and the administration follows the active
+staff flag with an active, non-service-account session (never arbitrary
+permission selections, and superuser status does not bypass that gate),
+while individual/group permissions govern per-model administration
+operations in the administration only — they do not grant management
+access, which follows the active human staff status; the
+initial password is set by the administrator because members have no
+self-service password change (the profile page edits display name and
+timezone only); the editable last_login/date_joined fields explain their
+UTC meaning and that edits are corrections, not booking logic; the user
+change page replaces the inherited password-hash summary with a safe status
+("Password set" / "No password set" / "Password disabled") plus the real
+per-user password-change action; that action's enable/disable choice
+explains that disabling loses the current password and that this deployment
+provides no alternate human login backend; asset forms explain the actual
+rules (only a machine can parent children and a machine has no parent; the
+slug is a stable display/search label while routes use UUIDs; the asset
+timezone is display metadata, availability follows each member's profile
+timezone; exclusive booking mode); protected policy/reservation/
+blackout/audit/token pages are read-only with banners naming the supported
+mutation path.
+
+Guidance is presentation only: validation, permission, admission, wire and
+storage behavior are unchanged, and user-visible copy uses domain language
+without framework or work-order text.

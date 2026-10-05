@@ -19,7 +19,15 @@ class HumanAuthenticationForm(AuthenticationForm):
     username = forms.EmailField(
         label=_("Email"),
         widget=forms.EmailInput(attrs={"autocomplete": "email"}),
+        help_text=_(
+            "The email address of your account. Accounts are created by an "
+            "administrator; self-registration is not available."
+        ),
     )
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        _wire_field_help(self, ("username",))
 
     error_messages = {
         **AuthenticationForm.error_messages,
@@ -37,19 +45,34 @@ class HumanAuthenticationForm(AuthenticationForm):
 
 
 class ProfileForm(forms.ModelForm):  # type: ignore[type-arg]
+    display_name = forms.CharField(
+        label=_("Display name"),
+        required=False,
+        max_length=255,
+        widget=forms.TextInput(attrs={"autocomplete": "name"}),
+        help_text=_(
+            "Shown to staff in management views and on reservation records. "
+            "Leave blank to show only your email."
+        ),
+    )
     timezone = forms.CharField(
         label=_("Timezone"),
         required=False,
         max_length=TIMEZONE_NAME_MAX_LENGTH,
         widget=forms.TextInput(attrs={"autocomplete": "off"}),
+        help_text=_(
+            "Required. IANA time zone name (for example Europe/Ljubljana) used "
+            "for every time you enter and see. Blank or unknown names are rejected."
+        ),
     )
 
     class Meta:
         model = User
         fields = ["display_name", "timezone"]
-        widgets = {
-            "display_name": forms.TextInput(attrs={"autocomplete": "name"}),
-        }
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        _wire_field_help(self, ("display_name", "timezone"))
 
     def clean_timezone(self) -> str:
         value = str(self.cleaned_data["timezone"]).strip()
@@ -57,35 +80,81 @@ class ProfileForm(forms.ModelForm):  # type: ignore[type-arg]
         return value
 
 
+_FOLD_CHOICES = [
+    ("", _("Automatic")),
+    ("0", _("First occurrence")),
+    ("1", _("Second occurrence")),
+]
+
+
 class ReservationForm(forms.Form):
     start = forms.CharField(
         label=_("Start"),
         widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "60"}),
+        help_text=_(
+            "Local date and time the asset is needed. It must be in the future "
+            "and within the asset's booking horizon."
+        ),
     )
     start_fold = forms.ChoiceField(
         label=_("Start occurrence"),
         required=False,
-        choices=[("", _("Automatic")), ("0", _("First occurrence")), ("1", _("Second occurrence"))],
+        choices=_FOLD_CHOICES,
+        help_text=_(
+            "Only relevant on a daylight-saving transition day in your "
+            "timezone. On fall-back the clock time repeats and Automatic is "
+            "then rejected: choose First occurrence (the earlier one) or "
+            "Second occurrence (the later one). A time inside the "
+            "spring-forward gap does not exist and is always rejected, "
+            "whatever you choose."
+        ),
     )
     end = forms.CharField(
         label=_("End"),
         widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "60"}),
+        help_text=_(
+            "Local end date and time, in the future. The asset is held from the "
+            "start until the end; the end instant itself is free again."
+        ),
     )
     end_fold = forms.ChoiceField(
         label=_("End occurrence"),
         required=False,
-        choices=[("", _("Automatic")), ("0", _("First occurrence")), ("1", _("Second occurrence"))],
+        choices=_FOLD_CHOICES,
+        help_text=_(
+            "Only relevant on a daylight-saving transition day in your "
+            "timezone. On fall-back the clock time repeats and Automatic is "
+            "then rejected: choose First occurrence (the earlier one) or "
+            "Second occurrence (the later one). A time inside the "
+            "spring-forward gap does not exist and is always rejected, "
+            "whatever you choose."
+        ),
     )
     purpose = forms.CharField(
         label=_("Purpose"),
         required=False,
         max_length=1000,
         widget=forms.Textarea(attrs={"rows": 4}),
+        help_text=_(
+            "Optional unless the policy for this asset requires it. Staff can "
+            "read it on the reservation."
+        ),
     )
 
     def __init__(self, *args: Any, timezone_name: str, **kwargs: Any) -> None:
         self.timezone_name = timezone_name
         super().__init__(*args, **kwargs)
+        self.fields["start"].help_text = _(
+            "Local date and time the asset is needed, in %(timezone)s (your "
+            "profile timezone). It must be in the future and within the asset's "
+            "booking horizon."
+        ) % {"timezone": timezone_name}
+        self.fields["end"].help_text = _(
+            "Local end date and time, in %(timezone)s, after the start. The "
+            "asset is held from the start until the end; the end instant itself "
+            "is free again."
+        ) % {"timezone": timezone_name}
+        _wire_field_help(self, ("start", "start_fold", "end", "end_fold", "purpose"))
 
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean() or {}
@@ -143,17 +212,41 @@ class CancellationForm(forms.Form):
         required=False,
         max_length=1000,
         widget=forms.Textarea(attrs={"rows": 3}),
+        help_text=_("Optional. Recorded with the cancellation and visible to staff."),
     )
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        _wire_field_help(self, ("reason",))
+
+
+def _scope_label(scope: str) -> str:
+    from slaif_reservation.web.templatetags.form_guidance import SCOPE_LABELS
+
+    return str(SCOPE_LABELS.get(scope, scope))
 
 
 class ApiTokenCreationForm(forms.Form):
-    name = forms.CharField(label=_("Token name"), max_length=100)
-    scopes = forms.MultipleChoiceField(
-        label=_("Scopes"),
-        choices=[(scope, scope) for scope in ALLOWED_API_TOKEN_SCOPES],
-        widget=forms.CheckboxSelectMultiple,
+    name = forms.CharField(
+        label=_("Token name"),
+        max_length=100,
+        help_text=_("A label for your own records. It never changes what the token can do."),
     )
-    lifetime_days = forms.IntegerField(label=_("Lifetime in days"), min_value=1)
+    scopes = forms.MultipleChoiceField(
+        label=_("Scopes (what the token may do)"),
+        choices=[(scope, _scope_label(scope)) for scope in ALLOWED_API_TOKEN_SCOPES],
+        widget=forms.CheckboxSelectMultiple,
+        help_text=_(
+            "Choose the API operations this token may perform under /api/v1/. "
+            "Every tick adds one permission; revoke the token at any time to "
+            "remove all of them."
+        ),
+    )
+    lifetime_days = forms.IntegerField(
+        label=_("Lifetime in days"),
+        min_value=1,
+        help_text=_("Days until the token expires on its own."),
+    )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -164,9 +257,13 @@ class ApiTokenCreationForm(forms.Form):
         lifetime_field.validators.append(MaxValueValidator(maximum))
         lifetime_field.initial = default_lifetime
         lifetime_field.widget.attrs["max"] = str(maximum)
-        lifetime_field.help_text = _("Maximum allowed lifetime is %(days)s days.") % {
-            "days": maximum
-        }
+        lifetime_field.help_text = _(
+            "Days until the token expires on its own, between 1 and "
+            "%(days)s. A shorter lifetime limits the damage if the token leaks."
+        ) % {"days": maximum}
+        _wire_field_help(self, ("name", "lifetime_days"))
+        scopes_widget = cast(forms.CheckboxSelectMultiple, self.fields["scopes"].widget)
+        scopes_widget.attrs["aria-describedby"] = "id_scopes-help"
 
     def clean_name(self) -> str:
         value = str(self.cleaned_data["name"]).strip()
@@ -183,6 +280,13 @@ class ApiTokenCreationForm(forms.Form):
                 params={"limit_value": maximum},
             )
         return value
+
+
+def _wire_field_help(form: Any, names: tuple[str, ...]) -> None:
+    for name in names:
+        field = form.fields[name]
+        if field.help_text:
+            field.widget.attrs["aria-describedby"] = f"id_{name}-help"
 
 
 def _parse_datetime_local(value: str) -> datetime:

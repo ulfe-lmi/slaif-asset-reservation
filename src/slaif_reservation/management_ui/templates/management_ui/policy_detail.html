@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n form_guidance %}
 {% block title %}{{ policy.name }}{% endblock %}
 {% block content %}
   {% include "management_ui/_nav.html" %}
@@ -7,15 +7,16 @@
   <dl>
     <dt>{% trans "Target" %}</dt><dd>{% if policy.asset %}{{ policy.asset.slug }}{% else %}{% trans "Global" %}{% endif %}</dd>
     <dt>{% trans "Active" %}</dt><dd>{{ policy.active }}</dd>
-    <dt>{% trans "Duration" %}</dt><dd>{{ policy.min_duration_minutes }}-{{ policy.max_duration_minutes }} {% trans "minutes" %}</dd>
-    <dt>{% trans "Horizon" %}</dt><dd>{{ policy.booking_horizon_days }} {% trans "days" %}</dd>
-    <dt>{% trans "Lead" %}</dt><dd>{{ policy.min_lead_minutes }} {% trans "minutes" %}</dd>
-    <dt>{% trans "Cancellation cutoff" %}</dt><dd>{{ policy.cancellation_cutoff_minutes }} {% trans "minutes" %}</dd>
-    <dt>{% trans "Limits" %}</dt><dd>{{ policy.max_upcoming_per_principal }} / {{ policy.max_concurrent_per_principal }}</dd>
+    <dt>{% trans "Duration" %}</dt><dd>{{ policy.min_duration_minutes }} {% trans "to" %} {{ policy.max_duration_minutes }} {% trans "minutes" %} ({{ policy.min_duration_minutes|human_duration }} - {{ policy.max_duration_minutes|human_duration }})</dd>
+    <dt>{% trans "Horizon" %}</dt><dd>{{ policy.booking_horizon_days }} {% trans "days" %} ({% blocktrans with days=policy.booking_horizon_days %}bookings may start up to {{ days }} days from now{% endblocktrans %})</dd>
+    <dt>{% trans "Lead" %}</dt><dd>{% if policy.min_lead_minutes == 0 %}{% trans "No lead required (a booking may start right now)." %}{% else %}{{ policy.min_lead_minutes }} {% trans "minutes" %} ({{ policy.min_lead_minutes|human_duration }}){% endif %}</dd>
+    <dt>{% trans "Cancellation cutoff" %}</dt><dd>{% if policy.cancellation_cutoff_minutes == 0 %}{% trans "Members may cancel up to the start time." %}{% else %}{{ policy.cancellation_cutoff_minutes }} {% trans "minutes" %} before start ({{ policy.cancellation_cutoff_minutes|human_duration }}){% endif %}</dd>
+    <dt>{% trans "Limits" %}</dt><dd>{{ policy.max_upcoming_per_principal }} {% trans "upcoming" %} / {{ policy.max_concurrent_per_principal }} {% trans "overlapping per principal" %}</dd>
     <dt>{% trans "Purpose required" %}</dt><dd>{{ policy.purpose_required }}</dd>
   </dl>
   <p><a href="{% url 'management-ui:policy-update' policy.id %}">{% trans "Edit policy" %}</a></p>
   {% if policy.active %}
+    <p class="status-warning">{% trans "Deactivating stops this policy applying to new bookings immediately. Existing bookings are not changed; if it was the only matching policy, new bookings fail closed." %}</p>
     <form method="post" action="{% url 'management-ui:policy-deactivate' policy.id %}">
       {% csrf_token %}
       <button type="submit">{% trans "Deactivate policy" %}</button>

@@ -6,38 +6,50 @@
 {% block content %}
   <h1>{% trans "Assets" %}</h1>
   <form method="get" class="filters">
-    <label>{% trans "Search" %}<input name="q" value="{{ request.GET.q }}"></label>
-    <label>{% trans "Kind" %}
-      <select name="kind">
+    <div class="filter">
+      <label for="filter-q">{% trans "Search" %}</label>
+      <input id="filter-q" name="q" aria-describedby="filter-q-help" value="{{ request.GET.q }}">
+      <p class="help" id="filter-q-help">{% trans "Matches the asset name, slug or description." %}</p>
+    </div>
+    <div class="filter">
+      <label for="filter-kind">{% trans "Kind" %}</label>
+      <select id="filter-kind" name="kind" aria-describedby="filter-kind-help">
         <option value="">{% trans "Any" %}</option>
         {% for value, label in kinds %}
           <option value="{{ value }}" {% if request.GET.kind == value %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
-    </label>
-    <label>{% trans "Parent" %}
-      <select name="parent">
+      <p class="help" id="filter-kind-help">{% trans "One asset kind: Machine, GPU, CPU pool, Service or Other." %}</p>
+    </div>
+    <div class="filter">
+      <label for="filter-parent">{% trans "Parent" %}</label>
+      <select id="filter-parent" name="parent" aria-describedby="filter-parent-help">
         <option value="">{% trans "Any" %}</option>
         {% for parent in context.parents %}
           <option value="{{ parent.id }}" {% if request.GET.parent == parent.id|stringformat:"s" %}selected{% endif %}>{{ parent.name }}</option>
         {% endfor %}
       </select>
-    </label>
-    <label>{% trans "Tag" %}
-      <select name="tag">
+      <p class="help" id="filter-parent-help">{% trans "Only child assets of that machine." %}</p>
+    </div>
+    <div class="filter">
+      <label for="filter-tag">{% trans "Tag" %}</label>
+      <select id="filter-tag" name="tag" aria-describedby="filter-tag-help">
         <option value="">{% trans "Any" %}</option>
         {% for tag in context.tags %}
           <option value="{{ tag.slug }}" {% if request.GET.tag == tag.slug %}selected{% endif %}>{{ tag.name }}</option>
         {% endfor %}
       </select>
-    </label>
-    <label>{% trans "Reservable" %}
-      <select name="reservable">
+      <p class="help" id="filter-tag-help">{% trans "Only assets carrying that tag." %}</p>
+    </div>
+    <div class="filter">
+      <label for="filter-reservable">{% trans "Reservable" %}</label>
+      <select id="filter-reservable" name="reservable" aria-describedby="filter-reservable-help">
         <option value="">{% trans "Any" %}</option>
         <option value="true" {% if request.GET.reservable == "true" %}selected{% endif %}>{% trans "Reservable" %}</option>
         <option value="false" {% if request.GET.reservable == "false" %}selected{% endif %}>{% trans "Not reservable" %}</option>
       </select>
-    </label>
+      <p class="help" id="filter-reservable-help">{% trans "Only assets you can book, or only assets you cannot book." %}</p>
+    </div>
     <button type="submit">{% trans "Filter" %}</button>
   </form>
   <table>

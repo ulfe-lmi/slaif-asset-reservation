@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n form_guidance %}
 
 {% block title %}{% trans "Create API token" %}{% endblock %}
 
@@ -16,14 +16,33 @@
         {{ form.non_field_errors }}
       </div>
     {% endif %}
-    {% for field in form %}
-      <div class="field">
-        {{ field.label_tag }}
-        {{ field }}
-        {{ field.help_text }}
-        {{ field.errors }}
-      </div>
-    {% endfor %}
+    <div class="field">
+      {{ form.name.label_tag }}
+      {{ form.name }}
+      {% field_guidance form.name %}
+      {{ form.name.errors }}
+    </div>
+    <div class="field field-group">
+      <fieldset class="scope-group" aria-describedby="{{ form.scopes.auto_id }}-help">
+        <legend>{{ form.scopes.label }}</legend>
+        {% for subwidget in form.scopes.subwidgets %}
+          <div class="scope-option">
+            <label for="{{ subwidget.id_for_label }}">{{ subwidget.choice_label }}
+              {{ subwidget.tag }}
+            </label>
+            <p class="choice-help">{{ subwidget.data.value|scope_effect }}</p>
+          </div>
+        {% endfor %}
+        <p class="help" id="{{ form.scopes.auto_id }}-help">{{ form.scopes.help_text }}</p>
+        {{ form.scopes.errors }}
+      </fieldset>
+    </div>
+    <div class="field">
+      {{ form.lifetime_days.label_tag }}
+      {{ form.lifetime_days }}
+      {% field_guidance form.lifetime_days %}
+      {{ form.lifetime_days.errors }}
+    </div>
     <button type="submit">{% trans "Create token" %}</button>
   </form>
 {% endblock %}

@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n form_guidance %}
 
 {% block title %}{% trans "Profile" %}{% endblock %}
 
@@ -16,13 +16,14 @@
     <div class="field">
       {{ form.display_name.label_tag }}
       {{ form.display_name }}
+      {% field_guidance form.display_name %}
       {{ form.display_name.errors }}
     </div>
     <div class="field">
       {{ form.timezone.label_tag }}
       {{ form.timezone }}
+      {% field_guidance form.timezone %}
       {{ form.timezone.errors }}
-      <p class="help">{% trans "Use an IANA timezone name such as Europe/Ljubljana." %}</p>
     </div>
     <button type="submit">{% trans "Save profile" %}</button>
   </form>
