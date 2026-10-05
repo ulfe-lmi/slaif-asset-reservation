@@ -1,0 +1,21 @@
+# Optional operator branding overlay (038-a, SAR-045).
+#
+# Same application image, no rebuild: this overlay adds ONLY a bounded
+# read-only appearance directory for the existing `app` service. No new
+# service, network, published port, database, proxy, privilege or runtime
+# change. Create ./deploy/branding next to the compose file with at most one
+# file per fixed slot (see docs/branding.md for the exact slots, limits and
+# fallback behavior).
+#
+#   docker compose -f compose.production.example.yaml \
+#       -f compose.branding.example.yaml up -d
+#
+#   docker compose -f compose.yaml -f compose.branding.example.yaml up -d
+#
+# The operator directory is mounted read-only; the app cannot write to it.
+services:
+  app:
+    environment:
+      SLAIF_BRANDING_DIR: /branding
+    volumes:
+      - ./deploy/branding:/branding:ro

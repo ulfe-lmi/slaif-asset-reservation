@@ -79,3 +79,24 @@
 .readonly-guidance p:last-child {
   margin-bottom: 0;
 }
+
+/* 038-a: operator branding slots (SAR-045). The compact logo replaces the
+   primary only on narrow viewports, matching the existing 480px step. */
+.admin-brand-logo-compact {
+  display: none;
+  background: #fff;
+  border-radius: 4px;
+}
+
+@media (max-width: 480px) {
+  .admin-brand-logo {
+    display: none;
+  }
+
+  .admin-brand-logo-compact {
+    display: inline;
+    height: 24px;
+    width: auto;
+    padding: 2px 4px;
+  }
+}

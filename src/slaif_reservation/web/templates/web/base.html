@@ -1,19 +1,21 @@
-{% load static i18n %}
+{% load static i18n branding %}
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{% trans "SLAIF Asset Reservation" %}{% endblock %}</title>
-    <link rel="icon" type="image/svg+xml" href="{% static 'web/brand/slaif-logo.svg' %}">
+    {% branding_icon_link %}
     <link rel="stylesheet" href="{% static 'web/site.css' %}">
+    {% branding_css_link %}
   </head>
   <body>
     <a class="skip-link" href="#content">{% trans "Skip to main content" %}</a>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="{% url 'web:dashboard' %}">
-          <img class="brand-logo" src="{% static 'web/brand/slaif-logo.svg' %}" alt="" width="40" height="31">
+          <img class="brand-logo" src="{% branding_src 'logo' %}" alt="" width="40" height="31">
+          <img class="brand-logo-compact" src="{% branding_src 'logo-compact' %}" alt="" width="40" height="31">
           <span class="brand-name">{% trans "SLAIF Asset Reservation" %}</span>
         </a>
         <nav aria-label="{% trans 'Primary navigation' %}">

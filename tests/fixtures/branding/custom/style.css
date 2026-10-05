@@ -1,0 +1,13 @@
+/* 038-a browser fixture: coherent institutional override tokens. */
+:root {
+  --background: #10233f;
+  --text: #f4f1ea;
+  --muted: #c8cdd6;
+  --border: #3a4a63;
+  --accent: #e2b13c;
+  --surface: #1b2a44;
+}
+
+.site-header {
+  border-bottom: 4px double #e2b13c;
+}

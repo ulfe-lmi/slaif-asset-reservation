@@ -256,3 +256,41 @@ privacy-safe screenshots (never the one-time token page, no
 credential/verifier/token/CSRF/cookie/HAR/trace material). The full control
 inventory and coverage map, including the legacy unrouted-controls
 classification, live in `docs/ux/form-guidance-inventory.md`.
+
+## Branding (SAR-045) (task guidance)
+
+Focused suites for the optional operator appearance-override work
+(`docs/branding.md`):
+
+```bash
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  tests/test_branding.py
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  --browser chromium tests/browser/test_branding_browser.py
+```
+
+Same owned-disposable rules as above: never run product tests from the
+valuable checkout; unique owned test database per run; child envs with
+`OAP_ROLE` cleared and explicit `PYTHONPATH`/settings/DB URLs.
+
+- `tests/test_branding.py` asserts the fixed-slot mechanism end to end:
+  disabled/missing/empty directories, real response bytes/MIME/headers,
+  CSS/image/SVG content and size negatives, wrong-magic and ambiguity,
+  symlink/special-file/traversal refusals, per-slot fallback independence,
+  safe refresh (mtime) semantics, and preserved auth/error behavior.
+  Its final test is the owned Docker qualification: a tracked-file
+  snapshot build, rendered overlay topology against BOTH base Compose
+  files, and the same built image run in production topology (private
+  PG17, UID 10001, read-only rootfs) first default and then with the
+  read-only branding mount, including a write refusal and an
+  in-container invalid-asset fallback; unique owned project, synthetic
+  configuration and exact owned cleanup. It skips honestly only when the
+  docker/git prerequisites are absent.
+- `tests/browser/test_branding_browser.py` qualifies the default identity
+  and one institutional override fixture at 1440/390 for landing, member
+  login, admin login, member dashboard + form, staff page and admin
+  index: actual asset requests, selected imagery, computed CSS tokens,
+  stylesheet order (override after built-in/admin styles), the compact
+  logo switch at narrow widths, the safe invalid-override fallback,
+  labels/keyboard/no overflow, CSRF and no framework branding. Screenshots
+  are privacy-safe and land in the ignored `test-results/` directory.
