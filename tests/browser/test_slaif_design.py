@@ -164,7 +164,7 @@ def inspect_surface(page: Page, output_path, name: str, width: int, theme: str) 
       return [...document.querySelectorAll(
         'h1,h2,h3,label,.help,.choice-help,button,a.button,.nav-toggle,' +
         '.site-footer span,.site-footer a,a.admin-brand,#changelist-filter a'
-      )].filter(el => el.checkVisibility() && !el.matches(':disabled') &&
+      )].filter(el => el.checkVisibility({checkVisibilityCSS: true}) && !el.matches(':disabled') &&
           el.getAttribute('aria-disabled') !== 'true' && [...el.childNodes].some(n =>
           n.nodeType === Node.TEXT_NODE && n.textContent.trim())).flatMap(el => {
         const cs = getComputedStyle(el); let bg = null;
@@ -189,11 +189,11 @@ def inspect_surface(page: Page, output_path, name: str, width: int, theme: str) 
       const controls = document.querySelectorAll(
         'a[href],button,input:not([type=hidden]),select,textarea,[role=combobox]');
       for (const el of controls) {
-        if (!el.checkVisibility() || el.matches(':disabled') ||
+        if (!el.checkVisibility({checkVisibilityCSS: true}) || el.matches(':disabled') ||
             el.getAttribute('aria-disabled') === 'true' ||
             el.classList.contains('select2-hidden-accessible')) continue;
         el.focus();
-        if (el !== document.activeElement) return {
+        if (el !== document.activeElement && !el.contains(document.activeElement)) return {
           tag:el.tagName, id:el.id, classes:el.className, tabIndex:el.tabIndex};
       }
       return null;
