@@ -1,6 +1,7 @@
 # Form and choice guidance inventory
 
-**Order:** 037-a (SAR-044), accuracy-closed in 037-b. This inventory maps every
+**Order:** 037-a (SAR-044), accuracy-closed in 037-b, administration
+guidance closed in 037-c. This inventory maps every
 ACTUAL runtime control (bound form fields, model-generated
 admin add/change/password/group fields, dynamically renamed fields, and raw
 template filters/actions) to rendered, accessible guidance. The earlier
@@ -12,13 +13,14 @@ control, the raw member/staff filter forms, and the one-time-token display.
 Coverage rules: every editable control has either (a) a meaningful label plus
 nearby rendered help with matching IDs and `aria-describedby` (checkbox groups
 use an accessible fieldset with legend), or (b) an explicit self-evident
-justification recorded below. Two inherited admin cases render visible,
-adjacent help WITHOUT an aria binding, and are documented as such: the
-per-user password-change choice (Django's admin template gives a RadioSelect
-help div no id because the widget has no single control id) and the
-select-filter lists (the admin JavaScript replaces the delivered select with
-`*_from`/`*_to` list controls that carry no persistent binding). No filler
-"Enter name" style text.
+justification recorded below. No control renders help without an accessible
+association: the per-user password-change RadioSelect keeps a bindable help
+id via a presentation-only widget subclass (both rendered choices carry the
+matching `aria-describedby`), and the admin select-filter lists — generated
+by the admin JavaScript after widget initialization — are bound to the
+rendered field help by the narrow local helper
+`web/admin-form-guidance.js` (both `*_from` and `*_to` list boxes carry
+`aria-describedby`). No filler "Enter name" style text.
 Wire values, validation, permissions, admission and crypto are unchanged.
 
 ## 1. Member surfaces (web)
@@ -99,10 +101,10 @@ Wire values, validation, permissions, admission and crypto are unchanged.
 | User change: password | same | yes (read-only) | inherited hash summary (algorithm + masked salt/hash) + broken relative "Reset password" link | REPLACED: safe status only ("Password set" / "No password set" / unrecognized format) + real permitted action = per-user password-change form (`.../password/`, permission-checked, audited); no hash fragment rendered |
 | User change: display name / timezone | same | yes | bare | help: shown to staff / IANA name for web booking |
 | User change: is_service_account | same | yes | bare | help: machine account, cannot sign in to member site or administration |
-| User change: is_active / is_staff / is_superuser | same | yes | bare | precise flag effects incl. entry follows the active staff flag (not individual permission selections) and superuser does not bypass the active-human/staff admission gate |
-| User change: groups / user_permissions | same | yes (filter_horizontal) | bare | help: per-model site permissions only — NOT project/membership authorization, do not change reservable-asset policy, and do not admit a session by themselves |
-| User password change form | `/admin/accounts/user/<id>/password/` | `SlaifAdminPasswordChangeForm` (subclass) | generic built-in `usable_password` help mentioned SSO/LDAP although no such backend is configured | `usable_password` (added dynamically only while the user has a usable password) carries product help: disabling loses the current password and blocks password sign-in; no alternate human login backend exists; the built-in warning is preserved verbatim; the help div is visible and adjacent but intentionally unbound (Django's admin template gives the RadioSelect help div no id — no single control id — so no `aria-describedby` is claimed); password1/password2 keep the built-in rule list/confirm help with their `aria-describedby`; validators/hashing/conditional field/actions/permissions unchanged |
-| Group permissions | `/admin/auth/group/...` | Django `GroupAdmin` | bare multiselect | help: Django site permissions only, not project/membership authorization |
+| User change: is_active / is_staff / is_superuser | same | yes | bare | precise flag effects incl. entry follows the active staff flag (not individual permission selections), superuser does not bypass the active-human/staff admission gate, and the matching model permissions are additionally required for per-model ADMINISTRATION operations only (management itself needs none of them) |
+| User change: groups / user_permissions | same | yes (filter_horizontal) | bare | help: site permissions govern per-model administration operations in the administration only and do NOT grant management access (which follows the active staff flag); NOT project/membership authorization, do not change reservable-asset policy, and do not admit a session by themselves; after the admin select-filter JS initializes, BOTH generated list boxes of each selector bind the rendered field help (`aria-describedby`) via `web/admin-form-guidance.js` |
+| User password change form | `/admin/accounts/user/<id>/password/` | `SlaifAdminPasswordChangeForm` (subclass) | generic built-in `usable_password` help mentioned SSO/LDAP although no such backend is configured | `usable_password` (added dynamically only while the user has a usable password) carries product help: disabling loses the current password and blocks password sign-in; no alternate human login backend exists; the built-in warning is preserved verbatim; a presentation-only `RadioSelect` subclass keeps a bindable help id (`id_usable_password_0_helptext`) and BOTH rendered choices carry the matching `aria-describedby`, the field label binds the first choice and the second choice is keyboard-focusable (verified in the browser after widget initialization); password1/password2 keep the built-in rule list/confirm help with their `aria-describedby`; validators/hashing/conditional field/actions/permissions unchanged |
+| Group permissions | `/admin/auth/group/...` | Django `GroupAdmin` | bare multiselect | help: site permissions granted through the group govern per-model administration operations in the administration only, NOT management access (which follows the active human staff status); not project/membership authorization; after the admin select-filter JS initializes, BOTH generated list boxes bind the rendered field help via `web/admin-form-guidance.js` |
 | AssetTag name / slug / description | `/admin/assets/assettag/...` | yes | bare | help incl. prepopulated slug behavior |
 | Asset parent / slug / name / kind | `/admin/assets/asset/...` | yes | bare | help: only a machine can be a child's parent and a machine itself never has a parent; slug = stable display/search label (must stay unique; current detail/API routes use UUIDs, so a slug change does not change those URLs); kind: only machines take children |
 | Asset booking mode | same | yes | bare | help: exclusive only — no overlapping bookings |
@@ -114,18 +116,26 @@ Wire values, validation, permissions, admission and crypto are unchanged.
 | Admin changelist search + filters | all changelists | built-in | Django defaults | self-evident built-in search/filter controls; unchanged |
 | "Important dates" (user) | user change | last_login/date_joined EDITABLE, created_at/updated_at read-only | bare (last_login/date_joined had empty help) | last_login: when the user last signed in (UTC), updated on sign-in, edit only to correct, booking logic never reads it; date_joined: account creation (UTC), editing changes only this value while created_at is the immutable product record; timestamps (user/asset) stay self-evident read-only |
 
-## 4. Legacy (unreachable) controls
+## 4. Legacy (unrouted) controls
 
-The `assets` app ships its own staff inventory views and templates
+The `assets` app ships its own staff inventory HTML views and templates
 (`assets/views.py`, `assets/urls.py`, `assets/templates/assets/asset_list.html`,
-`assets/templates/assets/asset_detail.html`) and its own staff REST endpoints
-(`assets/api.py`, `assets/api_urls.py`). None of them is included by the
-current `config.urls` — the routed member/staff surfaces are the `web`
-app (asset list/detail with the raw filters documented in section 1) and the
-bearer `api/v1` surface. These legacy controls are therefore classified as
-UNREACHABLE: no current field coverage is claimed for them, no help was
-added, and no routes were added. They remain in the tree as preserved
-history.
+`assets/templates/assets/asset_detail.html`). Only those HTML views are
+unrouted: none of the views in `assets/views.py` appears in the current URL
+conf (asserted by the rendered-guidance suite), so no current field coverage
+is claimed for them, no help was added, and no routes were added. They remain
+in the tree as preserved history.
+
+The `assets` app's staff REST endpoints (`assets/api.py`,
+`assets/api_urls.py`) ARE routed (superseding the 037-b report's erroneous
+blanket unreachable-REST claim): `config.urls` includes `api.urls`, which
+expands `*asset_api_urls.urlpatterns`, so `/api/v1/assets/` (asset list) and
+`/api/v1/assets/<uuid>/` (detail) are live staff-session endpoints —
+`SessionAuthentication` + `IsAdminUser`, with the bearer `assets:read`
+scope still reserved (no token authentication is offered there). The rendered
+guidance suite pins this via the real URL resolver plus live HTTP
+(anonymous and non-staff get 403, staff session gets the inventory JSON); it
+adds and removes no routes.
 
 ## 5. Out of scope (unchanged)
 
@@ -140,7 +150,15 @@ history.
 - `tests/test_form_guidance.py`: rendered GET + invalid-POST assertions for
   member/management/admin/raw-filter controls (help present, fragment
   accurate, and the control's OWN `aria-describedby` binds the help element —
-  not just any aria on the page — except the two documented unbound cases);
+  not just any aria on the page — including BOTH rendered password-choice
+  radios bound to `id_usable_password_0_helptext`, kept on the invalid-POST
+  re-render); the rendered permission wording is pinned against the real
+  authorization (a real staff without individual/group permissions can
+  access the management area, while administration model operations retain
+  model-permission enforcement and protected models stay protected); the
+  staff asset REST endpoints are pinned as live routed staff-session
+  endpoints (real resolver + HTTP) while the legacy `assets/views.py` HTML
+  views are pinned as the only unrouted assets-app surface;
   fresh-install default-policy presentation asserted through the REAL
   initializer (minimum 1 minute, not the 30-minute custom browser fixture);
   human_duration boundary test (remainder
@@ -155,9 +173,13 @@ history.
   audit filters, and ALL admin surfaces: login, user add/change, password
   change, group add, asset add/change, tag add); the nearby-help helper now
   requires a visible control, a visible help element, the control's own
-  `aria-describedby` binding (or, for the two documented unbound cases,
-  visible adjacent help inside the same real field container), and a real
-  shared field container; long admin
+  `aria-describedby` binding, and a real shared field container; after the
+  admin widgets initialize, the select-filter check asserts BOTH generated
+  list boxes (from/to) of every permission/group selector are visible and
+  bind the rendered field help, and the password-choice check asserts both
+  radio choices are visible and bind the rendered help (field label binds
+  the first choice, second choice keyboard-focusable), with the invalid
+  (mismatched) password POST keeping the rendered, bound help; long admin
   forms are captured full-page so below-fold guidance and actions are in the
   evidence; keyboard access, no horizontal overflow; privacy-safe
   screenshots (no tokens/passwords/verifiers/CSRF/cookies/HAR/traces).

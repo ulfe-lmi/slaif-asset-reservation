@@ -305,7 +305,9 @@ Administration: user add/change explains each flag's actual effect —
 entry to the management area and the administration follows the active
 staff flag with an active, non-service-account session (never arbitrary
 permission selections, and superuser status does not bypass that gate),
-while individual/group permissions control per-model operations; the
+while individual/group permissions govern per-model administration
+operations in the administration only — they do not grant management
+access, which follows the active human staff status; the
 initial password is set by the administrator because members have no
 self-service password change (the profile page edits display name and
 timezone only); the editable last_login/date_joined fields explain their

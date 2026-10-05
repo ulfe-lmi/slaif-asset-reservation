@@ -17,7 +17,7 @@ from html import unescape
 
 import pytest
 from django.test import Client
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.utils import timezone
 
 from slaif_reservation.accounts.models import ApiToken, User
@@ -995,12 +995,18 @@ def test_admin_user_change_safe_password_status_and_help(
         ("timezone", "IANA time zone name"),
         ("is_service_account", "Machine account for API automation"),
         ("is_active", "Inactive accounts cannot sign in anywhere"),
-        ("is_staff", "not granted by individual permission selections"),
+        ("is_staff", "per-model administration operations in this administration only"),
         ("is_superuser", "does not bypass the active-human/staff admission gate"),
         ("groups", "Groups are NOT project or membership authorization"),
-        ("user_permissions", "per-model administration and management access only"),
+        (
+            "user_permissions",
+            "govern per-model administration operations in this administration only",
+        ),
     ]:
         _assert_guided(html, f"id_{name}_helptext", fragment, control_id=f"id_{name}")
+    # The select-filter association helper ships on the pages whose
+    # JS-generated list boxes it binds (presentation only).
+    assert "web/admin-form-guidance.js" in html
     # Editable important dates: real help, bound to the first split
     # sub-input via the bound-help widget (Django's template only ids
     # help divs that have a single control id).
@@ -1076,17 +1082,24 @@ def test_admin_password_change_guidance(
     )
 
     # The dynamically added high-impact choice is explained with the
-    # product truth: no alternate human login backend exists here.
-    # Django's template gives the RadioSelect help div no id (no single
-    # control id), so assert presence and exact wording, not a binding.
+    # product truth: no alternate human login backend exists here. The
+    # help div keeps the first choice's id and BOTH rendered choices
+    # bind it via aria-describedby.
     assert "This deployment provides no other human login backend" in unescape(html)
     assert "a disabled user cannot sign in until an administrator sets" in unescape(html)
     assert "If disabled, the current password for this user will be lost." in html
     assert 'id="id_unusable_warning"' in html
     assert "they may still be able to authenticate using other backends" not in html
-    assert 'id="id_usable_password_0"' in html
+    _assert_guided(
+        html,
+        "id_usable_password_0_helptext",
+        "This deployment provides no other human login backend",
+        control_id="id_usable_password_0",
+    )
+    _control_binds_help(html, "id_usable_password_1", "id_usable_password_0_helptext")
 
-    # Unchanged negative: mismatched passwords are still rejected.
+    # Unchanged negative: mismatched passwords are still rejected, and the
+    # re-rendered page keeps the bound help.
     response = client.post(
         f"/admin/accounts/user/{member_user.pk}/password/",
         {"password1": "a-new-passw0rd", "password2": "different-passw0rd"},
@@ -1094,6 +1107,12 @@ def test_admin_password_change_guidance(
     assert response.status_code == 200
     member_user.refresh_from_db()
     assert member_user.has_usable_password()
+    rehtml = response.content.decode()
+    _assert_no_dangling_aria(rehtml)
+    assert 'id="id_usable_password_0_helptext"' in rehtml
+    _control_binds_help(rehtml, "id_usable_password_0", "id_usable_password_0_helptext")
+    _control_binds_help(rehtml, "id_usable_password_1", "id_usable_password_0_helptext")
+    assert "This deployment provides no other human login backend" in unescape(rehtml)
 
 
 @pytest.mark.django_db
@@ -1150,7 +1169,107 @@ def test_admin_group_permissions_help(client: Client, admin_user: User) -> None:
         "Site permissions granted through this group",
         control_id="id_permissions",
     )
+    assert "not management access, which follows the active human staff status" in unescape(html)
     assert "NOT project or membership authorization" in html
+    # The select-filter association helper ships on the group pages too.
+    assert "web/admin-form-guidance.js" in html
+
+
+@pytest.mark.django_db
+def test_admin_permission_help_matches_authorization(client: Client, admin_user: User) -> None:
+    """The rendered permission help states the real authorization rules.
+
+    Management access follows the active human staff status alone
+    (management_ui/auth.py); no model permission is consulted there.
+    Model permissions govern per-model administration operations in the
+    administration only, and protected models stay protected.
+    """
+    bare_staff = User.objects.create_user(
+        email="bare-staff@example.com",
+        password="not-a-secret",
+        display_name="Bare Staff",
+        is_staff=True,
+    )
+    # Real staff WITHOUT individual/group permissions can access management.
+    client.force_login(bare_staff)
+    assert client.get("/manage/").status_code == 200
+    assert client.get("/manage/reservations/").status_code == 200
+    # The same user cannot perform administration model operations:
+    # model permission enforcement is retained.
+    assert client.get("/admin/reservations/reservationpolicy/").status_code == 403
+    # Protected model: even a superuser has no add permission for tokens.
+    client.force_login(admin_user)
+    assert client.get("/admin/accounts/apitoken/add/").status_code == 403
+    # Rendered wording pins the same rules on the user change page.
+    html = client.get(f"/admin/accounts/user/{bare_staff.pk}/change/").content.decode()
+    for name, fragment in [
+        ("is_staff", "management itself needs none of them"),
+        ("user_permissions", "do not grant management access, which follows the active staff flag"),
+    ]:
+        _assert_guided(html, f"id_{name}_helptext", fragment, control_id=f"id_{name}")
+
+
+def _routed_callback_modules() -> set[str]:
+    """Modules of every view callback actually present in the URL conf."""
+    from django.urls import get_resolver
+
+    modules: set[str] = set()
+    stack = list(get_resolver().url_patterns)
+    while stack:
+        pattern = stack.pop()
+        handler = getattr(pattern, "_handler", None)
+        if handler is not None and hasattr(handler, "url_patterns"):
+            stack.extend(handler.url_patterns)
+        else:
+            module = getattr(handler, "__module__", None)
+            if module:
+                modules.add(module)
+    return modules
+
+
+@pytest.mark.django_db
+def test_staff_asset_api_routes_are_live(
+    client: Client,
+    staff_user: User,
+    member_user: User,
+    asset: Asset,
+) -> None:
+    """The staff REST endpoints of assets/api.py ARE routed (superseding
+    the 037-b blanket unreachable-REST claim). config.urls includes
+    api.urls, which expands assets.api_urls: /api/v1/assets/ and the
+    UUID detail are live staff-session endpoints. No routes are added or
+    removed here; the legacy assets/views.py HTML views are the only
+    unrouted assets-app surface.
+    """
+    from slaif_reservation.assets.api import AssetDetailAPIView, AssetListAPIView
+
+    # Real resolver correspondence.
+    assert reverse("api-v1:asset-list") == "/api/v1/assets/"
+    assert reverse("api-v1:asset-detail", args=[asset.id]) == f"/api/v1/assets/{asset.id}/"
+    assert resolve("/api/v1/assets/").func.cls is AssetListAPIView
+    assert resolve(f"/api/v1/assets/{asset.id}/").func.cls is AssetDetailAPIView
+
+    # The legacy HTML inventory views of assets/views.py are NOT routed.
+    modules = _routed_callback_modules()
+    assert "slaif_reservation.assets.views" not in modules
+
+    # The live endpoints stay staff-session-only (the bearer assets:read
+    # scope remains reserved: no token authentication is offered there).
+    assert client.get("/api/v1/assets/").status_code == 403
+    client.force_login(member_user)
+    assert client.get("/api/v1/assets/").status_code == 403
+    client.force_login(staff_user)
+    response = client.get("/api/v1/assets/")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 2  # machine + child asset fixtures
+    assert {item["slug"] for item in payload["results"]} == {
+        "guidance-machine",
+        "guidance-gpu",
+    }
+    detail = client.get(f"/api/v1/assets/{asset.id}/")
+    assert detail.status_code == 200
+    assert detail.json()["slug"] == "guidance-gpu"
 
 
 @pytest.mark.django_db

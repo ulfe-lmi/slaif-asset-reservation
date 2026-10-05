@@ -39,8 +39,9 @@ _USER_FIELD_HELP: dict[str, Any] = {
         "Grants access to the management area and this administration. "
         "Entry follows this flag with an active, non-service-account "
         "session; it is not granted by individual permission selections. "
-        "Per-model operations additionally require the matching model "
-        "permissions."
+        "The matching model permissions are additionally required for "
+        "per-model administration operations in this administration "
+        "only; management itself needs none of them."
     ),
     "is_superuser": _(
         "Full administrative rights, including managing users. Superuser "
@@ -54,10 +55,11 @@ _USER_FIELD_HELP: dict[str, Any] = {
         "session by themselves; entry requires the active staff flag."
     ),
     "user_permissions": _(
-        "Individual site permissions. They control per-model administration "
-        "and management access only, not reservable-asset policy, and they "
-        "do not admit a session by themselves; entry requires the active "
-        "staff flag."
+        "Individual site permissions. They govern per-model "
+        "administration operations in this administration only and do "
+        "not grant management access, which follows the active staff "
+        "flag. They do not affect reservable-asset policy and do not "
+        "admit a session by themselves."
     ),
     "last_login": _(
         "When the user last signed in successfully (stored in UTC). Updated "
@@ -134,6 +136,24 @@ class _BoundHelpSplitDateTime(AdminSplitDateTime):
         return super().id_for_label(id_)
 
 
+class _BoundHelpRadioSelect(forms.RadioSelect):
+    """RadioSelect whose help div keeps a bindable id.
+
+    Django's RadioSelect reports no single control id (its choices are
+    ``id_<name>_0``/``_1``), so Django's admin templates give the help
+    div no id and the rendered choices no ``aria-describedby``.
+    Reporting the first choice's id makes the help div
+    ``id_<name>_0_helptext``; the matching ``aria-describedby`` is set
+    on the widget's attrs so BOTH rendered choices bind it. Choice ids,
+    choice labels, values, keyboard and submit behavior are unchanged.
+    """
+
+    def id_for_label(self, id_: Any, index: Any = None) -> str:
+        if index is None and id_:
+            return f"{id_}_0"
+        return super().id_for_label(id_, index)
+
+
 def _wire_user_field_help(form: Any, names: tuple[str, ...]) -> None:
     for name in names:
         field = form.base_fields.get(name)
@@ -148,13 +168,13 @@ def _wire_user_field_help(form: Any, names: tuple[str, ...]) -> None:
 class SlaifAdminPasswordChangeForm(AdminPasswordChangeForm):  # type: ignore[type-arg]
     """Per-user password change with product-accurate guidance.
 
-    Only the ``usable_password`` help text changes. The built-in
-    warning, validators, hashing, the conditional field (present only
-    while the user has a usable password), the submit actions and all
-    admin permissions are inherited unchanged. No accessibility wiring
-    is added here: Django's template gives the RadioSelect help div no
-    id (no single control id), so that help is visible and adjacent
-    but intentionally unbound.
+    Only the ``usable_password`` help text and its accessible binding
+    change. The built-in warning, validators, hashing, the conditional
+    field (present only while the user has a usable password), the
+    submit actions and all admin permissions are inherited unchanged.
+    The choice's help div keeps a bindable id (see
+    ``_BoundHelpRadioSelect``) and both rendered choices carry the
+    matching ``aria-describedby``.
     """
 
     # The built-in Django warning is preserved verbatim at the end of the
@@ -172,10 +192,30 @@ class SlaifAdminPasswordChangeForm(AdminPasswordChangeForm):  # type: ignore[typ
         "</li></ul>"
     )
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        field = self.fields.get("usable_password")
+        if field is None:
+            return
+        old_widget = field.widget
+        widget = _BoundHelpRadioSelect(attrs=dict(getattr(old_widget, "attrs", {}) or {}))
+        widget.choices = list(getattr(old_widget, "choices", []) or [])
+        # Bind BOTH rendered choices to the help div that the template
+        # now renders with the first choice's id.
+        widget.attrs["aria-describedby"] = "id_usable_password_0_helptext"
+        field.widget = widget
+
 
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
     ordering = ["email"]
+
+    @property
+    def media(self) -> forms.Media:
+        # Narrow local association helper for the JS-generated
+        # select-filter list boxes (presentation only).
+        return super().media + forms.Media(js=["web/admin-form-guidance.js"])
+
     list_display = ["email", "display_name", "is_staff", "is_service_account", "is_active"]
     search_fields = ["email", "display_name"]
     fieldsets = (
@@ -284,12 +324,21 @@ if AuthGroup in admin.site._registry:
 
 @admin.register(AuthGroup)
 class GroupAdmin(DjangoGroupAdmin):
+    @property
+    def media(self) -> forms.Media:
+        # Narrow local association helper for the JS-generated
+        # select-filter list boxes (presentation only).
+        return super().media + forms.Media(js=["web/admin-form-guidance.js"])
+
     def formfield_for_manytomany(self, db_field: Any, request: HttpRequest, **kwargs: Any) -> Any:
         if db_field.name == "permissions":
             kwargs["help_text"] = _(
-                "Site permissions granted through this group (administration "
-                "and management access). These are NOT project or membership "
-                "authorization and do not change who can reserve assets."
+                "Site permissions granted through this group. They govern "
+                "per-model administration operations in the "
+                "administration only, not management access, which "
+                "follows the active human staff status. These are NOT "
+                "project or membership authorization and do not change "
+                "who can reserve assets."
             )
         form_field = super().formfield_for_manytomany(db_field, request=request, **kwargs)
         if db_field.name == "permissions" and form_field is not None:

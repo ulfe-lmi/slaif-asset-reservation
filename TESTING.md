@@ -231,21 +231,28 @@ uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
 
 Same owned-disposable rules as above: never run product tests from the
 valuable checkout; unique owned test database per run. The server suite
-asserts rendered help bound to each control's own `aria-describedby` (with
-two documented unbound cases, asserted as visible adjacent help: the
-password-choice RadioSelect and the select-filter lists), human scope
-labels, humanized policy units (including non-round minutes and the
+asserts rendered help bound to each control's own `aria-describedby`
+(including both rendered password-choice radios bound to the first choice's
+help id, kept on the invalid-POST re-render), human scope labels,
+humanized policy units (including non-round minutes and the
 fresh-install default policy rendered through the real initializer, minimum
 1 minute), daylight-saving occurrence semantics (ambiguous
 Automatic rejected, explicit occurrences, nonexistent spring-forward
-times), and admin password-change enable/disable behavior on GET and
-invalid-POST pages; the browser suite checks visible, nearby help at
-1440 and 390 — bound where the control carries `aria-describedby`, adjacent
-in the same field container for the two documented unbound cases —
-including every admin surface (login, user add/change,
+times), admin password-change enable/disable behavior on GET and
+invalid-POST pages, the rendered permission wording pinned against the real
+authorization (staff without model permissions reach the management area;
+administration model operations keep model-permission enforcement and
+protected models), and the live routing of the staff asset REST endpoints
+versus the unrouted legacy `assets/views.py` HTML views; the browser suite
+checks visible, nearby help at 1440 and 390 — bound where the control
+carries `aria-describedby`, and after the admin widgets initialize for the
+JS-generated select-filter list boxes (both from/to boxes of every
+permission/group selector) and both rendered password-choice radios, with
+the invalid password POST keeping the rendered, bound help — including every
+admin surface (login, user add/change,
 password change, group add, asset add/change, tag add) — with full-page
 captures for long admin forms, keyboard access and overflow checks, and
 privacy-safe screenshots (never the one-time token page, no
 credential/verifier/token/CSRF/cookie/HAR/trace material). The full control
-inventory and coverage map, including the unreachable legacy controls
+inventory and coverage map, including the legacy unrouted-controls
 classification, live in `docs/ux/form-guidance-inventory.md`.

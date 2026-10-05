@@ -144,31 +144,71 @@ def _assert_help_near_control(page: Page, control_selector: str, help_id: str) -
     assert bound_and_near, f"help #{help_id} is not bound to and near {control_selector}"
 
 
-def _assert_help_near_control_unbound(
-    page: Page, control_selector: str, help_selector: str
-) -> None:
-    """Nearby-help check for fields whose help div Django's admin
-    template does not id (RadioSelect / MultiWidget: no single control
-    id, hence no id on the help div and no aria binding to assert).
+def _assert_select_filter_bound(page: Page, base_id: str, help_id: str) -> None:
+    """Substantive association for admin select-filter controls.
 
-    The control exists and is visible; the help element exists, is
-    visible and lives in the same real field container (nearby, not
-    floating at the bottom of the page).
+    After the admin SelectFilter2 JavaScript replaces the delivered
+    select, BOTH generated list boxes (id_<name>_from / id_<name>_to)
+    must exist, be visible, and each carry an aria-describedby binding
+    to the field's rendered, visible help element inside the same real
+    field container.
     """
-    control = page.locator(control_selector)
-    assert control.count() == 1, f"ambiguous or missing control {control_selector}"
-    assert control.first.is_visible(), f"control {control_selector} is not visible"
-    help_el = page.locator(help_selector)
-    assert help_el.count() == 1, f"missing help {help_selector}"
-    assert help_el.first.is_visible(), f"help {help_selector} is not visible"
+    for suffix in ("_from", "_to"):
+        page.wait_for_function(
+            r"""([sel, help]) => {
+                const el = document.querySelector(sel);
+                const h = document.getElementById(help);
+                return !!(el && h && (el.getAttribute("aria-describedby") || "")
+                    .split(/\s+/).includes(h.id));
+            }""",
+            arg=[f"#{base_id}{suffix}", help_id],
+            timeout=10000,
+        )
+    for suffix in ("_from", "_to"):
+        control = page.locator(f"#{base_id}{suffix}")
+        assert control.count() == 1, f"missing control #{base_id}{suffix}"
+        assert control.first.is_visible(), f"control #{base_id}{suffix} is not visible"
+        assert help_id in (control.first.get_attribute("aria-describedby") or "").split(), (
+            f"control #{base_id}{suffix} does not bind help #{help_id}"
+        )
+    help_el = page.locator(f"#{help_id}")
+    assert help_el.count() == 1, f"missing help #{help_id}"
+    assert help_el.first.is_visible(), f"help #{help_id} is not visible"
     near = page.evaluate(
         r"""([c, h]) => {
-            const box = c.closest(".field, .filter, .form-row, fieldset");
-            return box !== null && box.contains(h);
+            const box = document.querySelector(c).closest(".field, .filter, .form-row, fieldset");
+            return box !== null && box.contains(document.getElementById(h));
         }""",
-        [control.first.element_handle(), help_el.first.element_handle()],
+        [f"#{base_id}_from", help_id],
     )
-    assert near, f"help {help_selector} is not near {control_selector}"
+    assert near, f"help #{help_id} is not near #{base_id}_from"
+
+
+def _assert_radio_help_bound(page: Page, first_id: str, help_id: str) -> None:
+    """Both rendered radio choices bind the field's rendered help element.
+
+    The help element exists and is visible; both choices exist, are
+    visible and carry the matching aria-describedby; the field label
+    binds the first choice; and the second choice is keyboard-focusable.
+    """
+    help_el = page.locator(f"#{help_id}")
+    assert help_el.count() == 1, f"missing help #{help_id}"
+    assert help_el.first.is_visible(), f"help #{help_id} is not visible"
+    second_id = first_id[:-1] + "1"
+    for control_id in (first_id, second_id):
+        control = page.locator(f"#{control_id}")
+        assert control.count() == 1, f"missing control #{control_id}"
+        assert control.first.is_visible(), f"control #{control_id} is not visible"
+        assert help_id in (control.first.get_attribute("aria-describedby") or "").split(), (
+            f"control #{control_id} does not bind help #{help_id}"
+        )
+    assert page.evaluate(
+        """(id) => Array.from(document.querySelectorAll("label[for]"))
+            .some((l) => l.getAttribute("for") === id && !l.querySelector("input"))""",
+        first_id,
+    ), "no field label binds the first radio choice"
+    page.focus(f"#{second_id}")
+    assert page.evaluate("(id) => document.activeElement.id === id", second_id)
 
 
 def _keyboard_walk(page: Page, start_selector: str, hops: int) -> list[str]:
@@ -489,15 +529,23 @@ def test_browser_admin_user_forms_guidance(
     _assert_help_near_control(page, "#id_is_service_account", "id_is_service_account_helptext")
     _assert_help_near_control(page, "#id_is_staff", "id_is_staff_helptext")
     _assert_help_near_control(page, "#id_is_superuser", "id_is_superuser_helptext")
-    # The selectfilter JS replaces the delivered select with the
-    # id_<name>_from/_to list controls (no persistent aria binding),
-    # so check the visible nearby help on the chosen list.
-    _assert_help_near_control_unbound(page, "#id_groups_to", "#id_groups_helptext")
+    # After the selectfilter JS initializes, BOTH generated list boxes of
+    # each permission/group selector bind the rendered field help.
+    _assert_select_filter_bound(page, "id_groups", "id_groups_helptext")
+    _assert_select_filter_bound(page, "id_user_permissions", "id_user_permissions_helptext")
     _assert_help_near_control(page, "#id_last_login_0", "id_last_login_0_helptext")
     _assert_help_near_control(page, "#id_date_joined_0", "id_date_joined_0_helptext")
     assert (
         "does not bypass the active-human/staff admission gate"
         in page.locator("#id_is_superuser_helptext").inner_text()
+    )
+    assert (
+        "per-model administration operations in this administration only"
+        in page.locator("#id_is_staff_helptext").inner_text()
+    )
+    assert (
+        "do not grant management access, which follows the active staff flag"
+        in page.locator("#id_user_permissions_helptext").inner_text()
     )
     assert (
         "Booking and availability logic never reads it"
@@ -521,30 +569,34 @@ def test_browser_admin_user_forms_guidance(
         in page.locator("#id_password1_helptext").inner_text()
     )
     _assert_help_near_control(page, "#id_password2", "id_password2_helptext")
-    # The RadioSelect help div gets no id from Django's template (no
-    # single control id), so check visible nearby help without binding.
-    _assert_help_near_control_unbound(
-        page,
-        "#id_usable_password_0",
-        'div.help:has-text("This deployment provides no other human login backend")',
-    )
+    # The rendered RadioSelect keeps a bindable help id and BOTH choices
+    # carry the aria-describedby association; the field label binds the
+    # first choice and the second choice is keyboard-reachable.
+    _assert_radio_help_bound(page, "id_usable_password_0", "id_usable_password_0_helptext")
     assert (
         "a disabled user cannot sign in until an administrator sets"
-        in page.locator(
-            'div.help:has-text("This deployment provides no other human login backend")'
-        ).first.inner_text()
+        in page.locator("#id_usable_password_0_helptext").inner_text()
     )
     assert "If disabled, the current password for this user will be lost." in page.content()
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-password-change-1440")
     page.set_viewport_size(MOBILE)
-    _assert_help_near_control_unbound(
-        page,
-        "#id_usable_password_0",
-        'div.help:has-text("This deployment provides no other human login backend")',
-    )
+    _assert_radio_help_bound(page, "id_usable_password_0", "id_usable_password_0_helptext")
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-password-change-390")
+
+    # Invalid (mismatched) POST keeps the rendered, bound help.
+    page.set_viewport_size(DESKTOP)
+    page.goto(f"{live_server.url}/admin/accounts/user/{member_user.pk}/password/")
+    page.locator("#id_password1").fill("mismatched-passw0rd")
+    page.locator("#id_password2").fill("different-passw0rd")
+    page.get_by_role("button", name="Change password").click()
+    assert page.locator(".errornote").count() >= 1
+    _assert_radio_help_bound(page, "id_usable_password_0", "id_usable_password_0_helptext")
+    assert (
+        "a disabled user cannot sign in until an administrator sets"
+        in page.locator("#id_usable_password_0_helptext").inner_text()
+    )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -561,13 +613,17 @@ def test_browser_admin_group_and_asset_forms_guidance(
     # Group add: permissions guidance at 1440 (full page) and 390.
     page.goto(f"{live_server.url}/admin/auth/group/add/")
     page.set_viewport_size(DESKTOP)
-    _assert_help_near_control_unbound(page, "#id_permissions_to", "#id_permissions_helptext")
+    _assert_select_filter_bound(page, "id_permissions", "id_permissions_helptext")
     assert "Site permissions granted through this group" in page.content()
+    assert (
+        "not management access, which follows the active human staff status"
+        in page.locator("#id_permissions_helptext").inner_text()
+    )
     assert "NOT project or membership authorization" in page.content()
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-group-add-1440", full_page=True)
     page.set_viewport_size(MOBILE)
-    _assert_help_near_control_unbound(page, "#id_permissions_to", "#id_permissions_helptext")
+    _assert_select_filter_bound(page, "id_permissions", "id_permissions_helptext")
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-group-add-390", full_page=True)
 
