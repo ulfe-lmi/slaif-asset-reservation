@@ -131,4 +131,4 @@ successful isolated restore drill is not release evidence.
 - No production DNS, TLS, certificates, or secret-store integration.
 - No real SmartScheduling import or cutover.
 - No monitoring stack, backup scheduler, OIDC, email, notifications, execution gateway, API
-  throttling implementation, projects, memberships, or resource restrictions.
+  production capacity qualification, projects, memberships, or per-token asset restrictions.

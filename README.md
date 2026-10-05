@@ -39,8 +39,8 @@ reservation accepted by the system is:
 - **[QUICKSTART.md](QUICKSTART.md)** — the essential Docker path to a
   running local evaluation instance in roughly 5–10 minutes (loopback-only,
   development settings).
-- **[INSTALL.md](INSTALL.md)** — the full operator guide for a controlled
-  internal-alpha deployment: prerequisites, protected secrets, reverse
+- **[INSTALL.md](INSTALL.md)** — the full operator guide for an authenticated
+  HTTPS pilot deployment: prerequisites, protected secrets, reverse
   proxy, readiness gates, backup and restore, upgrades and rollback.
 
 ## How it works
@@ -58,13 +58,19 @@ flowchart TD
     app --> db
 ```
 
-One monolith owns the scheduling records and the authoritative domain
+One application owns the scheduling records and the authoritative domain
 operations. Humans reserve through the server-rendered web UI; agents use a
 versioned REST API with scoped, expiring tokens and idempotent mutations;
 staff configure policies, maintenance blackouts and cross-user lifecycle
 through a separate management area. Reservations are **entitlements**: the
 system deliberately does not run jobs, allocate hardware, or enforce usage —
 that is the boundary of a future, separate execution gateway.
+
+A fresh installation initializes the global `default` policy: reservations may
+start within the next **7 days** and last **1 minute to 48 hours**, with no extra
+lead time, advance cancellation cutoff, operating-hour window or required purpose.
+Staff can inspect and adjust policies in management. Existing policy
+configurations are preserved on upgrades.
 
 ## What you can do
 
@@ -82,8 +88,13 @@ that is the boundary of a future, separate execution gateway.
   and verified architecture): loopback-only development Compose, and a
   production-shaped example (non-root `10001:10001`, read-only root
   filesystem) behind an HTTPS reverse proxy.
-- Server-rendered UI with local static assets; generated OpenAPI schema with
-  locally served Swagger UI.
+- Internet-reachable authenticated service through an operator-owned HTTPS
+  reverse proxy. Gunicorn stays private/loopback; PostgreSQL stays on the private
+  Compose network. Explicit proxy trust, secure cookies, host/origin validation
+  and shared PostgreSQL login/API abuse budgets form the supported boundary.
+- SLAIF browser design with local fonts and images; optional read-only
+  [logo, favicon, image and CSS overrides](docs/branding.md) require no image rebuild.
+  Generated OpenAPI schema uses locally served Swagger UI.
 
 ## Documentation
 
@@ -97,6 +108,8 @@ that is the boundary of a future, separate execution gateway.
 | Domain model and time semantics | [docs/domain-model.md](docs/domain-model.md) |
 | Deployment reference | [docs/deployment.md](docs/deployment.md) |
 | Security model | [docs/security-model.md](docs/security-model.md) |
+| Appearance customization | [docs/branding.md](docs/branding.md) |
+| Visual design and typography | [docs/ux/visual-design.md](docs/ux/visual-design.md) |
 | Testing and verification | [TESTING.md](TESTING.md) |
 | OpenAPI schema and Swagger UI | `/api/schema/` and `/api/docs/`, enabled by `SLAIF_ENABLE_API_DOCS` (disabled by default in production; staff-only there when enabled) — [docs/deployment.md](docs/deployment.md#4-configuration) |
 | Operator runbooks and readiness gates | [docs/runbooks/](docs/runbooks/) |
@@ -105,19 +118,20 @@ that is the boundary of a future, separate execution gateway.
 
 ## Important limitations
 
-- **Trusted internal pilot only.** No unrestricted public-Internet exposure;
-  no project/group authorization — every active authenticated human account
-  can browse active assets and request any active, reservable, exclusive
-  asset with an effective policy.
-- No login throttling or API rate limiting.
-- No OIDC, password reset, email, or notification system; accounts are
-  administrator-created, and service accounts cannot log in to the human UI.
-- Reservations are entitlements, not enforcement: no workload execution,
-  physical allocation, or monitoring of actual usage.
-- Shared privileged PostgreSQL role; scheduled and off-host backup are
-  operator-owned responsibilities.
-- The execution gateway, scheduler, monitoring stack, and real
-  SmartScheduling migration/cutover are outside the current core.
+- **Controlled authenticated pilot.** Internet reachability relies on the full
+  [HTTPS/proxy installation contract](INSTALL.md). Application abuse budgets
+  complement perimeter protection; they do not stop distributed or volumetric
+  attacks, and this is not a claim of unrestricted production maturity.
+- **Broad member access:** project/group resource authorization is not implemented.
+  Every active human account can browse active assets and request any reservable
+  exclusive asset with an effective policy. Create accounts accordingly.
+- No OIDC, self-registration, password reset, email or notifications. Accounts are
+  administrator-created; service accounts cannot use the human login UI.
+- Reservations grant entitlements; the service does not execute workloads,
+  allocate hardware, enforce actual usage or integrate a scheduler/gateway.
+- Runtime and migrations share a privileged PostgreSQL role. Scheduled/off-host
+  backups, restore drills, monitoring and incident response need operator ownership.
+  Real private SmartScheduling cutover remains a separate supervised operation.
 
 ## Developers
 
@@ -128,6 +142,7 @@ docker compose up -d db
 uv sync --locked --all-groups
 cp .env.example .env
 uv run --env-file .env python manage.py migrate
+uv run --env-file .env python manage.py initialize_default_policy
 uv run --env-file .env python manage.py runserver
 ```
 

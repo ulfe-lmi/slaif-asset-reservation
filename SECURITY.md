@@ -2,7 +2,12 @@
 
 ## Project status
 
-The project is in internal-alpha stage and is not approved for production use.
+The supported target is a controlled authenticated HTTPS pilot. Internet access
+requires the documented proxy/TLS, secrets, host/origin, shared abuse-control and
+operator contracts. This is not a claim of unrestricted production maturity.
+Project/group resource authorization and database-role separation are deferred;
+backup scheduling/off-host storage, monitoring and incident response need operator
+ownership. See [Installation](INSTALL.md) and [Security model](docs/security-model.md).
 
 ## Reporting a vulnerability
 
