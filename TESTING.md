@@ -197,3 +197,23 @@ allowances, forwarded-header spoof resistance, shared member/admin identity
 limits, valid logins, multiple-token account budgets and safe DB failure.
 Fixtures use owned ports, short-lived per-client certificates and explicit
 synthetic environments; no production data or global trust-store changes.
+
+## Public entry, administration admission, browser identity (task guidance)
+
+Focused task suites for the public entry, administration admission and
+browser identity work:
+
+```bash
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  tests/test_product_entry.py tests/test_assets_admin.py \
+  tests/test_abuse_controls.py tests/test_abuse_http.py tests/test_web_human_mvp.py
+uv run --env-file .env pytest --ds=slaif_reservation.config.settings.test \
+  --browser chromium tests/browser/test_product_entry_browser.py
+```
+
+Run these only from an owned disposable source copy against an explicit
+owned PostgreSQL17 project (unique owned test database per run, product-test
+child envs with `OAP_ROLE` cleared and explicit `PYTHONPATH`/settings/DB
+URLs); never from the valuable working checkout. The browser suite captures
+privacy-safe 1440/390 screenshots for visual review; round chronology and
+results belong in the immutable OAP reports, not here.

@@ -1,0 +1,15 @@
+{% extends "admin/app_index.html" %}
+{% load i18n %}
+
+{# Product breadcrumb identity; all other structure is inherited. #}
+{% block nav-breadcrumbs %}
+  <nav aria-label="{% translate 'Breadcrumbs' %}">
+    <div class="breadcrumbs">
+      <a href="{% url 'admin:index' %}">{% translate 'Administration' %}</a>
+      &rsaquo;
+      {% for app in app_list %}
+        {{ app.name }}
+      {% endfor %}
+    </div>
+  </nav>
+{% endblock %}

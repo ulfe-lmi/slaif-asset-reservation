@@ -130,6 +130,19 @@ class HumanLogoutView(LogoutView):
     http_method_names = ["post", "options"]
 
 
+def root(request: HttpRequest) -> HttpResponse:
+    """Public entry point.
+
+    Anonymous visitors receive the public landing; anyone with an
+    authenticated (or session-bearing) request is dispatched to the
+    dashboard, which enforces the active-human boundary and terminates
+    disallowed sessions exactly as before.
+    """
+    if request.user.is_authenticated or SESSION_KEY in request.session:
+        return dashboard(request)
+    return render(request, "web/landing.html")
+
+
 @active_human_required
 def dashboard(request: HttpRequest) -> HttpResponse:
     timezone_name = _member_timezone_or_profile(request)

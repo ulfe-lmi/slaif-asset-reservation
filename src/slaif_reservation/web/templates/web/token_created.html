@@ -16,7 +16,7 @@
     {% endtimezone %}
     <dt>{% trans "Bearer token" %}</dt><dd><code id="one-time-bearer-token">{{ bearer_token }}</code></dd>
   </dl>
-  <p>{% trans "Bearer-token API operations are not enabled until Work Order 0006." %}</p>
+  <p>{% trans "The token authenticates the scoped API under /api/v1/. It is shown only once." %}</p>
   <p><a href="{% url 'web:token-list' %}">{% trans "Back to API tokens" %}</a></p>
 {% endblock %}
 

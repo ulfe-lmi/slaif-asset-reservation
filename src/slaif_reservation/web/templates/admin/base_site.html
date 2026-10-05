@@ -1,0 +1,33 @@
+{% extends "admin/base.html" %}
+{% load static i18n %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title }}{% endblock %}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "web/admin-identity.css" %}">{% endblock %}
+
+{% block extrahead %}<link rel="icon" type="image/svg+xml" href="{% static 'web/brand/slaif-logo.svg' %}">{% endblock %}
+
+{% block branding %}
+  <div id="site-name">
+    <a href="{% url 'admin:index' %}" class="admin-brand">
+      <img class="admin-brand-logo" src="{% static 'web/brand/slaif-logo.svg' %}" alt="" width="34" height="27">
+      <span>{{ site_header }}</span>
+    </a>
+  </div>
+  {% if user.is_anonymous %}
+    {% include "admin/color_theme_toggle.html" %}
+  {% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans "Administration" %}</a>
+    {% if title %} &rsaquo; {{ title }}{% endif %}
+  </div>
+{% endblock %}
+
+{% block footer %}
+  <span class="footer-identity">SLAIF Asset Reservation</span>
+{% endblock %}

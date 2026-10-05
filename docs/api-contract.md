@@ -120,7 +120,9 @@ lookup details, or secret material.
 
 ### `GET /api/v1/`
 
-Anonymous root describing implemented endpoint families.
+Anonymous root describing implemented endpoint families. In a browser this
+endpoint is served by the product-branded Browsable API titled "SLAIF Asset
+Reservation API"; the JSON contract is unchanged.
 
 ### `GET /api/v1/me/`
 

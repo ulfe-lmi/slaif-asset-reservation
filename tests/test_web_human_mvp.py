@@ -416,8 +416,11 @@ def test_member_routes_require_active_human_account(
         "/reservations/",
     ]
 
-    for path in member_paths:
+    for path in member_paths[1:]:
         assert client.get(path).status_code == 302
+    # The root is the public landing for anonymous visitors; member
+    # accounts are still dispatched to the dashboard.
+    assert client.get("/").status_code == 200
 
     client.force_login(member_user)
     for path in member_paths:

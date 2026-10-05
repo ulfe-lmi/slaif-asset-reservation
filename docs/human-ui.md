@@ -15,6 +15,17 @@ The UI and agent API share domain operations and policy. The browser is not a pr
 
 ## 2. Information architecture
 
+### Public entry
+
+Signed-out visitors see a public landing page at `/` with the SLAIF Asset
+Reservation identity, the shared-lab reservation purpose, and two actions:
+**Log in** (`/login/`) and **Administration** (`/admin/login/`). The page
+carries no private data: no asset, user, reservation, token, audit details,
+or counts. The administration area is product-branded ("SLAIF Asset
+Reservation administration") and rejects inactive and service-account
+identities at its login exactly as member login does; no browser surface
+shows framework branding.
+
 ### Member navigation
 
 - Dashboard

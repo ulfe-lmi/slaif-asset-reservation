@@ -127,6 +127,26 @@ def test_swagger_ui_uses_local_sidecar_static_assets(settings) -> None:
 
 
 @pytest.mark.django_db
+def test_browsable_api_html_is_product_branded_and_json_preserved(client) -> None:
+    from django.conf import settings
+
+    renderers = settings.REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"]
+    assert renderers[0] == "rest_framework.renderers.JSONRenderer"
+    assert renderers[-1] == "slaif_reservation.api.renderers.SlaifBrowsableAPIRenderer"
+
+    response = client.get("/api/v1/", HTTP_ACCEPT="text/html")
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "SLAIF Asset Reservation API" in html
+    assert "Django REST framework" not in html
+    assert "django-rest-framework.org" not in html
+
+    json_response = client.get("/api/v1/")
+    assert json_response.status_code == 200
+    assert json_response.json()["name"] == "SLAIF Asset Reservation API"
+
+
+@pytest.mark.django_db
 def test_token_lifecycle_routes_are_not_exposed_as_api(client) -> None:
     root_response = client.get("/api/v1/")
     assert root_response.status_code == 200
