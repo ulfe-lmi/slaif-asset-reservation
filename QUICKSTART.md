@@ -108,7 +108,10 @@ The command is interactive: it prompts for `Email`, then `Password`
 
 ## 6. Log in and verify the endpoints
 
-1. Log in at <http://127.0.0.1:8000/login/> with the administrator from step 5.
+1. Opening <http://127.0.0.1:8000/> while signed out shows the public
+   landing page with **Log in** (<http://127.0.0.1:8000/login/>) and
+   **Administration** (<http://127.0.0.1:8000/admin/login/>). Log in at
+   <http://127.0.0.1:8000/login/> with the administrator from step 5.
 2. Check the health endpoints (no login required); both must return HTTP 200:
 
    ```bash

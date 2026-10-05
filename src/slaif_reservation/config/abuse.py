@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from django.conf import settings
 from django.db import DatabaseError, connection, transaction
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.shortcuts import render
 
 
 class BudgetExceeded(Exception):
@@ -126,16 +127,22 @@ class AbuseControlMiddleware:
                 )
                 response["X-Request-ID"] = problem["X-Request-ID"]
             else:
-                detail = (
-                    "Too many sign-in attempts. Please wait and retry."
-                    if limited
-                    else "Sign-in is temporarily unavailable. Please retry later."
-                )
-                response = HttpResponse(
-                    '<!doctype html><html lang="en"><title>SLAIF Asset Reservation</title>'
-                    "<main><h1>SLAIF Asset Reservation</h1><p>"
-                    + detail
-                    + '</p><a href="/login/">Login</a></main></html>',
+                # Shared branded error page (see config/views.py); the template
+                # avoids user/message/session access, so it also renders when
+                # the security database is unavailable. Status and headers
+                # keep the existing abuse-control behavior.
+                response = render(
+                    request,
+                    "web/error.html",
+                    {
+                        "status_code": status,
+                        "error_title": "Too many requests" if limited else "Service unavailable",
+                        "error_message": (
+                            "Too many sign-in attempts. Please wait and retry."
+                            if limited
+                            else "Sign-in is temporarily unavailable. Please retry later."
+                        ),
+                    },
                     status=status,
                 )
             response["Cache-Control"] = "no-store"

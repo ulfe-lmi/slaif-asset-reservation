@@ -16,7 +16,7 @@ ALLOWED_HOSTS: list[str] = []
 CSRF_TRUSTED_ORIGINS: list[str] = []
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    "slaif_reservation.config.apps.AdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -55,7 +55,10 @@ ASGI_APPLICATION = "slaif_reservation.config.asgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],
+        "DIRS": [
+            BASE_DIR / "templates",
+            BASE_DIR / "src" / "slaif_reservation" / "web" / "templates",
+        ],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -73,6 +76,7 @@ DATABASES = {
 
 AUTH_USER_MODEL = "accounts.User"
 LOGIN_URL = "/login/"
+CSRF_FAILURE_VIEW = "slaif_reservation.config.views.csrf_failure"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
 AUTH_PASSWORD_VALIDATORS = [
@@ -107,6 +111,10 @@ API_TOKEN_PEPPER = DEVELOPMENT_API_TOKEN_PEPPER
 API_TOKEN_MAX_LIFETIME_DAYS = 90
 
 REST_FRAMEWORK = {
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+        "slaif_reservation.api.renderers.SlaifBrowsableAPIRenderer",
+    ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",

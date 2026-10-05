@@ -1,0 +1,44 @@
+{% extends "web/base.html" %}
+{% load static i18n %}
+
+{% block title %}{% trans "SLAIF Asset Reservation" %}{% endblock %}
+
+{% block content %}
+  <section class="landing-hero">
+    <img
+      class="landing-logo"
+      src="{% static 'web/brand/slaif-logo.svg' %}"
+      alt="{% trans 'SLAIF logo' %}"
+      width="150"
+      height="118"
+    >
+    <h1>{% trans "SLAIF Asset Reservation" %}</h1>
+    <p class="landing-purpose">
+      {% trans "Reserve shared laboratory machines and GPU assets, check advisory availability, and manage your own reservations in one place." %}
+    </p>
+    <div class="landing-actions">
+      <a class="button" href="{% url 'web:login' %}">{% trans "Log in" %}</a>
+      <a class="button button-secondary" href="{% url 'admin:index' %}">{% trans "Administration" %}</a>
+    </div>
+  </section>
+  <section class="landing-overview" aria-label="{% trans 'What you can do' %}">
+    <div class="landing-card">
+      <h2>{% trans "Find the asset" %}</h2>
+      <p>
+        {% trans "Browse the active laboratory machines and GPU assets with their reservation settings." %}
+      </p>
+    </div>
+    <div class="landing-card">
+      <h2>{% trans "Check availability" %}</h2>
+      <p>
+        {% trans "See advisory availability before you book, and create a reservation when the slot fits." %}
+      </p>
+    </div>
+    <div class="landing-card">
+      <h2>{% trans "Keep track" %}</h2>
+      <p>
+        {% trans "View, cancel, and release your own reservations from your dashboard." %}
+      </p>
+    </div>
+  </section>
+{% endblock %}

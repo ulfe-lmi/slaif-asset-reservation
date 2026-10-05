@@ -1,0 +1,26 @@
+/* SLAIF administration identity — structural logo/brand integration only.
+   The admin layout, controls and permission behavior are unchanged. */
+
+#site-name {
+  display: inline-flex;
+  align-items: center;
+}
+
+#site-name a.admin-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.35rem;
+  font-weight: 400;
+  text-decoration: none;
+}
+
+.admin-brand-logo {
+  height: 27px;
+  width: auto;
+}
+
+#footer .footer-identity {
+  color: var(--darkened-fixed-sidebar-background, #666);
+  font-size: 0.9em;
+}

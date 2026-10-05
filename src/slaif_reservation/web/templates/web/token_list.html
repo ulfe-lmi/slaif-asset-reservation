@@ -5,7 +5,7 @@
 
 {% block content %}
   <h1>{% trans "API tokens" %}</h1>
-  <p>{% trans "Bearer-token API operations are not enabled until Work Order 0006." %}</p>
+  <p>{% trans "These bearer tokens authenticate the scoped API under /api/v1/ (availability and owner reservation operations)." %}</p>
   <p><a class="button" href="{% url 'web:token-create' %}">{% trans "Create token" %}</a></p>
   <table>
     <caption>{% trans "Your API tokens" %}</caption>

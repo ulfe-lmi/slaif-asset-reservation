@@ -1,0 +1,22 @@
+{% load static i18n %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ error_title }} — {% trans "SLAIF Asset Reservation" %}</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'web/brand/slaif-logo.svg' %}">
+    <link rel="stylesheet" href="{% static 'web/site.css' %}">
+  </head>
+  <body>
+    <main id="content" class="site-main error-page">
+      <img class="error-logo" src="{% static 'web/brand/slaif-logo.svg' %}" alt="" width="48" height="38">
+      <h1>{{ error_title }}</h1>
+      <p>{{ error_message }}</p>
+      <p class="error-actions">
+        <a class="button" href="/">{% trans "Go to the home page" %}</a>
+        <a class="button button-secondary" href="{% url 'web:login' %}">{% trans "Log in" %}</a>
+      </p>
+    </main>
+  </body>
+</html>

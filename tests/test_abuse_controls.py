@@ -91,6 +91,11 @@ def test_login_routes_share_normalized_identity_without_locking_account() -> Non
     assert result.status_code == 429
     assert int(result["Retry-After"]) >= 1
     assert result["Cache-Control"] == "no-store"
+    # Rate-limit denial keeps the product identity (no framework/technical text).
+    denied_body = result.content.decode()
+    assert "SLAIF Asset Reservation" in denied_body
+    assert "Django" not in denied_body
+    assert "Traceback" not in denied_body
 
 
 @pytest.mark.django_db
@@ -123,7 +128,12 @@ def test_budget_failure_is_closed_and_liveness_does_not_query_budgets(
     response = client.get("/api/v1/me/")
     assert response.status_code == 503
     assert response.json()["code"] == "service_unavailable"
-    assert client.post("/login/", {"username": "unknown@example.test"}).status_code == 503
+    login_denied = client.post("/login/", {"username": "unknown@example.test"})
+    assert login_denied.status_code == 503
+    login_body = login_denied.content.decode()
+    assert "SLAIF Asset Reservation" in login_body
+    assert "Django" not in login_body
+    assert "Traceback" not in login_body
     assert client.get("/health/live").status_code == 200
 
 

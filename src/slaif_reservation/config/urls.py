@@ -10,7 +10,16 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import BasePermission, IsAdminUser
 
-from slaif_reservation.config.views import health_live, health_ready
+# The handler* imports are intentionally unused at runtime: Django resolves
+# the branded browser error handlers from the ROOT_URLCONF namespace.
+from slaif_reservation.config.views import (  # noqa: F401
+    handler400,
+    handler403,
+    handler404,
+    handler500,
+    health_live,
+    health_ready,
+)
 
 
 class ApiDocumentationPermission(BasePermission):  # type: ignore[misc]

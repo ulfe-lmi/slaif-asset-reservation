@@ -7,7 +7,7 @@ from slaif_reservation.web import views
 app_name = "web"
 
 urlpatterns = [
-    path("", views.dashboard, name="dashboard"),
+    path("", views.root, name="dashboard"),
     path("login/", views.HumanLoginView.as_view(), name="login"),
     path("logout/", views.HumanLogoutView.as_view(), name="logout"),
     path("profile/", views.profile, name="profile"),

@@ -53,14 +53,57 @@ textarea:focus-visible {
   border-bottom: 1px solid var(--border);
 }
 
+.site-header-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.brand-logo {
+  height: 1.6rem;
+  width: auto;
+}
+
 .site-header nav {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
+  margin-left: auto;
+}
+
+.timezone-banner {
   max-width: 72rem;
   margin: 0 auto;
-  padding: 0.75rem 1rem;
+  padding: 0 1rem 0.6rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.nav-cta {
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  padding: 0.35rem 0.65rem;
+  text-decoration: none;
+}
+
+.nav-cta:hover {
+  background: var(--accent);
+  color: #fff;
 }
 
 .site-main {
@@ -164,7 +207,94 @@ dt {
   margin: 0;
 }
 
+
+.button-secondary {
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.landing-hero {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 3rem 1rem 1.5rem;
+  text-align: center;
+}
+
+.landing-logo {
+  width: 7.5rem;
+  height: auto;
+  margin-bottom: 1.25rem;
+}
+
+.landing-purpose {
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.landing-actions .button {
+  min-width: 10rem;
+  text-align: center;
+}
+
+.landing-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+  max-width: 72rem;
+  margin: 1.5rem auto 0;
+  padding: 0 1rem;
+}
+
+.landing-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  text-align: left;
+}
+
+.landing-card h2 {
+  margin-top: 0;
+  font-size: 1.05rem;
+}
+
+.error-page {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding-top: 3rem;
+  text-align: center;
+}
+
+.error-logo {
+  height: 2.4rem;
+  width: auto;
+}
+
+.error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
 @media (max-width: 48rem) {
+  .site-header-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .site-header nav {
+    margin-left: 0;
+  }
+
   .nav-form {
     margin-left: 0;
   }

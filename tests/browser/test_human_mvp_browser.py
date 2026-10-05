@@ -285,7 +285,7 @@ def test_browser_api_token_create_once_revoke_and_owner_boundary(
     _login(page, live_server, member_user)
     page.get_by_role("link", name="API tokens").click()
     page.get_by_role("heading", name="API tokens").wait_for()
-    assert "Bearer-token API operations are not enabled until Work Order 0006" in page.content()
+    assert "scoped API under /api/v1/" in page.content()
     page.get_by_role("link", name="Create token").click()
     page.get_by_label("Token name").fill("Browser token")
     page.get_by_label("assets:read").check()

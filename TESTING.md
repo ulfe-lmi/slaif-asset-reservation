@@ -197,3 +197,30 @@ allowances, forwarded-header spoof resistance, shared member/admin identity
 limits, valid logins, multiple-token account budgets and safe DB failure.
 Fixtures use owned ports, short-lived per-client certificates and explicit
 synthetic environments; no production data or global trust-store changes.
+
+## 036-a public entry and browser identity (evidence)
+
+Owned disposable environment: `git archive`/local-clone source copy in a unique
+tmp checkout, owned PG17 cluster (loopback, port 34421, owned receipt 033-b),
+per-run owned test databases, Chromium; product-test child envs with `OAP_ROLE`
+cleared and explicit `PYTHONPATH`/settings/DB URLs. No product pytest or
+management command ran from the valuable checkout; lint/types/git publication
+only.
+
+Focused (pre-commit tree): `tests/test_product_entry.py` +
+`tests/test_abuse_controls.py` — 21 passed; `tests/browser/test_product_entry_browser.py`
+(`--browser chromium`) — 10 passed with privacy-safe 1440/390 captures
+(landing, member login, member dashboard, admin login, admin index) actually
+viewed and iterated before final head.
+
+Full local suite (pre-commit tree, owned clone + owned DB): 822 passed, 6
+failed in `tests/test_https_boundary.py`. Those six drive
+`deploy/rehearse_https_boundary.sh`, which by design builds its image from a
+tracked-file snapshot; with the new uncommitted files absent the snapshot
+lacks them. The suites were re-run at the committed implementation head and
+their results are recorded in the OAP 036-a report, as required for
+Docker tracked-snapshot qualification.
+
+Gates: `ruff check .`, `ruff format --check .`, `mypy src` (valuable
+checkout); `manage.py check`, `makemigrations --check --dry-run`,
+`spectacular --validate --fail-on-warn` (owned copy); `git diff --check`.
