@@ -187,7 +187,7 @@ but keeps the `slaif-eval_postgres-data` volume.
 
 ## Next
 
-Next steps: [INSTALL.md](INSTALL.md) — the full operator guide for a
+Next steps: [INSTALL.md](INSTALL.md) — the full operator guide for an
 authenticated HTTPS pilot deployment; [README.md](README.md) — product
 overview and documentation map; [docs/api-contract.md](docs/api-contract.md)
 — the implemented `/api/v1/` contract for agent clients.

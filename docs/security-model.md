@@ -207,7 +207,7 @@ asset ID, and time range.
 
 Authorization is action-specific. A principal may be able to see an asset but not reserve it, or read own reservations but not another user's purpose.
 
-Every reservation command evaluates:
+Depending on the action, reservation commands evaluate:
 
 - principal active state;
 - human role or token scopes;

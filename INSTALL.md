@@ -318,7 +318,7 @@ Development checks and local rehearsal do not perform those real actions.
     `SLAIF_TRUSTED_PROXY_PEERS` to the source peer the application actually
     sees from the proxy. For a host proxy dialing a Docker-published loopback
     port, this is normally the bridge gateway; discover and verify it as
-    in step 2. Keep `127.0.0.1` separately for the in-container probe: the application
+    in step 6. Keep `127.0.0.1` separately for the in-container probe: the application
     honors that peer's forwarding and treats every other peer as a direct
     client. In both cases the application strips every forwarding header it
     does not consume (trusted and untrusted alike), keeps the original
