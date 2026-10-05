@@ -1,7 +1,7 @@
 {% extends "web/base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Assets" %}{% endblock %}
+{% block title %}{% trans "Assets" %} — SLAIF Asset Reservation{% endblock %}
 
 {% block content %}
   <h1>{% trans "Assets" %}</h1>
@@ -52,7 +52,7 @@
     </div>
     <button type="submit">{% trans "Filter" %}</button>
   </form>
-  <table>
+  <div class="table-scroll" role="region" aria-label="Scrollable table" tabindex="0"><table>
     <caption>{% trans "Active member-visible assets" %}</caption>
     <thead>
       <tr>
@@ -76,5 +76,5 @@
         <tr><td colspan="5">{% trans "No assets match these filters." %}</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 {% endblock %}

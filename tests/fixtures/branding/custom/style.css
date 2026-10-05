@@ -2,6 +2,8 @@
 :root {
   --background: #10233f;
   --text: #f4f1ea;
+  --heading: #f4f1ea;
+  --footer-background: #1b2a44;
   --muted: #c8cdd6;
   --border: #3a4a63;
   --accent: #e2b13c;
@@ -13,3 +15,21 @@
 }
 
 .site-header button, .site-main button, .site-main .button:not(.button-secondary) { color: #10233f; }
+
+.site-header .nav-toggle { color: var(--accent); }
+/* Administration uses its own framework-neutral palette variables. */
+:root, html[data-theme="light"] {
+ --body-bg: #10233f; --body-fg: #f4f1ea; --body-loud-color: #f4f1ea;
+ --body-quiet-color: #c8cdd6; --header-bg: #10233f; --header-color: #f4f1ea;
+ --header-link-color: #e2b13c; --header-branding-color: #f4f1ea;
+ --link-fg: #e2b13c; --link-hover-color: #f8d875; --link-selected-fg: #e2b13c;
+ --darkened-bg: #1b2a44; --selected-bg: #253853; --selected-row: #253853;
+ --border-color: #63718a; --hairline-color: #63718a;
+ --breadcrumbs-bg: #1b2a44; --breadcrumbs-fg: #f4f1ea; --breadcrumbs-link-fg: #e2b13c;
+ --button-bg: #e2b13c; --button-fg: #10233f; --button-hover-bg: #f8d875;
+ --default-button-bg: #e2b13c; --default-button-hover-bg: #f8d875;
+ --object-tools-bg: #e2b13c; --object-tools-fg: #10233f; --object-tools-hover-bg: #f8d875;
+}
+
+.site-main .button-danger { color: #fff; }
+.site-main button:not(.button-danger):hover, .site-main .button:not(.button-danger):not(.button-secondary):hover { background: #f8d875; color: #10233f; }

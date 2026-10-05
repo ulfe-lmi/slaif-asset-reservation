@@ -133,7 +133,7 @@ uploads and never derived from private data. The mechanism enforces:
   detail is intentionally logged.
 - The favicon should be square and small (16–64 px) for predictable tab
   rendering; the logo should be legible at ~32 px header height; the hero
-  is rendered at 7.5 rem width with its own aspect ratio.
+  scales from 7 to 10 rem with its own aspect ratio.
 
 ## Packaged logo
 
@@ -149,3 +149,10 @@ The file is served as a local static asset (WhiteNoise in production); no
 browser surface hotlinks the logo at runtime. This repository asserts no
 rights, license, or funding claims for the mark; its use is limited to
 identifying the SLAIF Asset Reservation product.
+
+## Default design and theme variables
+
+See the [visual design guide](ux/visual-design.md) for application and
+administration theme variables, responsive navigation and local font provenance.
+Override foreground and background colors together and check contrast, focus
+and layout at narrow as well as wide widths.

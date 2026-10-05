@@ -1,13 +1,13 @@
 {% extends "web/base.html" %}
 {% load i18n tz web_time form_guidance %}
 
-{% block title %}{% trans "API tokens" %}{% endblock %}
+{% block title %}{% trans "API tokens" %} — SLAIF Asset Reservation{% endblock %}
 
 {% block content %}
   <h1>{% trans "API tokens" %}</h1>
   <p>{% trans "These bearer tokens authenticate the scoped API under /api/v1/ (availability and owner reservation operations)." %}</p>
   <p><a class="button" href="{% url 'web:token-create' %}">{% trans "Create token" %}</a></p>
-  <table>
+  <div class="table-scroll" role="region" aria-label="Scrollable table" tabindex="0"><table>
     <caption>{% trans "Your API tokens" %}</caption>
     <thead>
       <tr>
@@ -44,7 +44,7 @@
               {% if token.status != "revoked" %}
                 <form method="post" action="{% url 'web:token-revoke' token.id %}">
                   {% csrf_token %}
-                  <button type="submit">{% trans "Revoke" %}</button>
+                  <button class="button-danger" type="submit">{% trans "Revoke" %}</button>
                 </form>
               {% else %}
                 {% trans "No action" %}
@@ -56,7 +56,7 @@
         <tr><td colspan="8">{% trans "No API tokens." %}</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% if page.has_previous or page.has_next %}
     <nav aria-label="{% trans 'API token pages' %}">
       {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">{% trans "Previous" %}</a>{% endif %}

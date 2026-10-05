@@ -1,7 +1,7 @@
 {% extends "web/base.html" %}
 {% load i18n tz web_time form_guidance %}
 
-{% block title %}{% trans "Reservation" %} {{ reservation.id }}{% endblock %}
+{% block title %}{% trans "Reservation" %} {{ reservation.id }} — SLAIF Asset Reservation{% endblock %}
 
 {% block content %}
   <p><a href="{% url 'web:reservation-list' %}">{% trans "My reservations" %}</a></p>
@@ -28,17 +28,19 @@
     <p class="status-warning">{% trans "Cancelling frees the reserved time for other bookings and cannot be undone." %}</p>
     <form method="post" action="{% url 'web:reservation-cancel' reservation.id %}">
       {% csrf_token %}
+      <div class="field">
       {{ cancel_form.reason.label_tag }}
       {{ cancel_form.reason }}
       {% field_guidance cancel_form.reason %}
-      <button type="submit">{% trans "Cancel reservation" %}</button>
+      </div>
+      <button class="button-danger" type="submit">{% trans "Cancel reservation" %}</button>
     </form>
   {% endif %}
   {% if lifecycle.value == "active" %}
     <p class="status-warning">{% trans "Releasing ends the reservation now. The time from now to the original end becomes available to others, and this cannot be undone." %}</p>
     <form method="post" action="{% url 'web:reservation-release' reservation.id %}">
       {% csrf_token %}
-      <button type="submit">{% trans "Release reservation" %}</button>
+      <button class="button-danger" type="submit">{% trans "Release reservation" %}</button>
     </form>
   {% endif %}
 {% endblock %}

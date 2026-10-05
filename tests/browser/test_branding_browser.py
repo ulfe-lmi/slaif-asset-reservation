@@ -282,7 +282,7 @@ def test_landing_custom_branding(page: Page, branding_custom, live_server, outpu
 def test_member_login_default(page: Page, branding_off, live_server, output_path) -> None:
     page.set_viewport_size(DESKTOP)
     page.goto(live_server.url + "/login/")
-    assert page.title() == "Log in"
+    assert page.title() == "Log in — SLAIF Asset Reservation"
     assert page.locator('input[name="csrfmiddlewaretoken"]').count() == 1
     assert page.locator("img.brand-logo").get_attribute("src") == STATIC_LOGO
     _assert_css_loaded_after_defaults(page, custom=False)
@@ -300,7 +300,7 @@ def test_member_login_default(page: Page, branding_off, live_server, output_path
 def test_member_login_custom(page: Page, branding_custom, live_server, output_path) -> None:
     page.set_viewport_size(DESKTOP)
     page.goto(live_server.url + "/login/")
-    assert page.title() == "Log in"
+    assert page.title() == "Log in — SLAIF Asset Reservation"
     assert page.locator('input[name="csrfmiddlewaretoken"]').count() == 1
     icon = page.locator('link[rel="icon"]').first
     assert icon.get_attribute("href") == "/branding/favicon"

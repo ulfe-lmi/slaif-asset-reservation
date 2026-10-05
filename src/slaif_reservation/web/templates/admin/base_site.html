@@ -3,7 +3,7 @@
 
 {% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title }}{% endblock %}
 
-{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "web/admin-identity.css" %}">{% branding_css_link %}{% endblock %}
+{% block responsive %}{{ block.super }}<link rel="stylesheet" href="{% static "web/admin-identity.css" %}">{% branding_css_link %}{% endblock %}
 
 {% block extrahead %}{% branding_icon_link %}{% endblock %}
 
@@ -30,5 +30,5 @@
 {% endblock %}
 
 {% block footer %}
-  <span class="footer-identity">SLAIF Asset Reservation</span>
+  <span class="footer-identity">SLAIF Asset Reservation · Slovenian AI Factory</span>
 {% endblock %}
