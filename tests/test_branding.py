@@ -1125,6 +1125,8 @@ def test_docker_production_overlay_qualification() -> None:
         try:
             for kind, name in (
                 ("image", tag),
+                ("volume", volume),
+                ("network", network),
                 ("container", f"{project}-app-1"),
                 ("container", f"{project}-db-1"),
                 ("container", f"{project}-migrate"),
