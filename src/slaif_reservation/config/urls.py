@@ -20,6 +20,7 @@ from slaif_reservation.config.views import (  # noqa: F401
     health_live,
     health_ready,
 )
+from slaif_reservation.web import branding
 
 
 class ApiDocumentationPermission(BasePermission):  # type: ignore[misc]
@@ -34,6 +35,17 @@ class ApiDocumentationPermission(BasePermission):  # type: ignore[misc]
 api_documentation_permission_classes = [ApiDocumentationPermission]
 
 urlpatterns = [
+    # Optional read-only operator appearance overrides (SAR-045): fixed
+    # slot routes only; there is no request-selected file name.
+    path("branding/style.css", branding.branding_style_view, name="branding-style"),
+    path("branding/logo", branding.branding_image_view("logo"), name="branding-logo"),
+    path(
+        "branding/logo-compact",
+        branding.branding_image_view("logo-compact"),
+        name="branding-logo-compact",
+    ),
+    path("branding/favicon", branding.branding_image_view("favicon"), name="branding-favicon"),
+    path("branding/hero", branding.branding_image_view("hero"), name="branding-hero"),
     path("admin/", admin.site.urls),
     path("health/live", health_live, name="health-live"),
     path("health/ready", health_ready, name="health-ready"),

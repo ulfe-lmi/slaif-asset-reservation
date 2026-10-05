@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load static i18n %}
+{% load static i18n branding %}
 
 {% block title %}{% trans "SLAIF Asset Reservation" %}{% endblock %}
 
@@ -7,8 +7,8 @@
   <section class="landing-hero">
     <img
       class="landing-logo"
-      src="{% static 'web/brand/slaif-logo.svg' %}"
-      alt="{% trans 'SLAIF logo' %}"
+      src="{% branding_src 'hero' %}"
+      alt=""
       width="150"
       height="118"
     >

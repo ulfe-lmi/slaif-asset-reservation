@@ -29,6 +29,8 @@
 - [deployment.md](deployment.md) — deeper deployment reference and rationale:
   configuration reference, container image facts, proxy/TLS, logging,
   scheduled work, release process, rollback, readiness gates.
+- [branding.md](branding.md) — optional same-image operator branding
+  (CSS/logo/favicon/images): slots, limits, fallback, refresh semantics.
 - [runbooks/](runbooks/) — operator runbooks: first internal-alpha deployment
   checklist, pilot preparation and readiness gates, backup and restore,
   database-unavailable response, token/pepper incidents, blackouts,

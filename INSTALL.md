@@ -347,6 +347,26 @@ rehearsal passed (section 6), and human approval of the reviewed commit.
       python manage.py pilot_readiness_check --strict
     ```
 
+### Optional operator branding (same image, no rebuild)
+
+Appearance overrides (CSS, logos, favicon, one public image) are optional
+and off by default. To use them, keep the same application image and add
+the read-only overlay — no rebuild, no new service, port or privilege:
+
+```bash
+install -d -m 755 deploy/branding
+# put at most one file per fixed slot into deploy/branding (docs/branding.md)
+docker compose -f compose.production.example.yaml \
+    -f compose.branding.example.yaml up -d
+```
+
+The overlay mounts `./deploy/branding` read-only at `/branding` and sets
+`SLAIF_BRANDING_DIR`. Files are validated on use; a missing or invalid
+asset falls back to the packaged default for that slot only. The complete
+operator contract (slots, formats, size limits, refresh/cache semantics,
+trust model and failure behavior) is [docs/branding.md](docs/branding.md).
+The same overlay also works with `compose.yaml` for local evaluation.
+
 ## 6. Rehearsal: what it does and does not prove
 
 `deploy/rehearse_internal_alpha_deployment.sh` runs a disposable,

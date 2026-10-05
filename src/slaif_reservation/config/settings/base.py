@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from slaif_reservation.accounts.tokens import DEVELOPMENT_API_TOKEN_PEPPER
@@ -104,6 +105,11 @@ SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
+
+# Optional read-only operator appearance overrides (SAR-045). Off by
+# default; the directory holds at most one file per fixed slot and every
+# file is validated fail-closed on use. See docs/branding.md.
+BRANDING_DIR: str | None = os.environ.get("SLAIF_BRANDING_DIR") or None
 
 API_DOCS_ENABLED = False
 API_DOCS_PUBLIC = False

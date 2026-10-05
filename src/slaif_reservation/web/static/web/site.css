@@ -357,3 +357,21 @@ dt {
     grid-template-columns: 1fr;
   }
 }
+
+/* 038-a: operator branding slots (SAR-045). The compact logo replaces the
+   primary only on narrow viewports; both keep their own aspect ratio. */
+.brand-logo-compact {
+  display: none;
+  height: 1.6rem;
+  width: auto;
+}
+
+@media (max-width: 480px) {
+  .brand-logo {
+    display: none;
+  }
+
+  .brand-logo-compact {
+    display: inline;
+  }
+}

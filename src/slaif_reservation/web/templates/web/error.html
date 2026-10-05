@@ -1,16 +1,17 @@
-{% load static i18n %}
+{% load static i18n branding %}
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ error_title }} — {% trans "SLAIF Asset Reservation" %}</title>
-    <link rel="icon" type="image/svg+xml" href="{% static 'web/brand/slaif-logo.svg' %}">
+    {% branding_icon_link %}
     <link rel="stylesheet" href="{% static 'web/site.css' %}">
+    {% branding_css_link %}
   </head>
   <body>
     <main id="content" class="site-main error-page">
-      <img class="error-logo" src="{% static 'web/brand/slaif-logo.svg' %}" alt="" width="48" height="38">
+      <img class="error-logo" src="{% branding_src 'logo' %}" alt="" width="48" height="38">
       <h1>{{ error_title }}</h1>
       <p>{{ error_message }}</p>
       <p class="error-actions">
