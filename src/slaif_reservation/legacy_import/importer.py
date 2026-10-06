@@ -28,7 +28,11 @@ from slaif_reservation.reservations.exceptions import (
     ReservationDomainError,
 )
 from slaif_reservation.reservations.models import MaintenanceBlackout, Reservation
-from slaif_reservation.reservations.services import _enforce_policy, lock_effective_policy
+from slaif_reservation.reservations.services import (
+    _enforce_policy,
+    _is_named_reservation_constraint,
+    lock_effective_policy,
+)
 
 UserModel = get_user_model()
 
@@ -38,6 +42,10 @@ class ApplyResult:
     batch: LegacyImportBatch
     plan: ImportPlan
     counts: dict[str, int]
+
+
+class _ReservationInsertConflict(Exception):
+    """Only a named exclusion failure at the reservation INSERT boundary."""
 
 
 def _create_batch(
@@ -77,7 +85,13 @@ def _create_imported_reservation(
         purpose=appointment.purpose,
     )
     reservation.full_clean(validate_constraints=False)
-    reservation.save()
+    try:
+        with transaction.atomic():
+            reservation.save()
+    except IntegrityError as exc:
+        if _is_named_reservation_constraint(exc):
+            raise _ReservationInsertConflict from exc
+        raise
 
     append_audit_event(
         action=AuditEvent.ACTION_RESERVATION_CREATED,
@@ -386,7 +400,7 @@ def apply_import(plan: ImportPlan) -> ApplyResult:
             try:
                 with transaction.atomic():
                     reservation = _create_imported_reservation(item=final_item, batch=batch)
-            except IntegrityError:
+            except _ReservationInsertConflict:
                 final_records.append(_mark_constraint_conflict(final_item))
                 continue
             final_records.append(_mark_imported(final_item, reservation))
