@@ -20,6 +20,7 @@ from django.test import Client
 from django.urls import resolve, reverse
 from django.utils import timezone
 
+from slaif_reservation.accounts.exceptions import TOKEN_OWNER_INVALID, ApiTokenDomainError
 from slaif_reservation.accounts.models import ApiToken, User
 from slaif_reservation.accounts.services import issue_api_token
 from slaif_reservation.assets.models import Asset, AssetTag
@@ -993,7 +994,7 @@ def test_admin_user_change_safe_password_status_and_help(
         ("email", "Sign-in identifier for the account"),
         ("display_name", "Shown to staff in management views"),
         ("timezone", "IANA time zone name"),
-        ("is_service_account", "Machine account for API automation"),
+        ("is_service_account", "Service-account API access is not supported"),
         ("is_active", "Inactive accounts cannot sign in anywhere"),
         ("is_staff", "per-model administration operations in this administration only"),
         ("is_superuser", "does not bypass the active-human/staff admission gate"),
@@ -1004,6 +1005,14 @@ def test_admin_user_change_safe_password_status_and_help(
         ),
     ]:
         _assert_guided(html, f"id_{name}_helptext", fragment, control_id=f"id_{name}")
+    _assert_guided(
+        html,
+        "id_is_service_account_helptext",
+        "blocks member and administration sign-in and API token issuance/use",
+        control_id="id_is_service_account",
+    )
+    assert "active human owner's scoped API token" in unescape(html)
+    assert "Machine account for API automation" not in html
     # The select-filter association helper ships on the pages whose
     # JS-generated list boxes it binds (presentation only).
     assert "web/admin-form-guidance.js" in html
@@ -1025,6 +1034,11 @@ def test_admin_user_change_safe_password_status_and_help(
 
     # A valid change POST preserves the stored hash. The admin renders the
     # datetime fields with split date/time inputs.
+    issued = issue_api_token(
+        owner=member_user, name="Guidance regression", scopes=["reservations:read"], lifetime_days=1
+    )
+    authorization = f"Bearer {issued.bearer_token}"
+    assert client.get("/api/v1/me/", HTTP_AUTHORIZATION=authorization).status_code == 200
     stored_hash = member_user.password
     joined = member_user.date_joined
     response = client.post(
@@ -1045,6 +1059,14 @@ def test_admin_user_change_safe_password_status_and_help(
     member_user.refresh_from_db()
     assert member_user.password == stored_hash
     assert member_user.display_name == "Renamed by admin"
+    assert member_user.is_service_account
+    denied = client.get("/api/v1/me/", HTTP_AUTHORIZATION=authorization)
+    assert denied.status_code == 401 and denied.json()["code"] == "invalid_token"
+    with pytest.raises(ApiTokenDomainError) as error:
+        issue_api_token(
+            owner=member_user, name="Denied", scopes=["reservations:read"], lifetime_days=1
+        )
+    assert error.value.code == TOKEN_OWNER_INVALID
 
 
 @pytest.mark.django_db

@@ -527,6 +527,14 @@ def test_browser_admin_user_forms_guidance(
     assert "pbkdf2_sha256" not in page.content()
     _assert_help_near_control(page, "#id_email", "id_email_helptext")
     _assert_help_near_control(page, "#id_is_service_account", "id_is_service_account_helptext")
+    service_help = page.locator("#id_is_service_account_helptext")
+    assert "API token issuance/use" in service_help.inner_text()
+    assert "Service-account API access is not supported" in service_help.inner_text()
+    assert "active human owner's scoped API token" in service_help.inner_text()
+    assert "Machine account for API automation" not in page.locator("body").inner_text()
+    page.locator(".field-is_service_account").screenshot(
+        path=f"{output_path}/admin-service-account-1440.png"
+    )
     _assert_help_near_control(page, "#id_is_staff", "id_is_staff_helptext")
     _assert_help_near_control(page, "#id_is_superuser", "id_is_superuser_helptext")
     # After the selectfilter JS initializes, BOTH generated list boxes of
@@ -555,6 +563,12 @@ def test_browser_admin_user_forms_guidance(
     assert "INPUT" in _keyboard_walk(page, "#id_email", 8)
     _capture(page, output_path, "admin-user-change-1440", full_page=True)
     page.set_viewport_size(MOBILE)
+    _assert_help_near_control(page, "#id_is_service_account", "id_is_service_account_helptext")
+    assert "API token issuance/use" in service_help.inner_text()
+    assert "active human owner's scoped API token" in service_help.inner_text()
+    page.locator(".field-is_service_account").screenshot(
+        path=f"{output_path}/admin-service-account-390.png"
+    )
     _assert_help_near_control(page, "#id_email", "id_email_helptext")
     _assert_help_near_control(page, "#id_last_login_0", "id_last_login_0_helptext")
     _assert_no_horizontal_overflow(page)
