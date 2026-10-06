@@ -1,5 +1,8 @@
 # Authenticated Internet/UX pilot — qualification and architecture freshness
 
+> Historical qualification snapshot. Current independent milestone evidence and
+> publication assessment are in the [freshness record](M-INTERNET-UX-PILOT-FRESHNESS.md).
+
 This is a strategic qualification record, not independent closure audit or
 permission to expose a real service. The selected target is A-15 in the full
 canonical [architecture](../../../ARCHITECTURE.md).
