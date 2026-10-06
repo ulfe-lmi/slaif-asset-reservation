@@ -297,6 +297,13 @@ valuable checkout; unique owned test database per run; child envs with
   in-container invalid-asset fallback; unique owned project, synthetic
   configuration and exact owned cleanup. It skips honestly only when the
   docker/git prerequisites are absent.
+- `tests/test_qualification_image_ownership.py` separates cached image content
+  timestamps from construction provenance. Builds emit a bounded local IID
+  file and use the verified immutable image ID directly, avoiding tag-overwrite
+  races. A recorded nonce/ID/Created receipt supports exact cleanup after later
+  failures; containers/networks/volumes retain fresh-creation checks. Real warm
+  repeats and fake malformed/stale/symlink/foreign/race refusals are distinct
+  evidence; no arbitrary old image is adopted by name or label alone.
 - `tests/browser/test_branding_browser.py` qualifies the default identity
   and one institutional override fixture at 1440/390 for landing, member
   login, admin login, member dashboard + form, staff page and admin
