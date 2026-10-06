@@ -163,6 +163,7 @@ head CI from final report head CI; no future result invented in a report-only co
 | Token security | test_api_tokens.py; verifier/pepper/expiry, one-time history, repr/exception/audit/log redaction, ORM protection |
 | Management | test_management_ui.py; every mutation CSRF/GET, staff/owner split, policy/blackout rollback/export |
 | Synthetic import | test_legacy_import.py; parser/mapping/dry-run/apply/idempotency/stale plan/actual report/privacy |
+| Cross-service lock order | test_import_lock_order.py; real backend waits for same-principal booking/import, staff lifecycle, multi-owner/reversed batches and policy FK changes; data mutexes exclude updates while allowing FK references |
 | Operations | test_operational_hardening.py/test_settings.py/health suites; failure and real entry points |
 | Readiness helper | test_pilot_readiness_check.py; DB-down/unmigrated/count failure, strict/JSON/read-only, not only row counts |
 | Proxy/TLS trust boundary | test_proxy_gunicorn.py/test_proxy_security.py (real Gunicorn forwarding/spoofing, parser and log privacy); test_https_boundary.py plus deploy/rehearse_https_boundary.sh (owned real-HTTPS rehearsal, pinned Caddy v2.11.6, loopback-only, owned resources) |
@@ -172,6 +173,15 @@ Use current tree to discover exact filenames rather than invent missing paths. A
 cannot prove exclusion, row locks or rollback; a fake HTTP adapter cannot prove auth/CSRF; a parsed
 Compose file cannot prove actual sockets; a dump file cannot prove restore. No dangerous failure
 may be excluded because the happy-path suite is green.
+
+Import applies serialize their provenance boundary, then lock the complete
+candidate principal set before assets and policy processing. Principal/asset
+`FOR NO KEY UPDATE` mutexes still serialize data changes and counters while
+allowing PostgreSQL foreign-key `KEY SHARE` checks. Lifecycle locks target the
+reservation rather than joined owners; overlap reads run under the asset mutex.
+The lock-order suite gates actual acquired locks and observes owned backend
+waits through `pg_stat_activity`; its old-source comparison must expose genuine
+database failures, not an impossible post-fix Python barrier.
 
 ## T-04. Container and recovery evidence
 

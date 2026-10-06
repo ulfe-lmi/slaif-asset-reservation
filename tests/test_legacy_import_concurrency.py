@@ -11,8 +11,10 @@ Pause seams (verified against the source at this revision):
   create_reservation AFTER the principal -> asset -> policy row locks, before
   the advisory overlap checks and the insert;
 - import side: importer._asset_allowed is called by _revalidate_for_apply
-  AFTER the asset row lock (and the user row lock) is held, before the policy
-  lock, the locking blackout/reservation probes and the write.
+  AFTER the batch's principal and asset mutexes are held, before the policy
+  lock, advisory blackout/reservation probes and the write. The separate
+  test_import_lock_order.py suite covers whole-batch ordering and FK/lifecycle
+  lock compatibility against actual blocked PostgreSQL backends.
 """
 
 from __future__ import annotations

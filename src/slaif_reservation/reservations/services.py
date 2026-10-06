@@ -94,7 +94,9 @@ def _service_save(instance: Any) -> None:
 
 
 def _lock_principal(principal: Any) -> Any:
-    locked = UserModel.objects.select_for_update().get(pk=principal.pk)
+    # Serialize mutable principal state/counters without blocking harmless
+    # foreign-key references from other audited transactions.
+    locked = UserModel.objects.select_for_update(no_key=True).get(pk=principal.pk)
     if not locked.is_active:
         _raise(PRINCIPAL_INACTIVE, "Principal is inactive.")
     return locked
@@ -108,14 +110,14 @@ def _lock_staff_actor(actor_user: Any) -> Any:
 
 
 def _lock_asset(asset: Asset) -> Asset:
-    locked = Asset.objects.select_for_update().get(pk=asset.pk)
+    locked = Asset.objects.select_for_update(no_key=True).get(pk=asset.pk)
     if locked.parent_id:
         locked.parent = Asset.objects.get(pk=locked.parent_id)
     return locked
 
 
 def _lock_asset_by_id(asset_id: Any) -> Asset:
-    locked = Asset.objects.select_for_update().get(pk=asset_id)
+    locked = Asset.objects.select_for_update(no_key=True).get(pk=asset_id)
     if locked.parent_id:
         locked.parent = Asset.objects.get(pk=locked.parent_id)
     return locked
@@ -328,7 +330,7 @@ def cancel_reservation(
     with transaction.atomic():
         requester = _lock_principal(requested_by_user)
         locked = (
-            Reservation.objects.select_for_update()
+            Reservation.objects.select_for_update(of=("self",))
             .select_related("requested_by_user")
             .get(pk=reservation.pk)
         )
@@ -377,7 +379,7 @@ def release_reservation(
     with transaction.atomic():
         requester = _lock_principal(requested_by_user)
         locked = (
-            Reservation.objects.select_for_update()
+            Reservation.objects.select_for_update(of=("self",))
             .select_related("requested_by_user")
             .get(pk=reservation.pk)
         )

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
 from slaif_reservation.assets.models import Asset
@@ -71,8 +71,8 @@ def _create_imported_reservation(
 ) -> Reservation:
     if item.asset_id is None or item.user_id is None:
         raise LegacyImportError("Cannot import an unmapped planned appointment.")
-    asset = Asset.objects.select_for_update().get(pk=item.asset_id)
-    user = UserModel.objects.select_for_update().get(pk=item.user_id)
+    user = UserModel.objects.select_for_update(no_key=True).get(pk=item.user_id)
+    asset = Asset.objects.select_for_update(no_key=True).get(pk=item.asset_id)
     appointment = item.appointment
     reservation = Reservation(
         asset=asset,
@@ -195,7 +195,21 @@ def _revalidate_for_apply(item: PlannedAppointment) -> PlannedAppointment:
         )
 
     try:
-        asset = Asset.objects.select_for_update().get(pk=item.asset_id)
+        user = UserModel.objects.select_for_update(no_key=True).get(pk=item.user_id)
+    except UserModel.DoesNotExist:
+        return PlannedAppointment(
+            appointment=appointment,
+            classification="unmapped_user",
+            asset_id=item.asset_id,
+            messages=(
+                _message(
+                    "unmapped_user", appointment.legacy_id, "Mapped requester no longer exists."
+                ),
+            ),
+        )
+
+    try:
+        asset = Asset.objects.select_for_update(no_key=True).get(pk=item.asset_id)
     except Asset.DoesNotExist:
         return PlannedAppointment(
             appointment=appointment,
@@ -210,22 +224,6 @@ def _revalidate_for_apply(item: PlannedAppointment) -> PlannedAppointment:
         )
     if asset.parent_id:
         asset.parent = Asset.objects.get(pk=asset.parent_id)
-
-    try:
-        user = UserModel.objects.select_for_update().get(pk=item.user_id)
-    except UserModel.DoesNotExist:
-        return PlannedAppointment(
-            appointment=appointment,
-            classification="unmapped_user",
-            asset_id=str(asset.id),
-            messages=(
-                _message(
-                    "unmapped_user",
-                    appointment.legacy_id,
-                    "Mapped requester no longer exists.",
-                ),
-            ),
-        )
 
     if not user.is_active or getattr(user, "is_service_account", False):
         return PlannedAppointment(
@@ -289,16 +287,12 @@ def _revalidate_for_apply(item: PlannedAppointment) -> PlannedAppointment:
             ),
         )
 
-    if (
-        MaintenanceBlackout.objects.select_for_update()
-        .filter(
-            asset=asset,
-            active=True,
-            start_at__lt=appointment.end_at,
-            end_at__gt=appointment.start_at,
-        )
-        .exists()
-    ):
+    if MaintenanceBlackout.objects.filter(
+        asset=asset,
+        active=True,
+        start_at__lt=appointment.end_at,
+        end_at__gt=appointment.start_at,
+    ).exists():
         return PlannedAppointment(
             appointment=appointment,
             classification="blackout_conflict",
@@ -313,16 +307,12 @@ def _revalidate_for_apply(item: PlannedAppointment) -> PlannedAppointment:
             ),
         )
 
-    if (
-        Reservation.objects.select_for_update()
-        .filter(
-            asset=asset,
-            status__in=[Reservation.STATUS_CONFIRMED, Reservation.STATUS_RELEASED],
-            start_at__lt=appointment.end_at,
-            effective_end_at__gt=appointment.start_at,
-        )
-        .exists()
-    ):
+    if Reservation.objects.filter(
+        asset=asset,
+        status__in=[Reservation.STATUS_CONFIRMED, Reservation.STATUS_RELEASED],
+        start_at__lt=appointment.end_at,
+        effective_end_at__gt=appointment.start_at,
+    ).exists():
         return PlannedAppointment(
             appointment=appointment,
             classification="reservation_conflict",
@@ -383,6 +373,25 @@ def _apply_counts(records: list[PlannedAppointment]) -> dict[str, int]:
 def apply_import(plan: ImportPlan) -> ApplyResult:
     final_records: list[PlannedAppointment] = []
     with transaction.atomic():
+        # Apply batches are atomic and may visit the same legacy keys in
+        # different input orders. Serialize that existing provenance boundary
+        # before taking any domain locks; planning/read-only queries still run.
+        with connection.cursor() as cursor:
+            table = connection.ops.quote_name(LegacyImportRecord._meta.db_table)
+            cursor.execute(f"LOCK TABLE {table} IN SHARE ROW EXCLUSIVE MODE")
+        candidates = [item for item in plan.records if item.classification == "would_create"]
+        # Lock the complete batch by category, not per item: a later principal
+        # must never be acquired while earlier asset/policy locks are held.
+        list(
+            UserModel.objects.filter(pk__in={item.user_id for item in candidates if item.user_id})
+            .order_by("pk")
+            .select_for_update(no_key=True)
+        )
+        list(
+            Asset.objects.filter(pk__in={item.asset_id for item in candidates if item.asset_id})
+            .order_by("pk")
+            .select_for_update(no_key=True)
+        )
         batch = _create_batch(
             plan=plan,
             mode=LegacyImportBatch.MODE_APPLY,
