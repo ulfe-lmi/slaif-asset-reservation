@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import stat
 import struct
 import subprocess
 import sys
@@ -671,6 +673,55 @@ class _OwnedDocker:
         self.nonce = nonce
         self.started = datetime.now(UTC).replace(microsecond=0)
         self.objects: dict[tuple[str, str], tuple[str, str]] = {}
+        self.built_images: dict[str, str] = {}
+
+    def build_image(self, tag: str, snapshot: Path, *, timeout: int = 1800) -> str:
+        """Bind a trusted successful build output, never an image name/age alone."""
+        self.absent("image", tag)
+        with tempfile.TemporaryDirectory(prefix="sar-image-output-") as directory:
+            output = Path(directory) / "image.iid"
+            started = time.time()
+            build = _run(
+                [
+                    "docker",
+                    "build",
+                    "--iidfile",
+                    str(output),
+                    "--label",
+                    f"{OWNER_LABEL}={self.nonce}",
+                    str(snapshot),
+                ],
+                timeout=timeout,
+            )
+            assert build.returncode == 0, "owned image build failed"
+            descriptor = os.open(output, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                metadata = os.fstat(descriptor)
+                assert stat.S_ISREG(metadata.st_mode) and metadata.st_size <= 80
+                assert metadata.st_uid == os.getuid() and metadata.st_nlink == 1
+                assert metadata.st_mtime >= started, "stale image construction output"
+                image_id = os.read(descriptor, 81).decode("ascii").strip()
+            finally:
+                os.close(descriptor)
+            assert re.fullmatch(r"sha256:[0-9a-f]{64}", image_id), "invalid image construction ID"
+            image = self.inspect("image", image_id)
+            assert image is not None and image.get("Id") == image_id, (
+                "image output identity mismatch"
+            )
+            assert image.get("Config", {}).get("Labels", {}).get(OWNER_LABEL) == self.nonce
+            assert not image.get("RepoTags"), "image output unexpectedly has named references"
+            created = image.get("Created")
+            assert created
+            assert datetime.fromisoformat(created.replace("Z", "+00:00")).tzinfo is not None
+            # Content metadata may come from an old cached layer. Construction
+            # output, nonce, absent tag and immutable ID prove this attempt;
+            # recorded Created still participates in exact cleanup revalidation.
+            self.built_images[image_id] = created
+            self.objects[("image", image_id)] = (self.nonce, created)
+            # Use the immutable ID directly. No tag assignment can overwrite a
+            # foreign name that races the preflight absence check.
+            self.absent("image", tag)
+            return image_id
 
     def inspect(self, kind: str, reference: str) -> dict | None:
         command = (
@@ -697,9 +748,12 @@ class _OwnedDocker:
         if labels.get(OWNER_LABEL) != self.nonce:
             raise AssertionError("qualification refused an unowned object")
         created = metadata.get("CreatedAt") or metadata.get("Created")
-        if not created or datetime.fromisoformat(created.replace("Z", "+00:00")) < self.started:
-            raise AssertionError("qualification refused an old object")
         identity = metadata.get("Id") or metadata.get("ID") or metadata.get("Name")
+        if kind == "image":
+            if not identity or self.built_images.get(identity) != created:
+                raise AssertionError("qualification refused an image without construction proof")
+        elif not created or datetime.fromisoformat(created.replace("Z", "+00:00")) < self.started:
+            raise AssertionError("qualification refused an old object")
         assert identity
         self.objects[(kind, identity)] = (self.nonce, created)
 
@@ -715,6 +769,7 @@ class _OwnedDocker:
                 if (
                     labels.get(OWNER_LABEL) != nonce
                     or (metadata.get("CreatedAt") or metadata.get("Created")) != created
+                    or (kind == "image" and metadata.get("RepoTags"))
                 ):
                     raise AssertionError("cleanup refused a changed ownership receipt")
                 command = (
@@ -864,13 +919,8 @@ def test_docker_production_overlay_qualification() -> None:
         assert sorted(on_disk) == sorted(tracked_files), "snapshot must be tracked-only"
 
         # 2. Build the image once; both runs share it (no rebuild).
-        build = _run(
-            ["docker", "build", "--label", f"{OWNER_LABEL}={nonce}", "--tag", tag, str(snapshot)],
-            timeout=1800,
-        )
-        owned.remember("image", tag)
-        assert build.returncode == 0, "owned image build failed"
-        inspect = _run(["docker", "image", "inspect", tag, "--format", "{{.Config.User}}"])
+        image_id = owned.build_image(tag, snapshot)
+        inspect = _run(["docker", "image", "inspect", image_id, "--format", "{{.Config.User}}"])
         assert inspect.stdout.strip() == "10001:10001"
         # A separately owned disposable sentinel must never be adopted or
         # deleted by this qualification's primary owner.
@@ -948,7 +998,7 @@ def test_docker_production_overlay_qualification() -> None:
 
         # 4. Owned synthetic production configuration (never the repo's):
         #    the production compose is copied, and only the image reference
-        #    is pointed at the tag built from the tracked snapshot.
+        #    is pointed at the immutable image built from the tracked snapshot.
         secret = uuid.uuid4().hex * 2
         pepper = uuid.uuid4().hex * 2
         db_password = uuid.uuid4().hex
@@ -956,7 +1006,7 @@ def test_docker_production_overlay_qualification() -> None:
         prod_text = (snapshot / "compose.production.example.yaml").read_text(encoding="utf-8")
         assert "slaif-asset-reservation:internal-alpha" in prod_text
         document = yaml.safe_load(prod_text)
-        document["services"]["app"]["image"] = tag
+        document["services"]["app"]["image"] = image_id
         for service in ("app", "db"):
             document["services"][service]["labels"] = {OWNER_LABEL: nonce}
         document["volumes"]["postgres-data"] = {"external": True, "name": volume}
@@ -1027,7 +1077,7 @@ def test_docker_production_overlay_qualification() -> None:
                 f"{project}_default",
                 "--env-file",
                 str(env_file),
-                tag,
+                image_id,
                 "python",
                 "manage.py",
                 "migrate",
@@ -1133,7 +1183,7 @@ def test_docker_production_overlay_qualification() -> None:
                 ("container", f"{project}-db-1"),
                 ("container", f"{project}-migrate"),
             ):
-                if owned.inspect(kind, name) is not None:
+                if kind != "image" and owned.inspect(kind, name) is not None:
                     owned.remember(kind, name)
         finally:
             try:
