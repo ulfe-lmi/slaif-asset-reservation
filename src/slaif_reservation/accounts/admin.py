@@ -31,8 +31,9 @@ _USER_FIELD_HELP: dict[str, Any] = {
         "IANA time zone name (for example Europe/Ljubljana) used when this user books from the web."
     ),
     "is_service_account": _(
-        "Machine account for API automation. Service accounts cannot sign in "
-        "to the member site or the administration."
+        "Enabling this flag blocks member and administration sign-in and API token issuance/use. "
+        "Service-account API access is not supported. For automation, use an active human "
+        "owner's scoped API token."
     ),
     "is_active": _("Inactive accounts cannot sign in anywhere, member or staff."),
     "is_staff": _(
