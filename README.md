@@ -153,6 +153,12 @@ rules in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 [Apache License 2.0](LICENSE).
 
+This work is associated with the
+[Slovenian AI Factory (SLAIF)](https://www.slaif.si) and acknowledges support
+from the European Commission/EuroHPC Joint Undertaking and the Slovenian
+Ministry of Higher Education, Science and Innovation for SLAIF grant
+`101254461`.
+
 ---
 
 Development in this repository runs under the Codex-only **Concentrated OAP**
