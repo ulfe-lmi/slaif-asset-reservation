@@ -47,8 +47,8 @@ reservation principal type or an application decision engine.
 
 The original Neumann motivation (shared four-A100 laboratory machine and deterministic gateway)
 is preserved as domain context. This architecture does not authorize access to Neumann, other lab
-machines, an inference endpoint, live SmartScheduling, or a production deployment. Names and
-GPU descriptions in the sanitized bootstrap inventory are provenance/labels, not verified hardware.
+machines, an inference endpoint, live SmartScheduling, or a production deployment.
+Demo descriptions are labels, not verified physical inventory; legacy migration input remains separate.
 
 ## A-02. Two planes, deliberately separate
 
@@ -89,7 +89,7 @@ dependencies. Exact resolved versions come from the preserved uv.lock.
 
 The intended service deployment is a Linux host: HTTPS reverse proxy (Caddy example) -> Gunicorn
 Django application -> private PostgreSQL. The runtime image uses UID:GID 10001:10001 and includes
-collected member/admin/Swagger assets and sanitized bootstrap files. `compose.yaml` is development;
+collected member/admin/Swagger assets and fictitious bootstrap demo files. `compose.yaml` is development;
 `compose.production.example.yaml` is an example, not proof of deployment. App host port is
 parameterized by SLAIF_APP_HOST_PORT with ordinary default 8000; rehearsal chooses its own single
 loopback port via SLAIF_REHEARSAL_PORT. PostgreSQL must not be publicly published by the production
@@ -106,7 +106,7 @@ assuming all mounted homes behave locally.
 | Package under src/slaif_reservation | Implemented responsibility | Excluded responsibility |
 |---|---|---|
 | accounts | UUID/email users, timezone validation, API token model/helpers/services, metadata admin | project/membership authorization and service-account token issuance are deferred |
-| assets | Asset/AssetTag hierarchy, safe read selectors, staff-session API, sanitized import/admin | online probing, inferred CUDA identity, scheduling writes |
+| assets | Asset/AssetTag hierarchy, safe read selectors, staff-session API, generic import/admin | online probing, inferred CUDA identity, scheduling writes |
 | reservations | ReservationPolicy, Reservation, MaintenanceBlackout, UTC/time utilities, transactional services, migrations | HTTP forms/serialization; physical execution |
 | audit | bounded event model, append operations and metadata validators | raw request retention, credential storage, privileged-DB tamper resistance |
 | web | session/profile/dashboard/member assets/availability/reservation/token views and local templates | duplicated policy evaluation; staff member-route bypass |
@@ -129,11 +129,14 @@ workflows are deferred. Staff role is operational access, not automatic cross-us
 **Inventory.** Asset records own public UUID/slug/display identity, kind, optional parent, active/
 reservable/booking mode, tags/capabilities, verification state and bounded legacy provenance.
 Preserve nullable/unknown physical locator data. Legacy source and identifier are paired meaningful
-values or both null. Sanitized import must validate before writing, be idempotent and reject
-conflicting mapping instead of silently changing identity. Bootstrap data carries 17 machine groups
-and 30 GPU child entries historically imported as 47 assets; recheck current input counts at
-installation. `chatgptpro` is excluded, not converted to a fictitious device. The explicit
-`neumanngpu4` mapping is `neumann-gpu-0`, not a CUDA index inference.
+values or both null. Bootstrap import must validate before writing, be idempotent and reject
+conflicting mapping instead of silently changing identity. Current optional bootstrap input is
+version 2: a flat generic asset list with order-independent machine/child references, all five
+existing Asset kinds and explicit state/timezone. The bundled 14-asset demo is entirely fictitious;
+it carries no legacy provenance, physical locators or verified hardware claims. It is for fresh
+local evaluation, never an upgrade import. The former version-1 site inventory (17 machine groups,
+30 GPUs, 47 rows) and mapping/exclusion evidence remain historical in Git; version 1 is no longer
+accepted. Existing stored resource identities and provenance are not changed by this cleanup.
 
 **Policies.** Policy rows govern duration, horizon, lead, cancellation cutoff, upcoming/concurrent
 counts and purpose requirements. Resolution is active exact asset, parent machine, global fallback;
@@ -268,7 +271,7 @@ are a separate environment. Keep generated env.production, secret files, dumps a
 out of Git and Docker contexts.
 
 /health/live reports process responsiveness; /health/ready additionally checks DB/migration state.
-operational_check covers DB, migrations, static assets, sanitized inventory and cleanup command
+operational_check covers DB, migrations, static assets, generic demo inventory and cleanup command
 registration. pilot_readiness_check reports aggregate counts and strict/non-strict gates without
 identifiers or mutation. A successful readiness count is not authentication, a resource grant or a
 backup/restore proof. Point-in-time observation at the inspected 2026-09 baseline revision: count
@@ -393,14 +396,14 @@ UUIDs identify public records. Preserve hierarchical machine/child assets, exist
 
 Source: AGENTS.md domain invariants 2,12; data/bootstrap/assets.yaml.
 
-Inspect: `assets/models.py; assets/bootstrap.py`. Evidence: Idempotent import; neumanngpu4 mapping; no ordinal inference.
+Inspect: `assets/models.py; assets/bootstrap.py`. Evidence: Idempotent generic import and preserved existing identities; historical mapping evidence; no ordinal inference.
 Initial independent-closure classification: **UNPROVEN**.
 
 ### SAR-004 — Asset verification
 
-Sanitized bootstrap inventory is not a physical probe or online inventory. Preserve verification flags, explicit unknown locators, inactive/nonreservable rejection and excluded chatgptpro entry.
+Generic bootstrap inventory is not a physical probe or online inventory. Preserve verification flags, explicit unknown locators and inactive/nonreservable rejection. Historical site-specific exclusions remain evidence, not generic demo resources.
 
-Source: data/bootstrap/assets.yaml warnings; conversation WO0002.
+Source: generic data/bootstrap/assets.yaml; historical conversation WO0002; human maintenance authorization.
 
 Inspect: `assets/bootstrap.py; assets/selectors.py`. Evidence: Safe import conflict/dry-run/verification-field preservation tests.
 Initial independent-closure classification: **UNPROVEN**.

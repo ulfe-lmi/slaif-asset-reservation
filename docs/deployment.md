@@ -7,6 +7,13 @@ private application/database and an operator-owned reverse proxy.
 
 A maintained Linux server hosts the reservation application outside individual compute machines. It is reachable over HTTPS by authorized humans and agents. The initial workload is small enough for one web service and one PostgreSQL instance.
 
+New documented projects are `slaif-asset-reservation` (service),
+`slaif-asset-reservation-eval` (local evaluation) and `slaif-asset-reservation-dev`
+(development). Keep an existing installation's project name: it selects the database
+volume. Follow [INSTALL](../INSTALL.md#5-authenticated-pilot-docker-deployment-canonical-procedure)
+for explicit `-p` usage, upgrades and the HTTPS boundary. Other computers connect
+to the HTTPS hostname, not to the loopback application port.
+
 ## 2. Service layout
 
 ```text
@@ -164,7 +171,7 @@ The application image:
 - run as a non-root user;
 - install only locked production dependencies;
 - collects Django admin and drf-spectacular-sidecar static assets during image build;
-- includes only the sanitized `data/bootstrap` inventory files needed by `operational_check`;
+- includes only the fictitious `data/bootstrap` demo inventory files needed by `operational_check`;
 - exclude tests, caches, `.git`, local secrets, and development data;
 - does not bake secrets into the image;
 - expose no development server;
@@ -192,9 +199,9 @@ The configured runtime user must be `10001:10001`.
 - `drf-spectacular`: generated OpenAPI schema from implemented DRF views.
 - `drf-spectacular-sidecar`: local Swagger UI CSS, JavaScript, and favicon assets so API
   documentation does not depend on an unpinned CDN resource.
-- `jsonschema`: Draft 2020-12 validation for the sanitized bootstrap inventory schema.
+- `jsonschema`: Draft 2020-12 validation for the generic bootstrap inventory schema.
 - `psycopg[binary]`: PostgreSQL driver for Django and health/readiness checks.
-- `PyYAML`: safe parsing for the sanitized bootstrap inventory import command.
+- `PyYAML`: safe parsing for the generic bootstrap inventory import command.
 - `gunicorn`: production WSGI process runner used by the container image.
 - `whitenoise`: conservative static-file middleware for the monolith deployment shape.
 
@@ -295,7 +302,7 @@ python manage.py operational_check
 ```
 
 It verifies database connectivity, applied migrations, required static assets, critical settings,
-sanitized bootstrap inventory validation, and idempotency cleanup command registration. It does not
+generic bootstrap inventory validation, and idempotency cleanup command registration. It does not
 require production secrets when run under local/test settings.
 
 For a disposable production-shaped smoke run, use the rehearsal described in `INSTALL.md`,
@@ -339,7 +346,7 @@ encryption, off-host copy, restore-drill cadence, and failure alerts remain oper
 
 A backup without a restore test into an isolated database is not release evidence.
 
-The internal-alpha pilot readiness runbook documents the backup/restore rehearsal gate:
+The pilot database-readiness runbook documents the backup/restore rehearsal gate:
 
 ```text
 docs/runbooks/internal-alpha-pilot-readiness.md
@@ -627,7 +634,7 @@ Codex may prepare changes and evidence. A human operator authorizes production d
 
 ## 12. Rollback
 
-[Installation](../INSTALL.md#9-upgrading-to-a-new-reviewed-revision-manual-alpha-procedure)
+[Installation](../INSTALL.md#9-upgrading-to-a-new-reviewed-revision-manual-procedure)
 describes application image rollback and database restoration. Preserve the previous
 image and a verified pre-upgrade backup. An older image is safe only while the
 current schema remains compatible; otherwise use the approved restore procedure.

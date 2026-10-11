@@ -1004,7 +1004,7 @@ def test_docker_production_overlay_qualification() -> None:
         db_password = uuid.uuid4().hex
         prod_yaml = root / "prod.yaml"
         prod_text = (snapshot / "compose.production.example.yaml").read_text(encoding="utf-8")
-        assert "slaif-asset-reservation:internal-alpha" in prod_text
+        assert "slaif-asset-reservation:pilot" in prod_text
         document = yaml.safe_load(prod_text)
         document["services"]["app"]["image"] = image_id
         for service in ("app", "db"):

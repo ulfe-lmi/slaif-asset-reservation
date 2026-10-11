@@ -126,7 +126,7 @@ def _seed_source() -> dict:
         purpose_required=False,
     )
     now = timezone.now()
-    asset = Asset.objects.get(slug="gpx1-gpu")
+    asset = Asset.objects.get(slug="atlas-gpu")
     seed_reservation = services.create_reservation(
         asset=asset,
         requested_by_user=member,
@@ -136,7 +136,7 @@ def _seed_source() -> dict:
         source=Reservation.SOURCE_WEB,
     ).reservation
     services.create_blackout(
-        asset=Asset.objects.get(slug="gpx2-gpu"),
+        asset=Asset.objects.get(slug="aurora-microscope"),
         actor_user=staff,
         reason="restore drill seed blackout",
         start_at=now + timedelta(days=5),

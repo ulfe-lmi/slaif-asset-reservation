@@ -26,7 +26,8 @@ Compose file, loopback-only, development settings):
 ```bash
 git clone https://github.com/ulfe-lmi/slaif-asset-reservation.git slaif-asset-reservation
 cd slaif-asset-reservation
-docker compose up -d db                 # development PostgreSQL on 127.0.0.1:5432
+# Development PostgreSQL on 127.0.0.1:5432
+docker compose -p slaif-asset-reservation-dev up -d db
 uv sync --locked --all-groups           # locked dependencies
 cp .env.example .env                    # host-side placeholders; do not commit a real .env
 uv run --env-file .env python manage.py migrate
@@ -34,6 +35,9 @@ uv run --env-file .env python manage.py runserver
 ```
 
 Notes:
+
+- For an existing developer stack, retain its recorded Compose project name
+  instead of changing to the new example name; project names select database volumes.
 
 - Django does not load `.env` automatically; host-side commands pass it
   explicitly with `uv run --env-file .env`. Its `DATABASE_URL` points at the
@@ -86,9 +90,9 @@ feature PR must not smuggle in such a decision without review.
 
 Do not place credentials, browser cookies, anti-forgery tokens, API tokens,
 peppers, private client exports, reservation details, or production data in
-commits, issues, PRs, fixtures, screenshots, or logs. The sanitized bootstrap
-inventory under `data/bootstrap/` is the only legacy-derived data set the
-repository carries, and it stays sanitized.
+commits, issues, PRs, fixtures, screenshots, or logs. The bundled inventory under
+`data/bootstrap/` is entirely fictitious. Keep institution-specific inventories
+and migration exports outside the generic product bundle.
 
 ## Agent contributions
 

@@ -11,6 +11,11 @@
   upgrades, rollback).
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — the canonical system architecture.
 
+- [Demo inventory and bootstrap format](../data/bootstrap/README.md) — optional,
+  entirely fictitious local demo; preparing generic operator inventory.
+
+Remote users use the HTTPS hostname configured through INSTALL, not port 8000.
+
 ## Users and API clients
 
 - [api-contract.md](api-contract.md) — the implemented `/api/v1/` contract:

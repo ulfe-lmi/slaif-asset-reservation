@@ -7,11 +7,12 @@
 # file per fixed slot (see docs/branding.md for the exact slots, limits and
 # fallback behavior).
 #
-#   docker compose -f compose.production.example.yaml \
+#   docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml \
 #       -f compose.branding.example.yaml up -d
 #
-#   docker compose -f compose.yaml -f compose.branding.example.yaml up -d
+#   docker compose -p slaif-asset-reservation-eval -f compose.yaml -f compose.branding.example.yaml up -d
 #
+# Keep an existing project name; SAR_COMPOSE_PROJECT is selected in INSTALL.md.
 # The operator directory is mounted read-only; the app cannot write to it.
 services:
   app:

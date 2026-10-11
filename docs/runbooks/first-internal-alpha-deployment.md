@@ -1,6 +1,6 @@
-# Runbook: First Internal-Alpha Deployment
+# Runbook: First Authenticated HTTPS Deployment
 
-This runbook is an operator checklist for a future internal-alpha host. It is not evidence that a
+This runbook is an operator checklist for an authenticated HTTPS service host. It is not evidence that a
 production deployment has happened.
 
 ## Preconditions
@@ -17,10 +17,14 @@ production deployment has happened.
 ## Steps
 
 The complete, verified command procedure is owned by `INSTALL.md`, section 5
-("Internal-alpha Docker deployment"). In summary, the operator must:
+("Authenticated pilot Docker deployment"). In summary, the operator must:
+
+Record the Compose project name first: new services use `slaif-asset-reservation`;
+existing installations retain their actual project name and database volume. Use
+INSTALL's explicit `-p` commands throughout. Do not import the demo on upgrades.
 
 1. Build the reviewed image at the reviewed commit (example tag
-   `slaif-asset-reservation:internal-alpha`, plus a commit-addressable tag for rollback).
+   `slaif-asset-reservation:pilot`, plus a commit-addressable tag for rollback).
 2. Prepare `deploy/env.production` from `deploy/env.production.example` with real values from a
    protected secret store. Never commit `deploy/env.production`.
 3. Store the PostgreSQL password in `deploy/secrets/postgres_password`, matching the

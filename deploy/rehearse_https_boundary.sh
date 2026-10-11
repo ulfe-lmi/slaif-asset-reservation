@@ -410,7 +410,7 @@ import sys
 
 src, dst, tag = sys.argv[1:4]
 text = open(src, encoding="utf-8").read()
-needle = "    image: slaif-asset-reservation:internal-alpha"
+needle = "    image: slaif-asset-reservation:pilot"
 assert text.count(needle) == 1, "app image line not found exactly once"
 open(dst, "w", encoding="utf-8").write(text.replace(needle, f"    image: {tag}"))
 PY
