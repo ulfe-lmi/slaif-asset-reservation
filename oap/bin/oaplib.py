@@ -117,8 +117,36 @@ def split_id(i: str):
 # ---------------------------------------------------------------------- path safety
 
 
+def resolve_home_path(value) -> str:
+    """Expand only the current user's ~ notation, without evaluating shell data.
+
+    Keep other paths as written so CLI cwd-relative file arguments still work.
+    Runtime configuration separately requires absolute or home-relative paths.
+    Do not resolve symlinks here: ownership/ancestor guards need the original path.
+    """
+    value = os.fspath(value)
+    if "\x00" in value:
+        raise ValidationError("path contains NUL")
+    if not value.startswith("~"):
+        return value
+    if value != "~" and not value.startswith("~/"):
+        raise ValidationError("only the current user's ~/ path notation is supported")
+    relative = value[2:] if value.startswith("~/") else ""
+    if Path(relative).is_absolute() or ".." in Path(relative).parts:
+        raise ValidationError("home-relative path cannot contain parent traversal")
+    return str(Path.home() / relative)
+
+
+def argument_path(value) -> str:
+    """Argparse adapter: malformed paths produce a bounded usage error."""
+    try:
+        return resolve_home_path(value)
+    except ValidationError as error:
+        raise ValueError(str(error)) from error
+
+
 def canonical(p) -> str:
-    return os.path.realpath(os.fspath(p))
+    return os.path.realpath(resolve_home_path(p))
 
 
 def _owner_ok(st: os.stat_result, allow_root_owned: bool = True) -> bool:
@@ -153,6 +181,12 @@ def validate_roots(repo_root, strategic_home, bootstrap_root, create_missing=Tru
         if not p:
             errs.append(f"{name} root empty")
             continue
+        try:
+            p = resolve_home_path(p)
+        except ValidationError as error:
+            errs.append(f"{name} root invalid: {error}")
+            continue
+        roots[name] = p
         if Path(p).is_symlink():
             errs.append(f"{name} root is a symlink: {p}")
             continue
@@ -839,12 +873,18 @@ def parse_runtime_env(text: str):
             for tok in v:
                 if "$" in tok or "`" in tok or ";" in tok:
                     errs.append(f"line {n}: argv tokens must be plain strings")
-            values[key] = v
+            try:
+                values[key] = [resolve_home_path(tok) for tok in v]
+            except ValidationError as error:
+                errs.append(f"line {n}: invalid argv path: {error}")
         elif kind == "path":
-            if val and not val.startswith("/"):
-                errs.append(f"line {n}: path must be absolute or empty")
+            if val and not val.startswith(("/", "~")):
+                errs.append(f"line {n}: path must be absolute, home-relative or empty")
                 continue
-            values[key] = val
+            try:
+                values[key] = resolve_home_path(val)
+            except ValidationError as error:
+                errs.append(f"line {n}: invalid path: {error}")
         else:
             values[key] = val
     return values, errs

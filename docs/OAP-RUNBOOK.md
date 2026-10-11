@@ -9,9 +9,9 @@ dry runs and the fixture test suite.
 
 | Role | Start directory | Instruction source | Home |
 |---|---|---|---|
-| CODING | `/home/ubuntu/codex-work/slaif-asset-reservation` | `AGENTS.md` router -> `oap/coding-instructions/AGENTS.md` | `/home/ubuntu/codex-supervision/slaif-asset-reservation/agent-homes/coding` |
-| STRATEGIC | `/home/ubuntu/codex-supervision/slaif-asset-reservation` | installed `/home/ubuntu/codex-supervision/slaif-asset-reservation/AGENTS.md` (versioned source `/home/ubuntu/codex-work/slaif-asset-reservation/oap/strategic-instructions/AGENTS.md`) | `/home/ubuntu/codex-supervision/slaif-asset-reservation/agent-homes/strategic` |
-| ICA | isolated | `/home/ubuntu/codex-work/slaif-asset-reservation/oap/prompts/ica-start.md` + `docs/audit/ICA-PROTOCOL.md` | fresh isolated context |
+| CODING | `~/codex-work/slaif-asset-reservation` | `AGENTS.md` router -> `oap/coding-instructions/AGENTS.md` | `~/codex-supervision/slaif-asset-reservation/agent-homes/coding` |
+| STRATEGIC | `~/codex-supervision/slaif-asset-reservation` | installed `~/codex-supervision/slaif-asset-reservation/AGENTS.md` (versioned source `~/codex-work/slaif-asset-reservation/oap/strategic-instructions/AGENTS.md`) | `~/codex-supervision/slaif-asset-reservation/agent-homes/strategic` |
+| ICA | isolated | `~/codex-work/slaif-asset-reservation/oap/prompts/ica-start.md` + `docs/audit/ICA-PROTOCOL.md` | fresh isolated context |
 
 Both operational clients are Codex with separate private CODEX_HOME directories. No
 operational CLAUDE.md or Claude launcher exists. Role markers are routing aids, not
@@ -20,8 +20,8 @@ authentication.
 ## 2. Setup (before any credentials)
 
 ```bash
-/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/doctor.sh --repo /home/ubuntu/codex-work/slaif-asset-reservation --strategic-home /home/ubuntu/codex-supervision/slaif-asset-reservation --level structural
-/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/launch-setup-tmux.sh --repo /home/ubuntu/codex-work/slaif-asset-reservation --strategic-home /home/ubuntu/codex-supervision/slaif-asset-reservation
+~/codex-work/slaif-asset-reservation/oap/bin/doctor.sh --repo ~/codex-work/slaif-asset-reservation --strategic-home ~/codex-supervision/slaif-asset-reservation --level structural
+~/codex-work/slaif-asset-reservation/oap/bin/launch-setup-tmux.sh --repo ~/codex-work/slaif-asset-reservation --strategic-home ~/codex-supervision/slaif-asset-reservation
 ```
 
 The setup tmux session creates two side-by-side shells (strategy home left, repository
@@ -33,7 +33,7 @@ authentication files between homes.
 
 1. Record installed Codex version/help/config and safe instruction discovery
    (`docs/AGENT-ROLE-SETUP.md` lists the exact checks).
-2. Fill `/home/ubuntu/codex-supervision/slaif-asset-reservation/runtime.env` (mode 0600) with supported argv arrays and model
+2. Fill `~/codex-supervision/slaif-asset-reservation/runtime.env` (mode 0600) with supported argv arrays and model
    identifiers only after discovery; no silent fallback; no credentials in the file.
 3. Qualify the private remote publication path and inspect merge side effects
    (workflow/app/webhook); unverified external effects keep merge delegation blocked.
@@ -46,13 +46,13 @@ A human records an externally attributable activation identifying: repository, b
 branch, accepted governance commit/digest, allowed runtime/roots/network/resources,
 selected milestone/objective range, development-merge permission scope, acknowledged
 merge side-effect review, adjudicator provenance mechanism and revocation/stop
-procedure. `/home/ubuntu/codex-supervision/slaif-asset-reservation/runtime.env` gains `OAP_ACTIVATION_ENABLED=true` plus the authority
+procedure. `~/codex-supervision/slaif-asset-reservation/runtime.env` gains `OAP_ACTIVATION_ENABLED=true` plus the authority
 reference **only after** that record exists. The file is data, never proof.
 
 ## 5. Operation (only after activation)
 
 ```bash
-/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/launch-oap-tmux.sh --repo /home/ubuntu/codex-work/slaif-asset-reservation --strategic-home /home/ubuntu/codex-supervision/slaif-asset-reservation
+~/codex-work/slaif-asset-reservation/oap/bin/launch-oap-tmux.sh --repo ~/codex-work/slaif-asset-reservation --strategic-home ~/codex-supervision/slaif-asset-reservation
 ```
 
 Gates (all required): doctor operational readiness — activation enabled with an
@@ -89,3 +89,24 @@ state untouched).
 Absent `oap/active` = inactive. Empty/malformed pointer = CORRUPT (preserve, stop).
 Recovery follows `oap/RECOVERY.md`. Only `publish_order.py` (STRATEGIC role,
 activation enabled) can create an active pointer; nothing else does.
+
+## Moving to another machine/account
+
+Store installation paths in `runtime.env` as `~/codex-work/...` and
+`~/codex-supervision/...`. The shared parser resolves them against the current
+user's home before invoking tools; quoted `~/...` CLI paths are supported too.
+Absolute paths remain valid, but cwd-relative runtime paths, `~other-user`,
+parent traversal, NUL and shell interpolation are rejected. Never source/eval
+`runtime.env`; `$HOME` is not its data syntax.
+
+Preserve journals, completed pointers/orders/reports and private history; a move
+is not a new objective or authority grant. Keep old approvals/client qualifications
+as historical evidence, validate ownership/FIFOs/CLI behavior on the new host,
+and do not infer unrestricted-runtime or live-inference approval. Do not copy
+credentials to qualify clients. Setup tmux waits briefly for both owned panes to
+reach the requested directories before reporting success; it refuses a setup
+that does not settle within the bounded readiness window.
+
+Only active configuration/instructions are rebound. Immutable historical records
+keep their original machine paths. Use the current selected task and authority
+checks before publication or role launch.

@@ -8,13 +8,13 @@ model identifiers, provider argv and authentication remain **UNCONFIGURED** by d
 
 1. `codex --version`, `codex --help`, `codex exec --help` on the operational host.
 2. Configuration behavior: how global/ancestor/root/nested `AGENTS.md` discovery and
-   instruction limits apply for cwd `/home/ubuntu/codex-work/slaif-asset-reservation` and cwd `/home/ubuntu/codex-supervision/slaif-asset-reservation`; verify the root router is
+   instruction limits apply for cwd `~/codex-work/slaif-asset-reservation` and cwd `~/codex-supervision/slaif-asset-reservation`; verify the root router is
    the only repository-root instruction file and no ancestor directory injects a
    conflicting role. Do not modify unrelated ancestor/global instructions.
 3. Safe instruction-discovery observation without live model calls (help/config
    introspection only). A later authorized live client probe is separate and
    cost-bounded.
-4. Fill supported invocation argv in `/home/ubuntu/codex-supervision/slaif-asset-reservation/runtime.env`:
+4. Fill supported invocation argv in `~/codex-supervision/slaif-asset-reservation/runtime.env`:
    `OAP_CODING_ARGV_JSON`, `OAP_STRATEGIC_ARGV_JSON` (exact arrays; the wrapper never
    shell-evals them) and model identifiers only if explicitly approved.
 5. Historical coding preference `chatgpt-5.5-high` is preserved as a user-specified
@@ -23,8 +23,8 @@ model identifiers, provider argv and authentication remain **UNCONFIGURED** by d
 
 ## Homes (created by bootstrap, empty except generated config)
 
-- `/home/ubuntu/codex-supervision/slaif-asset-reservation/agent-homes/coding` — private CODEX_HOME for coding rounds.
-- `/home/ubuntu/codex-supervision/slaif-asset-reservation/agent-homes/strategic` — private CODEX_HOME for the strategic role.
+- `~/codex-supervision/slaif-asset-reservation/agent-homes/coding` — private CODEX_HOME for coding rounds.
+- `~/codex-supervision/slaif-asset-reservation/agent-homes/strategic` — private CODEX_HOME for the strategic role.
 
 Neither contains copied authentication, sessions or histories. Each role authenticates
 independently later. Directories are mode 0700; config/FIFOs mode 0600.

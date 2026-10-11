@@ -370,7 +370,15 @@ def cmd_setup_tmux(args):
                             "bash",
                         ],
                         base
-                        + ["split-window", "-h", "-t", session + ":0", "-c", str(repo), "bash"],
+                        + [
+                            "split-window",
+                            "-h",
+                            "-t",
+                            session + ":0",
+                            "-c",
+                            str(repo),
+                            "bash",
+                        ],
                     ],
                     "note": (
                         "shells only; no operational agents, active order or signal; "
@@ -391,16 +399,45 @@ def cmd_setup_tmux(args):
             1,
         )
     rc, out, err = oaplib.run_tmux(
-        base, ["new-session", "-d", "-s", session, "-x", "200", "-y", "50", "-c", str(home), "bash"]
+        base,
+        [
+            "new-session",
+            "-d",
+            "-s",
+            session,
+            "-x",
+            "200",
+            "-y",
+            "50",
+            "-c",
+            str(home),
+            "bash",
+        ],
     )
     if rc != 0:
         return _fail({"step": "session", "error": err.strip()[:200]}, 1)
     rc, out, err = oaplib.run_tmux(
-        base, ["split-window", "-h", "-t", session + ":0", "-c", str(repo), "bash"]
+        base,
+        ["split-window", "-h", "-t", session + ":0", "-c", str(repo), "bash"],
     )
     if rc != 0:
         oaplib.run_tmux(base, ["kill-session", "-t", session])
         return _fail({"step": "split", "error": err.strip()[:200]}, 1)
+    # tmux acknowledges pane creation before the forked shell has completed
+    # chdir. Verify both directories before declaring the setup ready.
+    deadline = time.monotonic() + 2.0
+    expected = {str(home.resolve()), str(repo.resolve())}
+    while True:
+        ready_rc, paths, _ = oaplib.run_tmux(
+            base, ["list-panes", "-t", session, "-F", "#{pane_current_path}"]
+        )
+        observed = paths.splitlines()
+        if ready_rc == 0 and len(observed) == 2 and set(observed) == expected:
+            break
+        if time.monotonic() >= deadline:
+            oaplib.run_tmux(base, ["kill-session", "-t", session])
+            return _fail({"step": "cwd", "error": "owned setup panes did not reach requested cwd"})
+        time.sleep(0.02)
     print(
         json.dumps(
             {
@@ -482,15 +519,15 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("coding", "strategic"):
         p = sub.add_parser(name)
-        p.add_argument("--repo", required=True)
-        p.add_argument("--strategic-home", required=True)
+        p.add_argument("--repo", type=oaplib.argument_path, required=True)
+        p.add_argument("--strategic-home", type=oaplib.argument_path, required=True)
         p.add_argument("--print-only", action="store_true")
         if name == "coding":
             p.add_argument("--once", action="store_true")
     for name in ("setup-tmux", "oap-tmux"):
         p = sub.add_parser(name)
-        p.add_argument("--repo", required=True)
-        p.add_argument("--strategic-home", required=True)
+        p.add_argument("--repo", type=oaplib.argument_path, required=True)
+        p.add_argument("--strategic-home", type=oaplib.argument_path, required=True)
         p.add_argument("--print-only", action="store_true")
         if name == "setup-tmux":
             p.add_argument("--socket", default=None)
