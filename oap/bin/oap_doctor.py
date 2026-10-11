@@ -22,8 +22,8 @@ import oaplib  # noqa: E402
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--repo", required=True)
-    ap.add_argument("--strategic-home", required=True)
+    ap.add_argument("--repo", type=oaplib.argument_path, required=True)
+    ap.add_argument("--strategic-home", type=oaplib.argument_path, required=True)
     ap.add_argument("--level", choices=("structural", "operational", "all"), default="all")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)

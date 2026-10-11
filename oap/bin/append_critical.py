@@ -81,8 +81,8 @@ def validate_entry(payload: bytes, kind: str, expected_id: str = None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--repo", required=True)
-    ap.add_argument("--order", required=True)
+    ap.add_argument("--repo", type=oaplib.argument_path, required=True)
+    ap.add_argument("--order", type=oaplib.argument_path, required=True)
     ap.add_argument("--kind", choices=("admission", "evidence"), default="admission")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--json", action="store_true")

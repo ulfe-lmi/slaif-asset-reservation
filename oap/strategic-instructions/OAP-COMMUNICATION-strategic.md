@@ -1,25 +1,25 @@
 # OAP communication — strategic role (full protocol)
 
 Generated for this installation from the package OAP-PROTOCOL (all OP clauses retained);
-concrete paths are resolved for this project. The versioned source lives at
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/strategic-instructions/OAP-COMMUNICATION-strategic.md`; this home holds the
+paths use ~/ notation for the current user home. The versioned source lives at
+`~/codex-work/slaif-asset-reservation/oap/strategic-instructions/OAP-COMMUNICATION-strategic.md`; this home holds the
 installed byte-identical copy.
 
 ## OP-01. Planes, ownership, state and authorization
 
-`/home/ubuntu/codex-work/slaif-asset-reservation` is the existing private product Git workspace. `/home/ubuntu/codex-supervision/slaif-asset-reservation` is the private, separate
+`~/codex-work/slaif-asset-reservation` is the existing private product Git workspace. `~/codex-supervision/slaif-asset-reservation` is the private, separate
 POSIX strategic home. Roles are explicit. All real publication and execution remain
 disabled until candidate adoption and attributable activation.
 
 Canonical paths for this installation:
-- `/home/ubuntu/codex-work/slaif-asset-reservation/oap/orders/<ID>-<slug>.md`: immutable FINAL orders, strategy-authored.
-- `/home/ubuntu/codex-work/slaif-asset-reservation/oap/reports/<ID>-<slug>.md`: immutable coding reports, final report-only commit.
-- `/home/ubuntu/codex-work/slaif-asset-reservation/oap/active`: exactly ID + LF, or absent; empty/malformed is an error.
-- `/home/ubuntu/codex-work/slaif-asset-reservation/CRITICAL.md`: canonical append-only DHA register; never a private editable copy.
-- `/home/ubuntu/codex-supervision/slaif-asset-reservation/control.fifo`, `/home/ubuntu/codex-supervision/slaif-asset-reservation/response.fifo`: notifications only, owned mode 0600.
-- private `/home/ubuntu/codex-supervision/slaif-asset-reservation/workorders/state.json`: reconstructable journal, never overrides remote.
-- private `/home/ubuntu/codex-supervision/slaif-asset-reservation/workorders/receipts/`: publication/review/install observations.
-- private `/home/ubuntu/codex-supervision/slaif-asset-reservation/runtime.env` and `/home/ubuntu/codex-supervision/slaif-asset-reservation/activation.json`: configuration and externally
+- `~/codex-work/slaif-asset-reservation/oap/orders/<ID>-<slug>.md`: immutable FINAL orders, strategy-authored.
+- `~/codex-work/slaif-asset-reservation/oap/reports/<ID>-<slug>.md`: immutable coding reports, final report-only commit.
+- `~/codex-work/slaif-asset-reservation/oap/active`: exactly ID + LF, or absent; empty/malformed is an error.
+- `~/codex-work/slaif-asset-reservation/CRITICAL.md`: canonical append-only DHA register; never a private editable copy.
+- `~/codex-supervision/slaif-asset-reservation/control.fifo`, `~/codex-supervision/slaif-asset-reservation/response.fifo`: notifications only, owned mode 0600.
+- private `~/codex-supervision/slaif-asset-reservation/workorders/state.json`: reconstructable journal, never overrides remote.
+- private `~/codex-supervision/slaif-asset-reservation/workorders/receipts/`: publication/review/install observations.
+- private `~/codex-supervision/slaif-asset-reservation/runtime.env` and `~/codex-supervision/slaif-asset-reservation/activation.json`: configuration and externally
   attributable activation reference, never proof by file/name/flag alone.
 
 Strategy writes order/pointer; coding commits their exact authorized bytes. Coding owns
@@ -80,13 +80,13 @@ Exactly one body declaration:
 ```
 or `- Decision: APPEND CRIT-0001` with the full strategic exact payload. Initial drafts
 carry state DRAFT UNTIL STRATEGIC RECONCILIATION and live only under
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/strategic-instructions/initial-orders/` and this home's `drafts/`; the
+`~/codex-work/slaif-asset-reservation/oap/strategic-instructions/initial-orders/` and this home's `drafts/`; the
 publisher never accepts them. Future SHAs/PRs/results are not fabricated. Strategy
 fills final metadata after fresh remote/state inspection.
 
 ## OP-04. Two recoverable publication writes
 
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/publish_order.py --repo /home/ubuntu/codex-work/slaif-asset-reservation --strategic-home /home/ubuntu/codex-supervision/slaif-asset-reservation --order FILE
+`~/codex-work/slaif-asset-reservation/oap/bin/publish_order.py --repo ~/codex-work/slaif-asset-reservation --strategic-home ~/codex-supervision/slaif-asset-reservation --order FILE
 [--dry-run] [--recover]`. All inputs are checked before any write. Dry-run performs
 zero writes, not even lock/journal/cache/temp creation. Real publication uses the
 private publication lock and validates current accepted state. First create the order
@@ -104,7 +104,7 @@ governance and remote state - never a new candidate file's self-declared permiss
 
 ## OP-05. Transport
 
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/oap_fifo.py send --fifo PATH --timeout SECONDS`;
+`~/codex-work/slaif-asset-reservation/oap/bin/oap_fifo.py send --fifo PATH --timeout SECONDS`;
 `receive --fifo PATH --timeout SECONDS`. Payload is exactly bytes 0x4F 0x4B (ASCII
 OK), length 2, no newline/ID/status/JSON. The sender handles partial writes/EINTR and
 closes the descriptor. The receiver holds a single-consumer lease, accumulates until
@@ -120,12 +120,12 @@ notifications; all pipe tests use temp paths.
 
 ## OP-06. Coding runner and idle discipline
 
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/launch-coding-agent.sh --repo /home/ubuntu/codex-work/slaif-asset-reservation --strategic-home /home/ubuntu/codex-supervision/slaif-asset-reservation
+`~/codex-work/slaif-asset-reservation/oap/bin/launch-coding-agent.sh --repo ~/codex-work/slaif-asset-reservation --strategic-home ~/codex-supervision/slaif-asset-reservation
 [--print-only] [--once]` discovers the configured Codex argv from the qualified private
-profile and never shell-evals arbitrary strings. It sets cwd `/home/ubuntu/codex-work/slaif-asset-reservation`, a separate
-CODEX_HOME (`/home/ubuntu/codex-supervision/slaif-asset-reservation/agent-homes/coding`), OAP_ROLE=CODING and the visible startup prompt
-(`/home/ubuntu/codex-work/slaif-asset-reservation/oap/prompts/coding-round.md`). The long-lived wrapper blocks on
-`/home/ubuntu/codex-supervision/slaif-asset-reservation/control.fifo`, consumes it exactly once, checks durable state, then launches one
+profile and never shell-evals arbitrary strings. It sets cwd `~/codex-work/slaif-asset-reservation`, a separate
+CODEX_HOME (`~/codex-supervision/slaif-asset-reservation/agent-homes/coding`), OAP_ROLE=CODING and the visible startup prompt
+(`~/codex-work/slaif-asset-reservation/oap/prompts/coding-round.md`). The long-lived wrapper blocks on
+`~/codex-supervision/slaif-asset-reservation/control.fifo`, consumes it exactly once, checks durable state, then launches one
 fresh coding context for that round. If state lacks pending work it remains idle without
 a model call. The model must NOT wait for control a second time. A crash resumes the same
 ID/branch/PR after recovery.
@@ -138,26 +138,26 @@ operational launch without activated authority.
 
 ## OP-07. Strategic runner
 
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/launch-strategic-agent.sh --repo /home/ubuntu/codex-work/slaif-asset-reservation --strategic-home /home/ubuntu/codex-supervision/slaif-asset-reservation
-[--print-only]` starts from `/home/ubuntu/codex-supervision/slaif-asset-reservation` with the full installed constitution, private
-strategy CODEX_HOME (`/home/ubuntu/codex-supervision/slaif-asset-reservation/agent-homes/strategic`) and the visible STRATEGIC prompt
-(`/home/ubuntu/codex-work/slaif-asset-reservation/oap/prompts/strategic-start.md`). Use supported Codex interactive/session
-behavior qualified at install time (recorded in `/home/ubuntu/codex-supervision/slaif-asset-reservation/RUNTIME.md`). Strategy may wait
+`~/codex-work/slaif-asset-reservation/oap/bin/launch-strategic-agent.sh --repo ~/codex-work/slaif-asset-reservation --strategic-home ~/codex-supervision/slaif-asset-reservation
+[--print-only]` starts from `~/codex-supervision/slaif-asset-reservation` with the full installed constitution, private
+strategy CODEX_HOME (`~/codex-supervision/slaif-asset-reservation/agent-homes/strategic`) and the visible STRATEGIC prompt
+(`~/codex-work/slaif-asset-reservation/oap/prompts/strategic-start.md`). Use supported Codex interactive/session
+behavior qualified at install time (recorded in `~/codex-supervision/slaif-asset-reservation/RUNTIME.md`). Strategy may wait
 through a blocking response-FIFO helper; no periodic paid model calls. Logical
 continuity persists even when a new incarnation reloads a handoff from
-`/home/ubuntu/codex-supervision/slaif-asset-reservation/workorders/STRATEGIC-HANDOFF.md`. Never invent flags for background resume,
+`~/codex-supervision/slaif-asset-reservation/workorders/STRATEGIC-HANDOFF.md`. Never invent flags for background resume,
 model identifiers, context size, cost or an API endpoint. Missing qualified
 configuration blocks operation, not setup.
 
 ## OP-08. Setup vs operational tmux
 
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/launch-setup-tmux.sh [--print-only]`: create a NEW owned tmux session
-(isolated socket) with two side-by-side panes: left strategy (cwd `/home/ubuntu/codex-supervision/slaif-asset-reservation`), right
-coding (cwd `/home/ubuntu/codex-work/slaif-asset-reservation`). Shells only; permit deliberate human login/config; no
+`~/codex-work/slaif-asset-reservation/oap/bin/launch-setup-tmux.sh [--print-only]`: create a NEW owned tmux session
+(isolated socket) with two side-by-side panes: left strategy (cwd `~/codex-supervision/slaif-asset-reservation`), right
+coding (cwd `~/codex-work/slaif-asset-reservation`). Shells only; permit deliberate human login/config; no
 operational agents, active order or signal. It must work when model/auth/remote is
 missing. Never repurpose another tmux session or inherit unrelated terminal state.
 
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/launch-oap-tmux.sh [--print-only]`: same topology, but it first
+`~/codex-work/slaif-asset-reservation/oap/bin/launch-oap-tmux.sh [--print-only]`: same topology, but it first
 requires the doctor operational gates, explicit activation scope/authority, accepted
 governance/copy identities, source/projection integrity, qualified runtime/client/
 remote, no conflicting active state/process and checked merge side effects. Only then
@@ -175,7 +175,7 @@ operation permission.
    report truthfully.
 5. Captures the literal full implementation head from the actual Git object format
    (SHA1 or SHA256).
-6. Writes immutable `/home/ubuntu/codex-work/slaif-asset-reservation/oap/reports/<ID>-<slug>.md`; commits ONLY that file,
+6. Writes immutable `~/codex-work/slaif-asset-reservation/oap/reports/<ID>-<slug>.md`; commits ONLY that file,
    implementation head first parent.
 7. Pushes the report commit; verifies remote PR/head/branch/report bytes/parent/
    report-only diff privately.
@@ -197,7 +197,7 @@ inside its own not-yet-published report.
 
 ## OP-10. Report verification and correction
 
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/verify_report.py --repo /home/ubuntu/codex-work/slaif-asset-reservation --id ID --pr N --head H --remote
+`~/codex-work/slaif-asset-reservation/oap/bin/verify_report.py --repo ~/codex-work/slaif-asset-reservation --id ID --pr N --head H --remote
 REMOTE [--json]` verifies actual object format, exact file/order digest, literal
 implementation parent, report-only changed path, no new CRITICAL mutation in the
 report commit, correct PR/branch/round, remote availability and exact remote head.
@@ -240,11 +240,11 @@ release.
 The order's `## Exact CRITICAL payload` contains one fenced `text` block: UTF-8 LF
 bytes between the opening LF and the closing fence, INCLUDING the final LF.
 `Payload SHA-256:` records that exact byte sequence. Required entry headings/fields
-are in `/home/ubuntu/codex-work/slaif-asset-reservation/oap/templates/CRITICAL-ENTRY-TEMPLATE.md`. No placeholders or unknown
+are in `~/codex-work/slaif-asset-reservation/oap/templates/CRITICAL-ENTRY-TEMPLATE.md`. No placeholders or unknown
 PR number in a real entry. The ordered prior register SHA-256 and byte length bind
 history.
 
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/append_critical.py --repo /home/ubuntu/codex-work/slaif-asset-reservation --order ORDER --kind
+`~/codex-work/slaif-asset-reservation/oap/bin/append_critical.py --repo ~/codex-work/slaif-asset-reservation --order ORDER --kind
 admission|evidence [--dry-run]` validates the active order, strategy-authorized exact
 bytes, all-five attestation, unique ID, complete fields, actual PR, trusted prior
 register prefix and owner lock. Admission accepts only the next monotonic CRIT ID; a
@@ -263,15 +263,15 @@ the implementation head, never the final report-only commit.
 ## OP-13. Human recording and gate evaluation
 
 A separate human recording procedure appends the exact
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/templates/HUMAN-ADJUDICATION-TEMPLATE.md` record. Values only
+`~/codex-work/slaif-asset-reservation/oap/templates/HUMAN-ADJUDICATION-TEMPLATE.md` record. Values only
 ACCEPTED/REJECTED/CHANGE REQUIRED/DEFERRED. The entry/scope/conditions/evidence are
 bound to independently verified origin: for example an externally signed human
 artifact or a GitHub comment/review from an explicitly approved human identity not
 operated by agent credentials. Bootstrap produces trust-config examples
-(`/home/ubuntu/codex-work/slaif-asset-reservation/oap/governance/HUMAN-AUTHORITY.example.json`), not a populated allowlist or
+(`~/codex-work/slaif-asset-reservation/oap/governance/HUMAN-AUTHORITY.example.json`), not a populated allowlist or
 proof. Default provenance=MISSING => gate blocked.
 
-`/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/check_state.py --check-human-gates TARGET` reads the latest
+`~/codex-work/slaif-asset-reservation/oap/bin/check_state.py --check-human-gates TARGET` reads the latest
 attributable disposition for each applicable entry. Unverified human-looking text or
 a later non-ACCEPTED disposition blocks. Conditions requiring material work should
 remain CHANGE REQUIRED/DEFERRED until satisfied, not auto-treated as acceptance.
@@ -281,7 +281,7 @@ attribution or judgment correctness.
 
 ## OP-14. Recovery state machine
 
-See `/home/ubuntu/codex-work/slaif-asset-reservation/oap/RECOVERY.md` for the complete generated protocol. Observation ->
+See `~/codex-work/slaif-asset-reservation/oap/RECOVERY.md` for the complete generated protocol. Observation ->
 state / next permitted action: no pointer INACTIVE (wait externally, no model
 invocation); empty/malformed pointer or nonunique order CORRUPT (preserve and stop);
 durable order with old/missing pointer and identical unfinished journal PUBLISHING
@@ -306,7 +306,7 @@ copies, preserves private state and refuses conflicts.
 
 All helpers support `--help` and bounded, redacted failures; write helpers support a
 real no-write dry-run or `--print-only`. Shared stdlib code
-(`/home/ubuntu/codex-work/slaif-asset-reservation/oap/bin/oaplib.py`) implements IDs, paths, schemas, hashes, locks and the
+(`~/codex-work/slaif-asset-reservation/oap/bin/oaplib.py`) implements IDs, paths, schemas, hashes, locks and the
 remote adapter once. No redundant daemons/databases/dependency platform.
 
 | Helper | Contract for this installation |
@@ -331,10 +331,15 @@ may silently call a real model or product endpoint during bootstrap.
 
 ## OP-16. Private configuration is data, not executable authority
 
-Parse `/home/ubuntu/codex-supervision/slaif-asset-reservation/runtime.env` with the strict allowlisted data parser in oaplib - never
+Parse `~/codex-supervision/slaif-asset-reservation/runtime.env` with the strict allowlisted data parser in oaplib - never
 shell source/eval. Reject duplicate keys, interpolation/command substitution and
 invalid booleans/paths/argv JSON. Render exact argv arrays without shell
 concatenation. Missing model/auth/authority remains explicit. Private configuration
 never contains copied credentials, and flipping an activation boolean cannot
 establish human origin. The externally attributable authority reference stays
 separate from local reconstructable state.
+
+Home-relative path data is expanded by the shared helper before filesystem/client use.
+Only ~ and ~/ are supported; foreign-user expansion, parent traversal and absolute
+subpaths are refused. Absolute paths remain supported. CLI cwd-relative file arguments
+remain relative to cwd. No shell sourcing/interpolation is introduced.

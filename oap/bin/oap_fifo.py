@@ -23,7 +23,7 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("send", "receive"):
         p = sub.add_parser(name)
-        p.add_argument("--fifo", required=True)
+        p.add_argument("--fifo", type=oaplib.argument_path, required=True)
         p.add_argument("--timeout", type=float, default=10.0)
         if name == "receive":
             p.add_argument("--owner", default="oap-receiver")

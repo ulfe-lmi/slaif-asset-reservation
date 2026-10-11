@@ -23,10 +23,17 @@ CLASSIFICATIONS = ("IMPLEMENTED", "PARTIAL", "ABSENT", "UNPROVEN")
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--repo", required=True)
-    ap.add_argument("--file", required=True, help="ICA request or report file")
+    ap.add_argument("--repo", type=oaplib.argument_path, required=True)
+    ap.add_argument(
+        "--file", type=oaplib.argument_path, required=True, help="ICA request or report file"
+    )
     ap.add_argument("--kind", choices=("request", "report"), default="request")
-    ap.add_argument("--requirements-json", default=None, help="SAR inventory to cross-check")
+    ap.add_argument(
+        "--requirements-json",
+        type=oaplib.argument_path,
+        default=None,
+        help="SAR inventory to cross-check",
+    )
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     repo = Path(args.repo)

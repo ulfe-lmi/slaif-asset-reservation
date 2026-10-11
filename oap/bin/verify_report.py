@@ -26,7 +26,7 @@ import oaplib  # noqa: E402
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--repo", required=True)
+    ap.add_argument("--repo", type=oaplib.argument_path, required=True)
     ap.add_argument("--id", required=True)
     ap.add_argument("--pr", type=int, default=None)
     ap.add_argument("--head", default=None, help="expected report publication commit (full ID)")

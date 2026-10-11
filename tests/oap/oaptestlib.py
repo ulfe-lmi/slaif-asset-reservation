@@ -50,8 +50,8 @@ def record_blocked(case: str, reason: str) -> None:
 def real_strategic_home(case: str):
     """The real materialized strategic home, or None with a recorded BLOCKED area."""
     home = Path(
-        os.environ.get(
-            "OAP_TEST_STRATEGIC_HOME", "/home/ubuntu/codex-supervision/slaif-asset-reservation"
+        oaplib.resolve_home_path(
+            os.environ.get("OAP_TEST_STRATEGIC_HOME", "~/codex-supervision/slaif-asset-reservation")
         )
     )
     if not home.is_dir():

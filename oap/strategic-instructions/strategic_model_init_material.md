@@ -26,10 +26,10 @@ is not execution; no LLM in the product runtime. Codex is a development client o
   (including the historical 419-test report and main push CI run 28589883454) is
   historical, not a current measurement and not an ICA.
 - Accepted architecture preserved byte-identically at
-  `/home/ubuntu/codex-work/slaif-asset-reservation/docs/bootstrap/1/previous/docs-architecture.md`; the current canonical
-  architecture is root `/home/ubuntu/codex-work/slaif-asset-reservation/ARCHITECTURE.md` (candidate until human adoption).
-- Root `/home/ubuntu/codex-work/slaif-asset-reservation/PLAN.md` is a newly synthesized agreement (labeled as such); the
-  zero-entry `/home/ubuntu/codex-work/slaif-asset-reservation/CRITICAL.md` is a seed installed only because no register existed
+  `~/codex-work/slaif-asset-reservation/docs/bootstrap/1/previous/docs-architecture.md`; the current canonical
+  architecture is root `~/codex-work/slaif-asset-reservation/ARCHITECTURE.md` (candidate until human adoption).
+- Root `~/codex-work/slaif-asset-reservation/PLAN.md` is a newly synthesized agreement (labeled as such); the
+  zero-entry `~/codex-work/slaif-asset-reservation/CRITICAL.md` is a seed installed only because no register existed
   locally; a discovered pre-existing register is always preserved.
 - CLAUDE.md was absent at the inspected baseline; this profile is Codex-only and
   generates no operational CLAUDE.md.

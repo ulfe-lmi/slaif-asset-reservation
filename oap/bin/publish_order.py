@@ -39,9 +39,14 @@ def _journal(home: Path, event: dict):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--repo", required=True)
-    ap.add_argument("--strategic-home", required=True)
-    ap.add_argument("--order", required=True, help="path to the order file (draft or final)")
+    ap.add_argument("--repo", type=oaplib.argument_path, required=True)
+    ap.add_argument("--strategic-home", type=oaplib.argument_path, required=True)
+    ap.add_argument(
+        "--order",
+        type=oaplib.argument_path,
+        required=True,
+        help="path to the order file (draft or final)",
+    )
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--recover", action="store_true")
     ap.add_argument("--signal-timeout", type=float, default=15.0)
