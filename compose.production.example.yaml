@@ -18,7 +18,7 @@ services:
       - ./deploy/secrets/postgres_password:/run/secrets/postgres_password:ro
 
   app:
-    image: slaif-asset-reservation:internal-alpha
+    image: slaif-asset-reservation:pilot
     restart: unless-stopped
     depends_on:
       db:

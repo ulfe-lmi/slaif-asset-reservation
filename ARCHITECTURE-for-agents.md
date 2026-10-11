@@ -1,7 +1,7 @@
 # ARCHITECTURE-for-agents — executor projection
 
 Source: root ARCHITECTURE.md, 2026-10-04 edition (A-01..A-15, SAR-001..SAR-047); current
-full-source SHA-256 `f8a8df265d4dd452969d4bee874045c8f8a8261f9c87c96ba4c049a7dddf320d`. Initial projection source SHA-256
+full-source SHA-256 `2d300121b37b62eeeb0676764d5d82739adf006a13e70d35ff62b84c59f7eb43`. Initial projection source SHA-256
 `9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4` is historical provenance.
 Scope: preservation and bounded development of existing SLAIF Asset Reservation, including the
 selected M-INTERNET-UX-PILOT development target (A-15); real Internet exposure remains human D2.
@@ -22,7 +22,7 @@ UNPROVEN until a fresh ICA at the exact merged revision.
 
 **SAR-003 / Stable resource identity:** UUIDs identify public records. Preserve hierarchical machine/child assets, existing slugs and provenance. Never infer CUDA index, GPU UUID, hostname or readiness from legacy suffixes.
 
-**SAR-004 / Asset verification:** Sanitized bootstrap inventory is not a physical probe or online inventory. Preserve verification flags, explicit unknown locators, inactive/nonreservable rejection and excluded chatgptpro entry.
+**SAR-004 / Asset verification:** Generic bootstrap is not a physical probe. Preserve verification flags, unknown locators and inactive/nonreservable rejection. Site-specific exclusions remain historical.
 
 **SAR-005 / UTC and DST:** Store/compare aware UTC instants; display explicit user timezone, default Europe/Ljubljana. Reject naive API instants and ambiguous/nonexistent local times unless an explicit supported occurrence is supplied; invalid stored zones require correction, not silent fallback.
 

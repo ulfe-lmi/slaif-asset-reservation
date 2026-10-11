@@ -14,13 +14,13 @@ from slaif_reservation.assets.bootstrap import (
 
 
 class Command(BaseCommand):
-    help = "Validate and optionally import the sanitized bootstrap asset inventory."
+    help = "Validate and optionally import the generic bootstrap asset inventory."
 
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument(
             "--input",
             required=True,
-            help="Path to sanitized bootstrap assets YAML.",
+            help="Path to schema-version-2 bootstrap assets YAML.",
         )
         parser.add_argument(
             "--apply",

@@ -18,10 +18,9 @@ authenticated humans and authenticated software agents.**
 </div>
 
 SLAIF Asset Reservation gives researchers and their tools one conflict-free
-way to book exclusive laboratory resources — initially the laboratory's
-scattered Linux compute machines and their GPUs, with an asset-oriented
-model that other exclusive resources can join without redesign. A
-reservation accepted by the system is:
+way to book exclusive laboratory resources — including compute workstations,
+microscopes, fabrication equipment, instruments and bookable services.
+The bundled demo is entirely fictitious. A reservation accepted by the system is:
 
 - **conflict-free** for its asset and time range — exclusivity is enforced
   by PostgreSQL, not by application checks alone;
@@ -36,12 +35,12 @@ reservation accepted by the system is:
 
 ## Get started
 
-- **[QUICKSTART.md](QUICKSTART.md)** — the essential Docker path to a
-  running local evaluation instance in roughly 5–10 minutes (loopback-only,
-  development settings).
-- **[INSTALL.md](INSTALL.md)** — the full operator guide for an authenticated
-  HTTPS pilot deployment: prerequisites, protected secrets, reverse
-  proxy, readiness gates, backup and restore, upgrades and rollback.
+- **Testing on this computer? [QUICKSTART.md](QUICKSTART.md)** — local
+  Docker evaluation in roughly 5–10 minutes, with optional fictitious demo assets.
+- **Need access from another computer or the Internet? [INSTALL.md](INSTALL.md)**
+  — authenticated HTTPS deployment, protected secrets, proxy, backup and recovery.
+  Remote users connect to the HTTPS hostname; the application port remains
+  host-loopback-only behind the proxy.
 
 ## How it works
 
@@ -138,7 +137,7 @@ configurations are preserved on upgrades.
 Python 3.13 with `uv` (locked dependencies) and a local PostgreSQL 17:
 
 ```bash
-docker compose up -d db
+docker compose -p slaif-asset-reservation-dev up -d db
 uv sync --locked --all-groups
 cp .env.example .env
 uv run --env-file .env python manage.py migrate

@@ -64,7 +64,7 @@ Environment overrides:
   SLAIF_REHEARSAL_PROJECT    Compose project name, default includes the process id.
                              Keep the slaif-alpha-rehearsal- prefix so residue stays
                              discoverable by --status and removable by --cleanup-owned.
-  SLAIF_REHEARSAL_IMAGE      Image tag, default slaif-asset-reservation:internal-alpha.
+  SLAIF_REHEARSAL_IMAGE      Image tag, default slaif-asset-reservation:pilot.
 
 The script writes only ignored temporary deployment files under deploy/ and a mktemp directory.
 It refuses to run if deploy/env.production or deploy/secrets/postgres_password already exists.
@@ -105,7 +105,7 @@ password_file="$secrets_dir/postgres_password"
 project_prefix="slaif-alpha-rehearsal-"
 project="${SLAIF_REHEARSAL_PROJECT:-${project_prefix}$$}"
 port="${SLAIF_REHEARSAL_PORT:-18080}"
-image="${SLAIF_REHEARSAL_IMAGE:-slaif-asset-reservation:internal-alpha}"
+image="${SLAIF_REHEARSAL_IMAGE:-slaif-asset-reservation:pilot}"
 # Explicit allowlist of untracked files copied into the build snapshot.
 # Intentionally EMPTY: every build input (Dockerfile, pyproject.toml,
 # uv.lock, manage.py, src/, data/bootstrap/, .dockerignore) is tracked.

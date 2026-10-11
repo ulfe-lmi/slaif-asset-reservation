@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass, field
+from collections import Counter, deque
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -27,34 +27,14 @@ class AssetImportRecord:
     active: bool
     reservable: bool
     description: str
+    location: str
     timezone: str
-    legacy_source: str | None
-    legacy_id: str | None
-    legacy_metadata: dict[str, Any]
     verification_required: bool = True
-    booking_mode: str = Asset.BOOKING_EXCLUSIVE
-    capabilities: dict[str, Any] = field(default_factory=dict)
-    location: str = ""
-    physical_locator: str = ""
-
-    @property
-    def legacy_pair(self) -> tuple[str, str] | None:
-        if self.legacy_source and self.legacy_id:
-            return (self.legacy_source, self.legacy_id)
-        return None
-
-
-@dataclass(frozen=True)
-class ExcludedLegacyRecord:
-    legacy_id: str
-    display_name: str
-    reason: str
 
 
 @dataclass(frozen=True)
 class BootstrapPlan:
     records: tuple[AssetImportRecord, ...]
-    excluded: tuple[ExcludedLegacyRecord, ...]
 
     @property
     def planned_count(self) -> int:
@@ -66,7 +46,6 @@ class ImportCounts:
     planned: int
     created: int
     unchanged: int
-    excluded: int
     conflicted: int
 
     def as_dict(self) -> dict[str, int]:
@@ -74,7 +53,6 @@ class ImportCounts:
             "planned": self.planned,
             "created": self.created,
             "unchanged": self.unchanged,
-            "excluded": self.excluded,
             "conflicted": self.conflicted,
         }
 
@@ -100,86 +78,22 @@ def load_bootstrap_document(input_path: Path, schema_path: Path | None = None) -
 
 
 def build_bootstrap_plan(document: dict[str, Any]) -> BootstrapPlan:
-    semantic_errors = _semantic_errors(document)
-    if semantic_errors:
-        raise BootstrapAssetError("; ".join(semantic_errors))
-
-    defaults = document["defaults"]
-    source = document["source"]
-    records: list[AssetImportRecord] = []
-
-    for machine in document["machines"]:
-        machine_slug = machine["slug"]
-        machine_active = bool(machine["active"])
-        records.append(
-            AssetImportRecord(
-                slug=machine_slug,
-                name=machine["name"],
-                kind=Asset.KIND_MACHINE,
-                parent_slug=None,
-                active=machine_active,
-                reservable=False,
-                description=(
-                    "Imported machine parent from sanitized bootstrap inventory. "
-                    "Hardware identity is unverified."
-                ),
-                timezone=defaults["timezone"],
-                legacy_source=None,
-                legacy_id=None,
-                legacy_metadata={
-                    "source_system": source["system"],
-                    "source_account": source["account"],
-                    "source_observed_at": source["observed_at"],
-                    "source_classification": source["classification"],
-                    "source_machine_slug": machine_slug,
-                    "source_machine_name": machine["name"],
-                    "verification_required": True,
-                    "availability_note": defaults["availability"],
-                },
-            )
+    records = tuple(
+        AssetImportRecord(
+            slug=asset["slug"],
+            name=asset["name"],
+            kind=asset["kind"],
+            parent_slug=asset.get("parent"),
+            active=asset["active"],
+            reservable=asset["reservable"],
+            description=asset.get("description", ""),
+            location=asset.get("location", ""),
+            timezone=asset.get("timezone", document["defaults"]["timezone"]),
+            verification_required=asset.get("verification_required", True),
         )
-
-        for child in machine["assets"]:
-            legacy = child["legacy"]
-            records.append(
-                AssetImportRecord(
-                    slug=child["slug"],
-                    name=child["name"],
-                    kind=child["kind"],
-                    parent_slug=machine_slug,
-                    active=bool(child["active"]),
-                    reservable=bool(child["reservable"]),
-                    description=(
-                        "Unverified legacy hardware display: "
-                        f"{child['hardware_display_unverified']}"
-                    ),
-                    timezone=defaults["timezone"],
-                    legacy_source=legacy["system"],
-                    legacy_id=legacy["resource_id"],
-                    legacy_metadata={
-                        "source_system": source["system"],
-                        "source_account": source["account"],
-                        "source_observed_at": source["observed_at"],
-                        "source_classification": source["classification"],
-                        "source_machine_slug": machine_slug,
-                        "public_display_order": legacy["public_display_order"],
-                        "ordinal_hint_unverified": child["ordinal_hint_unverified"],
-                        "original_public_hardware_display": child["hardware_display_unverified"],
-                        "source_note": child.get("note", ""),
-                        "verification_required": True,
-                    },
-                )
-            )
-
-    excluded = tuple(
-        ExcludedLegacyRecord(
-            legacy_id=record["legacy_resource_id"],
-            display_name=record["display_name"],
-            reason=record["reason"],
-        )
-        for record in document["excluded_legacy_records"]
+        for asset in _ordered_assets(document["assets"])
     )
-    plan = BootstrapPlan(records=tuple(records), excluded=excluded)
+    plan = BootstrapPlan(records=records)
     validate_bootstrap_plan(plan)
     return plan
 
@@ -213,7 +127,6 @@ def preview_bootstrap_import(plan: BootstrapPlan) -> ImportCounts:
         planned=plan.planned_count,
         created=created,
         unchanged=unchanged,
-        excluded=len(plan.excluded),
         conflicted=conflicted,
     )
 
@@ -249,7 +162,6 @@ def apply_bootstrap_import(plan: BootstrapPlan) -> ImportCounts:
         planned=plan.planned_count,
         created=created,
         unchanged=counts.unchanged,
-        excluded=len(plan.excluded),
         conflicted=0,
     )
 
@@ -264,41 +176,43 @@ def _load_schema(path: Path) -> dict[str, Any]:
     return schema
 
 
-def _semantic_errors(document: dict[str, Any]) -> list[str]:
-    errors: list[str] = []
-    machines = document["machines"]
-    machine_slugs = [machine["slug"] for machine in machines]
-    asset_slugs = [asset["slug"] for machine in machines for asset in machine["assets"]]
-    all_slugs = machine_slugs + asset_slugs
-    legacy_ids = [
-        asset["legacy"]["resource_id"] for machine in machines for asset in machine["assets"]
-    ]
-    source_system = document["source"]["system"]
+def _ordered_assets(assets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counts = Counter(asset["slug"] for asset in assets)
+    duplicates = sorted(slug for slug, count in counts.items() if count > 1)
+    if duplicates:
+        raise BootstrapAssetError(f"duplicate asset slug: {', '.join(duplicates)}")
 
-    errors.extend(_duplicates("duplicate machine slug", machine_slugs))
-    errors.extend(_duplicates("duplicate asset slug", all_slugs))
-    errors.extend(_duplicates("duplicate legacy ID", legacy_ids))
+    by_slug = {asset["slug"]: asset for asset in assets}
+    children: dict[str, list[str]] = {slug: [] for slug in by_slug}
+    ready = deque[str]()
+    for asset in assets:
+        slug = asset["slug"]
+        parent = asset.get("parent")
+        if parent is None:
+            ready.append(slug)
+        elif parent == slug:
+            raise BootstrapAssetError(f"Asset {slug} cannot parent itself.")
+        elif parent not in by_slug:
+            raise BootstrapAssetError(f"Unknown parent for asset {slug}.")
+        else:
+            children[parent].append(slug)
 
-    for machine in machines:
-        for asset in machine["assets"]:
-            legacy_system = asset["legacy"]["system"]
-            if legacy_system != source_system:
-                errors.append(
-                    f"inconsistent source mapping for {asset['slug']}: "
-                    f"{legacy_system} != {source_system}"
-                )
+    ordered = []
+    while ready:
+        slug = ready.popleft()
+        ordered.append(by_slug[slug])
+        ready.extend(children[slug])
+    if len(ordered) != len(assets):
+        raise BootstrapAssetError("Asset parent references contain a cycle.")
 
-    excluded_ids = [record["legacy_resource_id"] for record in document["excluded_legacy_records"]]
-    errors.extend(_duplicates("duplicate excluded legacy ID", excluded_ids))
-    for duplicate in sorted(set(legacy_ids) & set(excluded_ids)):
-        errors.append(f"duplicate legacy ID also excluded: {duplicate}")
-
-    return errors
-
-
-def _duplicates(label: str, values: list[str]) -> list[str]:
-    counts = Counter(values)
-    return [f"{label}: {value}" for value, count in sorted(counts.items()) if count > 1]
+    for asset in ordered:
+        parent = asset.get("parent")
+        if parent is not None:
+            if asset["kind"] == Asset.KIND_MACHINE:
+                raise BootstrapAssetError("Machine assets cannot have a parent.")
+            if by_slug[parent]["kind"] != Asset.KIND_MACHINE:
+                raise BootstrapAssetError("A child asset parent must be a machine.")
+    return ordered
 
 
 def _asset_from_record(record: AssetImportRecord, parent: Asset | None) -> Asset:
@@ -307,18 +221,12 @@ def _asset_from_record(record: AssetImportRecord, parent: Asset | None) -> Asset
         slug=record.slug,
         name=record.name,
         kind=record.kind,
-        booking_mode=record.booking_mode,
         description=record.description,
         location=record.location,
         timezone=record.timezone,
         active=record.active,
         reservable=record.reservable,
-        capabilities=record.capabilities,
         verification_required=record.verification_required,
-        physical_locator=record.physical_locator,
-        legacy_source=record.legacy_source,
-        legacy_id=record.legacy_id,
-        legacy_metadata=record.legacy_metadata,
     )
 
 
@@ -336,7 +244,6 @@ def _classify_existing_records(plan: BootstrapPlan) -> tuple[int, int, int]:
     unchanged = 0
     conflicted = 0
     plan_by_slug = {record.slug: record for record in plan.records}
-    plan_by_legacy = {record.legacy_pair: record for record in plan.records if record.legacy_pair}
 
     existing_by_slug = Asset.objects.filter(slug__in=plan_by_slug).select_related("parent")
     for asset in existing_by_slug:
@@ -347,15 +254,6 @@ def _classify_existing_records(plan: BootstrapPlan) -> tuple[int, int, int]:
             conflicted += 1
 
     existing_slugs = {asset.slug for asset in existing_by_slug}
-
-    legacy_conditions = list(plan_by_legacy)
-    for legacy_source, legacy_id in legacy_conditions:
-        existing = Asset.objects.filter(legacy_source=legacy_source, legacy_id=legacy_id).first()
-        if (
-            existing is not None
-            and existing.slug != plan_by_legacy[(legacy_source, legacy_id)].slug
-        ):
-            conflicted += 1
 
     created = len(plan.records) - len(existing_slugs)
     return created, unchanged, conflicted
@@ -369,18 +267,18 @@ def _asset_matches_record(asset: Asset, record: AssetImportRecord) -> bool:
     expected = {
         "name": record.name,
         "kind": record.kind,
-        "booking_mode": record.booking_mode,
+        "booking_mode": Asset.BOOKING_EXCLUSIVE,
         "description": record.description,
         "location": record.location,
         "timezone": record.timezone,
         "active": record.active,
         "reservable": record.reservable,
-        "capabilities": record.capabilities,
+        "capabilities": {},
         "verification_required": record.verification_required,
-        "physical_locator": record.physical_locator,
-        "legacy_source": record.legacy_source,
-        "legacy_id": record.legacy_id,
-        "legacy_metadata": record.legacy_metadata,
+        "physical_locator": "",
+        "legacy_source": None,
+        "legacy_id": None,
+        "legacy_metadata": {},
     }
     for field_name, expected_value in expected.items():
         if getattr(asset, field_name) != expected_value:

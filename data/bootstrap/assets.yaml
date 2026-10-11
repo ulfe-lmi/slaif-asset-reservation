@@ -1,503 +1,105 @@
-schema_version: 1
-source:
-  system: smartscheduling
-  account: jpers1
-  observed_at: '2026-06-17'
-  classification: sanitized migration input
+# Entirely fictitious demo inventory. No physical equipment or service is implied.
+schema_version: 2
 defaults:
-  timezone: Europe/Ljubljana
-  booking_mode: exclusive
-  availability: 24x7-until-admin-verification
-warnings:
-- All hardware descriptions and ordinal hints are unverified legacy display data.
-- Do not infer a physical CUDA index, GPU UUID, hostname, or network address from legacy identifiers.
-- No private clients, appointments, staff emails, cookies, or calendar secrets are included.
-machines:
-- slug: gpx1
-  name: gpx1
+  timezone: UTC
+assets:
+- slug: atlas
+  name: Atlas
+  kind: machine
+  description: Demo compute workstation. Book its GPU or CPU pool independently below.
+  location: AI & Data Lab
   active: true
-  hostname: null
-  assets:
-  - slug: gpx1-gpu
-    name: gpx1 GPU
-    kind: gpu
-    hardware_display_unverified: GeForce GTX 1070 Ti 8GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: gpx1gpu
-      public_display_order: 1
-    physical_locator: null
-    ordinal_hint_unverified: null
-    verification_required: true
-- slug: gpx2
-  name: gpx2
+  reservable: false
+- slug: atlas-gpu
+  name: Atlas GPU
+  kind: gpu
+  parent: atlas
+  description: Reserve exclusive use of the workstation's demo GPU for a compute session.
+  location: AI & Data Lab
   active: true
-  hostname: null
-  assets:
-  - slug: gpx2-gpu
-    name: gpx2 GPU
-    kind: gpu
-    hardware_display_unverified: GeForce GTX 1070 Ti 8GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: gpx2gpu
-      public_display_order: 2
-    physical_locator: null
-    ordinal_hint_unverified: null
-    verification_required: true
-- slug: gpx3
-  name: gpx3
+  reservable: true
+- slug: atlas-cpu-pool
+  name: Atlas CPU pool
+  kind: cpu_pool
+  parent: atlas
+  description: Reserve the entire demo CPU pool for analysis or simulation; individual cores are not allocated.
+  location: AI & Data Lab
   active: true
-  hostname: null
-  assets:
-  - slug: gpx3-gpu
-    name: gpx3 GPU
-    kind: gpu
-    hardware_display_unverified: GeForce GTX 1070 Ti 8GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: gpx3gpu
-      public_display_order: 3
-    physical_locator: null
-    ordinal_hint_unverified: null
-    verification_required: true
-- slug: goodfellow
-  name: Goodfellow
+  reservable: true
+- slug: aurora-microscope
+  name: Aurora
+  kind: other
+  description: Reserve the demo fluorescence microscope for sample imaging, including setup and cleanup.
+  location: Microscopy Room
   active: true
-  hostname: null
-  assets:
-  - slug: goodfellow-gpu-0
-    name: Goodfellow GPU 0
-    kind: gpu
-    hardware_display_unverified: GeForce GTX 1080 Ti 11GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: goodfellowgpu0
-      public_display_order: 4
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-  - slug: goodfellow-gpu-1
-    name: Goodfellow GPU 1
-    kind: gpu
-    hardware_display_unverified: GeForce GTX 1080 Ti 11GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: goodfellowgpu1
-      public_display_order: 5
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-- slug: newton
-  name: Newton
+  reservable: true
+- slug: forge-printer
+  name: Forge
+  kind: other
+  description: Reserve the demo 3D printer for one fabrication session, including preparation and removal.
+  location: Prototype Workshop
   active: true
-  hostname: null
-  assets:
-  - slug: newton-gpu-0
-    name: Newton GPU 0
-    kind: gpu
-    hardware_display_unverified: GeForce GTX TITAN X 12GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: newtongpu2
-      public_display_order: 7
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-    note: Legacy suffix does not match displayed ordinal.
-  - slug: newton-gpu-1
-    name: Newton GPU 1
-    kind: gpu
-    hardware_display_unverified: GeForce GTX TITAN X 12GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: newtongpu1
-      public_display_order: 6
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-- slug: ballard
-  name: Ballard
+  reservable: true
+- slug: cutline-laser
+  name: Cutline
+  kind: other
+  description: Reserve the demo laser cutter for a supervised cutting or engraving session.
+  location: Prototype Workshop
   active: true
-  hostname: null
-  assets:
-  - slug: ballard-gpu-0
-    name: Ballard GPU 0
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 2080 Ti 12GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: ballardgpu2
-      public_display_order: 9
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-    note: Hardware text is preserved from legacy UI and requires physical verification.
-  - slug: ballard-gpu-1
-    name: Ballard GPU 1
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 2080 Ti 12GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: ballardgpu1
-      public_display_order: 8
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-    note: Hardware text is preserved from legacy UI and requires physical verification.
-- slug: maelstrom1
-  name: Maelstrom1
+  reservable: true
+- slug: vector-mill
+  name: Vector
+  kind: other
+  description: Reserve the demo CNC mill for machining, including tool setup and cleanup.
+  location: Prototype Workshop
   active: true
-  hostname: null
-  assets:
-  - slug: maelstrom1-gpu-0
-    name: Maelstrom1 GPU 0
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 2080 Ti 12GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: maelstrom1gpu2
-      public_display_order: 11
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-    note: Hardware text is preserved from legacy UI and requires physical verification.
-  - slug: maelstrom1-gpu-1
-    name: Maelstrom1 GPU 1
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 2080 Ti 12GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: maelstrom1gpu1
-      public_display_order: 10
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-    note: Hardware text is preserved from legacy UI and requires physical verification.
-- slug: lecun
-  name: Lecun
+  reservable: true
+- slug: climatebox-chamber
+  name: ClimateBox
+  kind: other
+  description: Reserve the demo environmental chamber for one complete test cycle and sample changeover.
+  location: Environmental Test Lab
   active: true
-  hostname: null
-  assets:
-  - slug: lecun-gpu-0
-    name: Lecun GPU 0
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: lecungpu2
-      public_display_order: 13
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-  - slug: lecun-gpu-1
-    name: Lecun GPU 1
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: lecungpu1
-      public_display_order: 12
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-- slug: bengio
-  name: Bengio
+  reservable: true
+- slug: scopebench
+  name: ScopeBench
+  kind: other
+  description: Reserve the demo electronics bench and its shared measurement instruments together.
+  location: Electronics Lab
   active: true
-  hostname: null
-  assets:
-  - slug: bengio-gpu-0
-    name: Bengio GPU 0
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: bengiogpu2
-      public_display_order: 15
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-  - slug: bengio-gpu-1
-    name: Bengio GPU 1
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: bengiogpu1
-      public_display_order: 14
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-- slug: hinton
-  name: Hinton
+  reservable: true
+- slug: robocell
+  name: RoboCell
+  kind: other
+  description: Reserve the demo collaborative robot cell for a supervised prototyping session.
+  location: Robotics Cell
   active: true
-  hostname: null
-  assets:
-  - slug: hinton-gpu-0
-    name: Hinton GPU 0
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: hintongpu2
-      public_display_order: 17
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-  - slug: hinton-gpu-1
-    name: Hinton GPU 1
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: hintongpu1
-      public_display_order: 16
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-- slug: turing
-  name: Turing
+  reservable: true
+- slug: thermocam-kit
+  name: ThermoCam
+  kind: other
+  description: Reserve the portable demo thermal and measurement kit for checkout, field use and return.
+  location: Field Equipment Store
   active: true
-  hostname: null
-  assets:
-  - slug: turing-gpu
-    name: Turing GPU
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: turinggpu
-      public_display_order: 18
-    physical_locator: null
-    ordinal_hint_unverified: null
-    verification_required: true
-- slug: rtxa1
-  name: rtxa1
+  reservable: true
+- slug: simworks-license
+  name: SimWorks
+  kind: service
+  description: Reserve one exclusive demo CAE licence entitlement; no licence server or software activation is performed.
+  location: Shared Digital Services
   active: true
-  hostname: null
-  assets:
-  - slug: rtxa1-gpu
-    name: rtxa1 GPU
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: rtxa1gpu
-      public_display_order: 19
-    physical_locator: null
-    ordinal_hint_unverified: null
-    verification_required: true
-- slug: rtxa2
-  name: rtxa2
+  reservable: true
+- slug: precision-support
+  name: Precision
+  kind: service
+  description: Reserve a demo metrology support session; staffing and confirmation remain operator responsibilities.
+  location: Shared Digital Services
   active: true
-  hostname: null
-  assets:
-  - slug: rtxa2-gpu-0
-    name: rtxa2 GPU 0
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: rtxa2gpu2
-      public_display_order: 21
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-  - slug: rtxa2-gpu-1
-    name: rtxa2 GPU 1
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: rtxa2gpu1
-      public_display_order: 20
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-- slug: feynman
-  name: Feynman
-  active: true
-  hostname: null
-  assets:
-  - slug: feynman-gpu-0
-    name: Feynman GPU 0
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 4090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: feynmangpu2
-      public_display_order: 23
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-  - slug: feynman-gpu-1
-    name: Feynman GPU 1
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 4090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: feynmangpu1
-      public_display_order: 22
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-- slug: goedel
-  name: Goedel
-  active: true
-  hostname: null
-  assets:
-  - slug: goedel-gpu-0
-    name: Goedel GPU 0
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 4090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: goedelgpu2
-      public_display_order: 25
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-  - slug: goedel-gpu-1
-    name: Goedel GPU 1
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 4090 24GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: goedelcpu
-      public_display_order: 24
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-    note: Legacy resource ID says cpu although the public record is GPU 1.
-- slug: neumann
-  name: Neumann
-  active: true
-  hostname: null
-  assets:
-  - slug: neumann-gpu-0
-    name: Neumann GPU 0
-    kind: gpu
-    hardware_display_unverified: A100-SXM4-80GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: neumanngpu4
-      public_display_order: 29
-    physical_locator: null
-    ordinal_hint_unverified: 0
-    verification_required: true
-    note: Explicit legacy mapping; do not derive ordinal from resource ID suffix.
-  - slug: neumann-gpu-1
-    name: Neumann GPU 1
-    kind: gpu
-    hardware_display_unverified: A100-SXM4-80GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: neumanngpu1
-      public_display_order: 26
-    physical_locator: null
-    ordinal_hint_unverified: 1
-    verification_required: true
-  - slug: neumann-gpu-2
-    name: Neumann GPU 2
-    kind: gpu
-    hardware_display_unverified: A100-SXM4-80GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: neumanngpu2
-      public_display_order: 27
-    physical_locator: null
-    ordinal_hint_unverified: 2
-    verification_required: true
-  - slug: neumann-gpu-3
-    name: Neumann GPU 3
-    kind: gpu
-    hardware_display_unverified: A100-SXM4-80GB
-    active: true
-    reservable: true
-    legacy:
-      system: smartscheduling
-      resource_id: neumanngpu3
-      public_display_order: 28
-    physical_locator: null
-    ordinal_hint_unverified: 3
-    verification_required: true
-- slug: askljof
-  name: askljof
+  reservable: true
+- slug: calibra-reference-kit
+  name: Calibra
+  kind: other
+  description: Demo reference kit awaiting calibration. It is inactive and cannot be reserved.
+  location: Electronics Lab
   active: false
-  hostname: null
-  assets:
-  - slug: askljof-gpu
-    name: askljof GPU
-    kind: gpu
-    hardware_display_unverified: GeForce RTX 3060 Ti 8GB
-    active: false
-    reservable: false
-    legacy:
-      system: smartscheduling
-      resource_id: askljof
-      public_display_order: null
-    physical_locator: null
-    ordinal_hint_unverified: null
-    verification_required: true
-    note: Disabled in legacy administrator inventory and excluded from public booking.
-excluded_legacy_records:
-- legacy_resource_id: chatgptpro
-  display_name: ChatGPT Pro
-  description: Powerful chat bot
-  reason: Non-compute service semantics require a separate product decision before import.
+  reservable: false

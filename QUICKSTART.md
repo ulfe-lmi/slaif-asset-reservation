@@ -8,6 +8,11 @@ deployment — for that, see [INSTALL.md](INSTALL.md). A first run is
 longer because Compose builds the image and pulls the pinned PostgreSQL
 17 image.
 
+- **Testing on this computer?** Follow this local quickstart.
+- **Need access from another computer or the Internet?** Follow the
+  [authenticated HTTPS deployment procedure](INSTALL.md#5-authenticated-pilot-docker-deployment-canonical-procedure).
+  Remote users connect to the HTTPS hostname, not directly to port 8000.
+
 ## Before you start
 
 - A **Linux `x86_64` (amd64)** host (committed images are pinned to
@@ -37,28 +42,28 @@ Check out the revision you want to evaluate; for a review, the exact commit SHA.
 ## 2. Start the evaluation stack (detached)
 
 Run every Compose command in this quickstart with the dedicated evaluation
-project name **`slaif-eval`** (its own containers and volume
-`slaif-eval_postgres-data`). The name must be unused on this host: check
-with `docker compose -p slaif-eval ps` and `docker volume ls | grep
-slaif-eval` that no such project or volume exists, and if one does, do not
+project name **`slaif-asset-reservation-eval`** (its own containers and volume
+`slaif-asset-reservation-eval_postgres-data`). The name must be unused on this host: check
+with `docker compose -p slaif-asset-reservation-eval ps` and `docker volume ls | grep
+slaif-asset-reservation-eval` that no such project or volume exists, and if one does, do not
 adopt or delete it — choose another project name (for example
-`slaif-eval-2`) and use it consistently for every command in this
+`slaif-asset-reservation-eval-2`) and use it consistently for every command in this
 quickstart.
 
 ```bash
-docker compose -p slaif-eval up -d --build app
-docker compose -p slaif-eval ps
+docker compose -p slaif-asset-reservation-eval up -d --build app
+docker compose -p slaif-asset-reservation-eval ps
 ```
 
 Wait until `db` is `healthy` and `app` is `running`; if a container is
-failing, inspect `docker compose -p slaif-eval logs app` (and `db`).
+failing, inspect `docker compose -p slaif-asset-reservation-eval logs app` (and `db`).
 
 ## 3. Apply migrations (deliberate)
 
 Migrations are a deliberate command, never hidden in application startup:
 
 ```bash
-docker compose -p slaif-eval exec app python manage.py migrate --noinput
+docker compose -p slaif-asset-reservation-eval exec app python manage.py migrate --noinput
 ```
 
 This installs the `btree_gist` extension and the
@@ -68,7 +73,7 @@ Then initialize the fresh-install default policy, deliberately and
 immediately after migrations:
 
 ```bash
-docker compose -p slaif-eval exec app python manage.py initialize_default_policy
+docker compose -p slaif-asset-reservation-eval exec app python manage.py initialize_default_policy
 ```
 
 On a fresh database this creates the active global fallback policy
@@ -76,19 +81,24 @@ On a fresh database this creates the active global fallback policy
 any policy row it is a no-op. Migrations and application startup never
 run it implicitly.
 
-## 4. Optional: import the sanitized bootstrap asset inventory
+## 4. Optional: import the fictitious demo inventory
 
-The repository ships a **sanitized** bootstrap asset inventory. It is a
-bootstrap data set, not a hardware verification: imported assets keep
-their stored verification flags and explicit unknown locators, and are not
-treated as probed or online machines.
+The bundled inventory is entirely fictitious: Atlas compute resources,
+Aurora microscopy, workshop equipment, a robot cell, portable instruments
+and bookable digital/support services. It includes 14 assets, of which 12
+are bookable. Calibra is an inactive calibration example; Atlas groups its
+independently bookable GPU and CPU pool.
+
+Import it only into a fresh evaluation database. **Do not import the demo
+when upgrading an existing installation.** For your own inventory, see
+[the bootstrap format](data/bootstrap/README.md).
 
 Dry run first (validates only, changes nothing), then apply:
 
 ```bash
-docker compose -p slaif-eval exec app \
+docker compose -p slaif-asset-reservation-eval exec app \
   python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
-docker compose -p slaif-eval exec app \
+docker compose -p slaif-asset-reservation-eval exec app \
   python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml --apply
 ```
 
@@ -100,7 +110,7 @@ Accounts are administrator-created; there is no self-registration. The
 login identifier is the account's **email address**, not a username.
 
 ```bash
-docker compose -p slaif-eval exec app python manage.py createsuperuser
+docker compose -p slaif-asset-reservation-eval exec app python manage.py createsuperuser
 ```
 
 The command is interactive: it prompts for `Email`, then `Password`
@@ -157,18 +167,18 @@ policies through the existing audited services in `/manage/`.
 
 ```bash
 # Stop the stack; all data is preserved in the volume.
-docker compose -p slaif-eval stop
+docker compose -p slaif-asset-reservation-eval stop
 
 # Start it again later.
-docker compose -p slaif-eval start
+docker compose -p slaif-asset-reservation-eval start
 ```
 
-`docker compose -p slaif-eval down` (without `-v`) removes the containers
-but keeps the `slaif-eval_postgres-data` volume.
+`docker compose -p slaif-asset-reservation-eval down` (without `-v`) removes the containers
+but keeps the `slaif-asset-reservation-eval_postgres-data` volume.
 
 > **WARNING — destructive.**
-> `docker compose -p slaif-eval down -v` **permanently deletes the
-> evaluation database** (volume `slaif-eval_postgres-data`) together with
+> `docker compose -p slaif-asset-reservation-eval down -v` **permanently deletes the
+> evaluation database** (volume `slaif-asset-reservation-eval_postgres-data`) together with
 > the containers. Run it only for this evaluation project, only when you
 > intend to discard the evaluation data, and never as an unscoped
 > `docker compose down -v`. It is the only step in this quickstart that
@@ -179,10 +189,10 @@ but keeps the `slaif-eval_postgres-data` volume.
 | Symptom | First check |
 | --- | --- |
 | Compose fails to publish a port | The port is already in use ("Before you start"). Identify the owner; never stop a foreign service. |
-| `db` never becomes healthy | `docker compose -p slaif-eval logs db`; the first start pulls the image. |
-| `app` crashes or restarts | `docker compose -p slaif-eval logs app`; confirm step 3 ran against this project's database. |
+| `db` never becomes healthy | `docker compose -p slaif-asset-reservation-eval logs db`; the first start pulls the image. |
+| `app` crashes or restarts | `docker compose -p slaif-asset-reservation-eval logs app`; confirm step 3 ran against this project's database. |
 | Login rejected | Different project's database or administrator (steps 2 and 5 must use the same project name). |
-| No assets listed | Step 4 was optional; apply the bootstrap import if you want the sanitized set. |
+| No assets listed | Step 4 was optional; apply the bootstrap import if you want the fictitious demo. |
 | No reservation accepted | No unambiguous active policy resolves for the asset — the system fails closed. A fresh install initialized in step 3 has the `default` global policy (step 7); otherwise configure a policy in `/manage/`. |
 
 ## Next

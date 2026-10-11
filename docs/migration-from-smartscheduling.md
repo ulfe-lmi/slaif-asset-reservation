@@ -20,39 +20,19 @@ Migrate useful reservation-system truth without preserving the wrong salon/appoi
 | Calendar block | Blackout or reservation | classify explicitly |
 | Staff iCalendar secret | Nothing | never import or store |
 
-## 3. Sanitized inventory source
+## 3. Historical inventory source
 
-`data/bootstrap/assets.yaml` contains the public resource names and hardware descriptions observed on 2026-06-17, plus one disabled GPU noted in administrator inventory. It intentionally excludes:
+The former version-1 bootstrap file was a site-specific sanitized inventory
+observed on 2026-06-17: 17 machine parents and 30 GPU children, with one
+non-compute legacy record excluded. Its identifiers were provenance only,
+not physical locators or inferred CUDA indices. The file and its historical
+import evidence remain in Git history; no second site-specific copy is bundled.
 
-- administrator/person records;
-- emails and phone numbers;
-- client records;
-- appointment details;
-- cookies, anti-forgery tokens, Turnstile tokens;
-- iCalendar secret URLs;
-- physical host credentials;
-- inferred hostnames, CUDA indices, and GPU UUIDs.
-
-Legacy resource IDs remain provenance only. Several suffixes do not match displayed GPU numbers; never infer identity from them.
-
-Work Order 0002 implements the sanitized bootstrap inventory import:
-
-```bash
-python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
-python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml --apply
-```
-
-The default command is a dry-run and performs no writes. Apply mode validates the complete file
-before mutation and runs atomically. The implemented import creates 17 machine parents and 30 GPU
-children for 47 total `Asset` rows, while excluding the single `chatgptpro` legacy record.
-
-Imported parent machines are not reservable. Imported GPU children keep `verification_required=true`;
-the disabled `askljof` machine/GPU remains inactive and non-reservable. Public hardware display text
-is preserved only as unverified description/provenance. The importer does not populate hostnames,
-physical locators, normalized capabilities, CUDA indices, or GPU UUIDs.
-
-The explicit `neumanngpu4` -> `neumann-gpu-0` mapping comes from the sanitized file content and is
-not derived from the legacy ID suffix.
+The current `data/bootstrap/assets.yaml` is entirely fictitious demo data in
+[the generic version-2 format](../data/bootstrap/README.md). It is not a
+SmartScheduling resource mapping and must not be imported during an upgrade.
+Prepare any site inventory and explicit migration mapping independently under
+operator control. Existing database asset identities/provenance are unchanged.
 
 ## 4. Duration services
 

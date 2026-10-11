@@ -36,16 +36,19 @@ The application reads the `SLAIF_BRANDING_DIR` environment variable
 bounded read-only mount of the same `app` service — no rebuild, no new
 service, network, port, database, proxy, privilege or runtime change:
 
+Set `SAR_COMPOSE_PROJECT` to the recorded service project from INSTALL.
+Keep existing project names; the local example is for a new evaluation project.
+
 ```bash
 install -d -m 755 deploy/branding
 # add at most one file per slot (see the table above)
 
 # production-shaped deployment (canonical):
-docker compose -f compose.production.example.yaml \
+docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml \
     -f compose.branding.example.yaml up -d
 
 # local evaluation:
-docker compose -f compose.yaml -f compose.branding.example.yaml up -d
+docker compose -p slaif-asset-reservation-eval -f compose.yaml -f compose.branding.example.yaml up -d
 ```
 
 The overlay sets `SLAIF_BRANDING_DIR=/branding` and mounts

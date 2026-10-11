@@ -1,42 +1,66 @@
-# Sanitized Bootstrap Inventory
+# Demo inventory and bootstrap format
 
-`assets.yaml` is migration input derived from the observed SmartScheduling resource inventory on 2026-06-17.
+`assets.yaml` contains 14 entirely fictitious assets for local evaluation:
+Atlas (a workstation grouping its GPU and CPU pool), Aurora microscopy,
+Forge printing, Cutline laser cutting, Vector machining, ClimateBox testing,
+ScopeBench electronics, RoboCell robotics, ThermoCam field equipment,
+SimWorks licence entitlement, Precision support and inactive Calibra calibration.
+There are no real machines, people, accounts, hostnames or migration identifiers.
 
-It contains:
+Reservations grant exclusive time-based entitlements. They do not operate equipment,
+allocate CPU cores, activate licences or arrange staffing. Atlas itself is not
+bookable; its GPU and entire CPU pool can be reserved independently.
 
-- 29 public GPU records grouped by machine;
-- one disabled GPU record from administrator inventory;
-- one explicitly excluded non-compute `ChatGPT Pro` record;
-- legacy resource IDs for reconciliation;
-- public hardware display text.
+## Format
 
-It does not contain:
+The sole current format is `schema_version: 2`, validated by `assets.schema.json`:
 
-- users or administrator identities;
-- emails or phone numbers;
-- clients or appointments;
-- browser cookies or anti-forgery tokens;
-- iCalendar secrets;
-- hostnames, network addresses, SSH credentials;
-- verified CUDA indices or GPU UUIDs.
+```yaml
+schema_version: 2
+defaults:
+  timezone: UTC
+assets:
+- slug: example-workstation
+  name: Example workstation
+  kind: machine
+  active: true
+  reservable: false
+- slug: example-gpu
+  name: Example GPU
+  kind: gpu
+  parent: example-workstation
+  description: Exclusive use of one example GPU.
+  location: Example lab
+  active: true
+  reservable: true
+```
 
-## Important
+Each asset requires `slug`, `name`, `kind`, `active` and `reservable`.
+Kinds are `machine`, `gpu`, `cpu_pool`, `service` and `other`. Optional fields:
+`parent` (slug or null), `description`, `location`, `timezone` (overrides the
+required default) and `verification_required` (defaults to true).
+Parent records may appear anywhere in the file. Parents must be root machines;
+unknown, self-referencing, cyclic and deeper/non-machine hierarchies are rejected.
+Inactive assets cannot be reservable. Booking remains exclusive per asset.
 
-All hardware descriptions and ordinal hints require administrator/physical verification. Several legacy resource IDs have suffixes that do not match displayed GPU numbers. Import code must treat `legacy.resource_id` only as provenance.
+The importer does not populate physical locators, capabilities or legacy provenance.
+A demo label is not evidence of verified physical equipment. Operator inventories
+must be prepared and verified independently; migration provenance belongs to the
+separate migration tooling or deliberate administration.
 
-## Validation
+## Import
 
-The file is described by `assets.schema.json`. PR 2 should add an automated schema-validation and idempotent import command. Until then it is documentation/data only.
+```bash
+python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
+python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml --apply
+```
 
-## Physical verification checklist
+Without `--apply`, validation and planning write nothing. Apply validates before
+writing, runs atomically, refuses conflicting existing records and is idempotent
+for identical records. For a custom YAML file, place a copy of `assets.schema.json`
+beside it. Docker operators must make both files available in the container.
 
-For each machine and child asset, administrators should supply or confirm:
-
-- actual hostname and canonical machine slug;
-- device UUID or another stable local locator;
-- whether display ordinal maps to CUDA ordinal;
-- vendor/model and memory;
-- active/reservable state;
-- responsible resource manager;
-- default availability and policy;
-- whether capability metadata may be publicly visible.
+**The demo is optional and intended for fresh evaluation databases. Never import
+it as an upgrade step or into an existing operational inventory.** Existing
+records are not changed by replacing the bundled file. The former site-specific
+version-1 inventory is preserved in Git history; version 1 is no longer accepted.
