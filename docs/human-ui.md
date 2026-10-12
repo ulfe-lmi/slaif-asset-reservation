@@ -60,7 +60,13 @@ Availability helps choose a time; it is not a booking guarantee or proof that
 hardware is online. Accepted reservations are entitlements. The application
 neither runs workloads nor enforces physical usage.
 
-### API tokens
+#For a short reservation, select the start in your profile timezone and choose
+**1 hour**, **2 hours** or **4 hours** when the policy permits it. **Custom end time**
+retains explicit end entry. Quick choices measure elapsed time from the interpreted
+start, including DST changes. The picker shows current lead-time/horizon bounds;
+the service checks the policy and availability again when you submit.
+
+## API tokens
 
 The creation form describes each scope in human language and explains token
 lifetime. Machine scope values remain part of the [API contract](api-contract.md).

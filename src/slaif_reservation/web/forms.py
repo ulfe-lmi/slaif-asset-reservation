@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 from django import forms
 from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.validators import MaxValueValidator
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from slaif_reservation.accounts.models import User
 from slaif_reservation.accounts.tokens import ALLOWED_API_TOKEN_SCOPES
 from slaif_reservation.accounts.validators import TIMEZONE_NAME_MAX_LENGTH, validate_timezone_name
+from slaif_reservation.reservations.models import ReservationPolicy
 from slaif_reservation.reservations.time_utils import LocalTimeError, interpret_local_wall_time
 
 
@@ -109,8 +112,26 @@ class ReservationForm(forms.Form):
             "whatever you choose."
         ),
     )
+    duration = forms.ChoiceField(
+        label=_("Duration"),
+        required=False,
+        initial="custom",
+        choices=[
+            ("60", _("1 hour")),
+            ("120", _("2 hours")),
+            ("240", _("4 hours")),
+            ("custom", _("Custom end time")),
+        ],
+        widget=forms.RadioSelect,
+        help_text=_(
+            "Choose elapsed reservation time, or enter a custom end below. "
+            "Quick durations are calculated from your start instant, "
+            "including daylight-saving changes."
+        ),
+    )
     end = forms.CharField(
         label=_("End"),
+        required=False,
         widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "60"}),
         help_text=_(
             "Local end date and time, in the future. The asset is held from the "
@@ -141,38 +162,76 @@ class ReservationForm(forms.Form):
         ),
     )
 
-    def __init__(self, *args: Any, timezone_name: str, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        timezone_name: str,
+        policy: ReservationPolicy | None = None,
+        now: datetime | None = None,
+        **kwargs: Any,
+    ) -> None:
         self.timezone_name = timezone_name
         super().__init__(*args, **kwargs)
+        self.order_fields(["start", "duration", "start_fold", "end", "end_fold", "purpose"])
         self.fields["start"].help_text = _(
-            "Local date and time the asset is needed, in %(timezone)s (your "
-            "profile timezone). It must be in the future and within the asset's "
-            "booking horizon."
+            "Local date and time the asset is needed, in %(timezone)s (your profile timezone)."
         ) % {"timezone": timezone_name}
         self.fields["end"].help_text = _(
             "Local end date and time, in %(timezone)s, after the start. The "
             "asset is held from the start until the end; the end instant itself "
             "is free again."
         ) % {"timezone": timezone_name}
-        _wire_field_help(self, ("start", "start_fold", "end", "end_fold", "purpose"))
+        # Only rendering uses the policy snapshot. POST choices stay the fixed
+        # 1/2/4-hour vocabulary; create_reservation rechecks the current policy.
+        choices = [
+            (str(minutes), label)
+            for minutes, label in ((60, _("1 hour")), (120, _("2 hours")), (240, _("4 hours")))
+            if policy is not None
+            and policy.min_duration_minutes <= minutes <= policy.max_duration_minutes
+        ]
+        cast(forms.RadioSelect, self.fields["duration"].widget).choices = [
+            *choices,
+            ("custom", _("Custom end time")),
+        ]
+        if policy is not None:
+            current = (timezone.now() if now is None else now).astimezone(UTC)
+            earliest = current + timedelta(minutes=policy.min_lead_minutes)
+            latest = current + timedelta(days=policy.booking_horizon_days)
+            # The picker uses whole minutes. Round inward so it never suggests
+            # a start outside the current instant-based domain bounds.
+            first_minute = earliest.replace(second=0, microsecond=0)
+            if first_minute < earliest:
+                first_minute += timedelta(minutes=1)
+            last_minute = latest.replace(second=0, microsecond=0)
+            zone = ZoneInfo(timezone_name)
+            first_local, last_local = first_minute.astimezone(zone), last_minute.astimezone(zone)
+            self.fields["start"].widget.attrs.update(
+                {
+                    "min": first_local.strftime("%Y-%m-%dT%H:%M"),
+                    "max": last_local.strftime("%Y-%m-%dT%H:%M"),
+                }
+            )
+            self.fields["start"].help_text += " " + _(
+                "Reservations may start between %(earliest)s and %(latest)s. "
+                "This picker range is guidance; checked again on submission."
+            ) % {
+                "earliest": first_local.strftime("%Y-%m-%d %H:%M"),
+                "latest": last_local.strftime("%Y-%m-%d %H:%M"),
+                "timezone": timezone_name,
+            }
+        _wire_field_help(self, ("start", "start_fold", "duration", "end", "end_fold", "purpose"))
 
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean() or {}
         start_text = cleaned.get("start")
         end_text = cleaned.get("end")
-        if not start_text or not end_text:
+        if not start_text:
             return cleaned
 
         try:
             start_local = _parse_datetime_local(start_text)
         except ValueError:
             self.add_error("start", _("Enter a valid local start date and time."))
-            return cleaned
-
-        try:
-            end_local = _parse_datetime_local(end_text)
-        except ValueError:
-            self.add_error("end", _("Enter a valid local end date and time."))
             return cleaned
 
         try:
@@ -185,24 +244,49 @@ class ReservationForm(forms.Form):
             self.add_error("start", str(exc))
             return cleaned
 
-        try:
-            end = interpret_local_wall_time(
-                end_local,
-                timezone_name=self.timezone_name,
-                fold=_parse_fold(cleaned.get("end_fold")),
-            )
-        except LocalTimeError as exc:
-            self.add_error("end", str(exc))
+        duration = cleaned.get("duration") or "custom"
+        if "duration" in self.errors:
             return cleaned
+        if duration != "custom":
+            # start.instant is UTC: elapsed time, not local wall-clock arithmetic.
+            try:
+                end_instant = start.instant + timedelta(minutes=int(duration))
+                end_local = end_instant.astimezone(ZoneInfo(self.timezone_name)).replace(
+                    tzinfo=None
+                )
+            except OverflowError:
+                self.add_error(
+                    "start", _("The selected duration is outside the supported date range.")
+                )
+                return cleaned
+        else:
+            if not end_text:
+                self.add_error("end", _("Enter a custom end date and time."))
+                return cleaned
+            try:
+                end_local = _parse_datetime_local(end_text)
+            except ValueError:
+                self.add_error("end", _("Enter a valid local end date and time."))
+                return cleaned
+            try:
+                end = interpret_local_wall_time(
+                    end_local,
+                    timezone_name=self.timezone_name,
+                    fold=_parse_fold(cleaned.get("end_fold")),
+                )
+            except LocalTimeError as exc:
+                self.add_error("end", str(exc))
+                return cleaned
+            end_instant = end.instant
 
-        if end.instant <= start.instant:
+        if end_instant <= start.instant:
             self.add_error("end", _("End must be after start."))
             return cleaned
 
         cleaned["start_instant"] = start.instant
-        cleaned["end_instant"] = end.instant
+        cleaned["end_instant"] = end_instant
         cleaned["start_local"] = start.local
-        cleaned["end_local"] = end.local
+        cleaned["end_local"] = end_local
         return cleaned
 
 

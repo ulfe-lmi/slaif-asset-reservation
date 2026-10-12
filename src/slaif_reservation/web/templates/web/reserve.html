@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n form_guidance %}
+{% load i18n static form_guidance %}
 
 {% block title %}{% blocktrans with name=asset.name %}Reserve {{ name }}{% endblocktrans %} — SLAIF Asset Reservation{% endblock %}
 
@@ -7,7 +7,7 @@
   <p><a href="{% url 'web:asset-detail' asset.id %}">{{ asset.name }}</a></p>
   <h1>{% blocktrans with name=asset.name %}Reserve {{ name }}{% endblocktrans %}</h1>
   <p>{% blocktrans %}Times are shown and entered in {{ timezone_name }}.{% endblocktrans %}</p>
-  <form method="post" novalidate>
+  <form method="post" novalidate data-reservation-form>
     {% csrf_token %}
     {% if form.errors %}
       <div class="error-summary" role="alert">
@@ -16,14 +16,27 @@
       </div>
     {% endif %}
     {% for field in form %}
-      <div class="field">
-        {{ field.label_tag }}
-        {{ field }}
-        {% field_guidance field %}
-        {{ field.errors }}
-      </div>
+      {% if field.name == "duration" %}
+        <fieldset class="duration-field field" aria-describedby="id_duration-help">
+          <legend>{{ field.label }}</legend>
+          {{ field }}
+          {% field_guidance field %}
+          {{ field.errors }}
+        </fieldset>
+      {% else %}
+        <div class="field" {% if field.name == "end" or field.name == "end_fold" %}data-custom-end{% endif %}>
+          {{ field.label_tag }}
+          {{ field }}
+          {% field_guidance field %}
+          {{ field.errors }}
+        </div>
+      {% endif %}
     {% endfor %}
     <button type="submit">{% trans "Create reservation" %}</button>
   </form>
   {% include "web/_availability.html" %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'web/reservation.js' %}" defer></script>
 {% endblock %}

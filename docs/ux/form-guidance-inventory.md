@@ -21,7 +21,7 @@ by the admin JavaScript after widget initialization — are bound to the
 rendered field help by the narrow local helper
 `web/admin-form-guidance.js` (both `*_from` and `*_to` list boxes carry
 `aria-describedby`). No filler "Enter name" style text.
-Wire values, validation, permissions, admission and crypto are unchanged.
+Existing permission, admission and crypto rules remain unchanged. The member duration selector adds a fixed quick-duration wire choice; policy validation remains in the domain service.
 
 ## 1. Member surfaces (web)
 
@@ -31,9 +31,10 @@ Wire values, validation, permissions, admission and crypto are unchanged.
 | Password | `/login/`, `HumanAuthenticationForm.password` | yes | label only | self-evident (standard password entry under a generic-denial form); unchanged |
 | Display name | `/profile/`, `ProfileForm.display_name` | yes | label only | help: shown to staff in management views, blank shows email only |
 | Timezone | `/profile/`, `ProfileForm.timezone` | yes | unassociated `<p class="help">` | help: required IANA name, drives all entered/shown times, blank/unknown rejected; `aria-describedby` wired |
-| Start | `/assets/<id>/reserve/`, `ReservationForm.start` | yes | label "Start" only | help: local date/time in the user's timezone, must be in the future |
+| Start | `/assets/<id>/reserve/`, `ReservationForm.start` | yes | label "Start" only | help: local date/time in the user's timezone, current lead-time/horizon range with native min/max guidance; checked again by the service |
+| Duration | `ReservationForm.duration` | yes | not present | 1/2/4-hour elapsed-time choices filtered for the effective policy, plus Custom end time; native radio group/legend and associated help; computed on the server after DST interpretation |
 | Start occurrence | `ReservationForm.start_fold` | yes | label "Start occurrence" | help: relevant on DST transition days; on fall-back the clock time repeats and Automatic is rejected — pick First (earlier) or Second (later) occurrence; a spring-forward gap time does not exist and is always rejected |
-| End | `ReservationForm.end` | yes | label "End" only | help: local end; asset held from start until end, end instant free again |
+| End | `ReservationForm.end` | yes | label "End" only | help: custom local end; hidden/disabled for quick durations; asset held from start until end, end instant free again |
 | End occurrence | `ReservationForm.end_fold` | yes | label "End occurrence" | same corrected semantics as start occurrence |
 | Purpose | `ReservationForm.purpose` | yes | label "Purpose" | help: optional unless the asset's policy requires it; staff can read it |
 | Cancel reason | reservation detail, `CancellationForm.reason` | yes | label "Reason" | help: optional, recorded with the cancellation, visible to staff; cancel warning line |
