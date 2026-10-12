@@ -511,3 +511,16 @@ input,select,textarea { border-color: #6b8a7c; }
 .site-header .nav-form button { color: var(--accent); }
 
 .site-header .nav-form button:hover { background: var(--pale-blue); color: #16302e; }
+
+/* Member reservation duration choices: native radios styled as large buttons. */
+.duration-field { border: 0; padding: 0; min-width: 0; }
+.duration-field legend { font-weight: 600; margin-bottom: .6rem; }
+#id_duration { display: flex; flex-wrap: wrap; gap: .65rem; }
+#id_duration > div { display: flex; flex: 1 1 8rem; }
+#id_duration > div:last-child { flex-basis: 11rem; }
+#id_duration label { width: 100%; display: flex; align-items: center; justify-content: center; gap: .5rem; min-height: 2.9rem; padding: .55rem .8rem; border: 2px solid var(--border); border-radius: .7rem; cursor: pointer; background: var(--surface); }
+#id_duration label:has(input:checked) { border-color: var(--accent); background: var(--pale-blue); color: #16302e; }
+#id_duration label:focus-within { outline: 3px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 480px) { #id_duration > div, #id_duration > div:last-child { flex-basis: calc(50% - .65rem); } }
+
+[data-reservation-form] [data-custom-end][hidden] { display: none; }

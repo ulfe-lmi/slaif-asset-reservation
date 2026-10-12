@@ -62,6 +62,7 @@ from slaif_reservation.reservations.services import (
     cancel_reservation,
     create_reservation,
     release_reservation,
+    resolve_effective_policy,
 )
 from slaif_reservation.web.auth import active_human_required, is_active_human
 from slaif_reservation.web.availability import (
@@ -316,8 +317,12 @@ def reserve_asset(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
     availability = _availability_from_request(request, asset, timezone_name=timezone_name)
     if isinstance(availability, HttpResponse):
         return availability
+    try:
+        policy = resolve_effective_policy(asset)
+    except ReservationDomainError:
+        policy = None
     if request.method == "POST":
-        form = ReservationForm(request.POST, timezone_name=timezone_name)
+        form = ReservationForm(request.POST, timezone_name=timezone_name, policy=policy)
         if form.is_valid():
             try:
                 result = create_reservation(
@@ -339,7 +344,7 @@ def reserve_asset(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
                 messages.success(request, _("Reservation created."))
                 return redirect("web:reservation-detail", reservation_id=result.reservation.id)
     else:
-        form = ReservationForm(timezone_name=timezone_name)
+        form = ReservationForm(timezone_name=timezone_name, policy=policy)
     return render(
         request,
         "web/reserve.html",

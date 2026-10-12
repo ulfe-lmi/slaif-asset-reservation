@@ -1,21 +1,287 @@
 # INSTALL — Installation and Deployment
 
-**Target:** an authenticated HTTPS pilot on a single Linux host. Keep the
-application and database private behind an operator-owned reverse proxy.
-
-This is the operator guide for SLAIF Asset Reservation. Docker/Compose is
-the deployment path; the `uv` workflow is the development path. For the
-shortest local evaluation, see [QUICKSTART.md](QUICKSTART.md). Deeper
-configuration reference and rationale: [Deployment reference](docs/deployment.md). Operator
-checklists and recovery procedures: [runbooks](docs/runbooks/).
-
-**Contents:** [1. Supported deployment shape](#1-supported-deployment-shape) · [2. Prerequisites](#2-prerequisites) · [3. Fast local evaluation](#3-fast-local-evaluation-docker-loopback-only) · [4. Development installation](#4-development-installation-uv--development-path) · [5. Authenticated pilot deployment](#5-authenticated-pilot-docker-deployment-canonical-procedure) · [6. Rehearsal](#6-rehearsal-what-it-does-and-does-not-prove) · [7. Persistence](#7-persistence) · [8. Backup and restore](#8-backup-and-restore) · [9. Upgrades and rollback](#9-upgrading-to-a-new-reviewed-revision-manual-procedure) · [10. Shutdown and restart](#10-shutdown-and-restart) · [11. Security boundaries](#11-security-boundaries) · [12. Operating limits](#12-operating-limits) · [13. Documentation map](#13-documentation-map) · [14. Uninstall and data retention](#14-uninstall-and-data-retention) · [15. Troubleshooting](#15-troubleshooting)
-
 **Testing on this computer?** Use [QUICKSTART.md](QUICKSTART.md).
-**Need access from another computer or the Internet?** Use section 5 below.
-Remote users connect to the HTTPS hostname, never directly to port 8000.
+**Access from another computer or the Internet?** Follow the required steps below.
+Clients connect to your **HTTPS hostname**, never directly to port 8000.
 
-## 1. Supported deployment shape
+Supported shape: one Linux **x86_64/amd64** host with Docker/Compose v2.24+,
+Git, Bash, curl and an operator-owned Caddy/equivalent proxy. Prepare a DNS
+hostname, TLS/certificate arrangement, persistent disk and protected secrets.
+The app stays on `127.0.0.1`; PostgreSQL stays on the private Compose network.
+Real host, account, DNS/TLS and secret administration remains the operator's work.
+
+<a id="5-authenticated-pilot-docker-deployment-canonical-procedure"></a>
+
+## Installation — required steps
+
+Complete steps 1–9 in order, in the same shell. The commands below are the
+first-install path. Explanations and routine operations follow **Installation complete**.
+For an existing installation, use [Upgrades](#9-upgrading-to-a-new-reviewed-revision-manual-procedure).
+
+### 1. Obtain the current version — REQUIRED
+
+There is currently no release registry or release-tag workflow. The supported
+pilot default is the current fetched `origin/main`, checked out detached:
+
+```bash
+git clone --no-checkout https://github.com/ulfe-lmi/slaif-asset-reservation.git slaif-asset-reservation
+cd slaif-asset-reservation
+git fetch origin main
+git checkout --detach origin/main
+SAR_INSTALLED_REVISION=$(git rev-parse HEAD)
+printf 'Installed revision: %s\n' "$SAR_INSTALLED_REVISION"
+SAR_COMPOSE_PROJECT=slaif-asset-reservation
+```
+
+Record that full revision and project name in your installation logbook. A
+later `main` update does not change this detached checkout.
+
+**ONLY FOR EXISTING INSTALLATIONS:** retain the recorded Compose project name
+instead of the new example name. Verify the `com.docker.compose.project` label
+and database volume mount. Every Compose command uses `-p "$SAR_COMPOSE_PROJECT"`.
+A name change selects another `<project>_postgres-data` volume; a rename needs
+a separate backed-up migration. Never adopt or delete a volume by name alone.
+
+**Advanced alternate:** if a maintainer supplied a particular commit, run
+`git fetch origin`, then `git checkout --detach <supplied-commit>`, and repeat
+`SAR_INSTALLED_REVISION=$(git rev-parse HEAD)` and the revision output above.
+
+### 2. Prepare application configuration — REQUIRED
+
+For a **new installation only**, create the protected file:
+
+```bash
+umask 077
+test ! -e deploy/env.production || { echo "Existing configuration: review and reuse it." >&2; exit 1; }
+install -m 0600 deploy/env.production.example deploy/env.production
+```
+
+Edit `deploy/env.production`, replacing every placeholder from your protected
+secret store. Set these values before continuing:
+
+| Setting | Required value |
+| --- | --- |
+| `SLAIF_DJANGO_SECRET_KEY` | At least 32 bytes; not an example/development secret. |
+| `SLAIF_API_TOKEN_PEPPER` | At least 32 bytes, distinct from the secret key. |
+| `SLAIF_ALLOWED_HOSTS` | Your service hostname **and `127.0.0.1`**. |
+| `SLAIF_CSRF_TRUSTED_ORIGINS` | Your exact `https://` origin. |
+| `DATABASE_URL` | Database `slaif_reservation`, user `slaif`, host `db`; password matching step 3. |
+| `SLAIF_TRUSTED_PROXY_PEERS` | Keep `127.0.0.1`; add the actual proxy peer discovered in step 5. |
+
+Keep the example's production settings, SSL redirect, secure-cookie behavior
+and positive login/API abuse budgets. Keep the file mode `0600`; never commit it.
+[Configuration details](#application-configuration-details) explain validation and trust.
+
+### 3. Prepare the database password — REQUIRED
+
+For a **new installation only**:
+
+```bash
+install -d -m 700 deploy/secrets
+umask 077
+test ! -e deploy/secrets/postgres_password || { echo "Existing database secret: retain and verify it." >&2; exit 1; }
+head -c 32 /dev/urandom | base64 | tr -d '=+/\n' | head -c 32 > deploy/secrets/postgres_password
+```
+
+Put the **same password** in `DATABASE_URL` in step 2. Keep the file `0600` and
+directory `0700`. Existing installations retain their actual database credentials;
+changing this file does not rotate a password in an initialized volume.
+
+### 4. Build the application image — REQUIRED
+
+```bash
+docker build --tag slaif-asset-reservation:pilot .
+docker tag slaif-asset-reservation:pilot "slaif-asset-reservation:$SAR_INSTALLED_REVISION"
+```
+
+Keep the commit-addressable image for later identification and rollback.
+
+### 5. Validate Compose, start PostgreSQL and configure proxy trust — REQUIRED
+
+```bash
+docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml config --quiet
+docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml up -d db
+docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml ps
+```
+
+Wait for `db` to be **healthy**. Discover its network gateway:
+
+```bash
+SAR_DB_CONTAINER=$(docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml ps -q db)
+SAR_COMPOSE_NETWORK=$(docker inspect "$SAR_DB_CONTAINER" --format '{{range $name, $network := .NetworkSettings.Networks}}{{$name}}{{end}}')
+docker network inspect "$SAR_COMPOSE_NETWORK" --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+```
+
+For host-side Caddy connecting to the loopback-published app, that gateway is
+normally the peer the app sees. Add this explicit IP to `SLAIF_TRUSTED_PROXY_PEERS`
+in `deploy/env.production`, retaining `127.0.0.1` for the health probe. Verify
+this installation's actual peer during HTTPS testing; never trust a whole subnet
+or copy another installation's IP. Do not print plain Compose `config` with real
+secrets: it includes the resolved application environment.
+
+### 6. Initialize the database — REQUIRED
+
+This is part of first installation; it creates/updates the database schema and
+is not an optional migration tutorial.
+
+```bash
+docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
+  python manage.py migrate --noinput
+docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
+  python manage.py initialize_default_policy
+docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
+  python manage.py operational_check
+```
+
+**Database initialization complete** when all three commands succeed and
+`operational_check=ok` is printed. This installs the schema/exclusion constraint
+and the fresh database's global `default` policy. Existing policies are preserved;
+[default values](#default-policy-and-inventory) are documented below.
+
+### 7. Create the first administrator and start the app — REQUIRED
+
+```bash
+docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
+  python manage.py createsuperuser
+docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml up -d app
+docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml ps
+```
+
+The interactive command asks for **email** and password twice. Wait for `app`
+to become **healthy**. Accounts are administrator-created; there is no registration.
+
+### 8. Configure HTTPS reverse proxy — REQUIRED FOR ACCESS FROM OTHER COMPUTERS
+
+1. Adapt `deploy/Caddyfile.example` into a **candidate** for your existing Caddy
+   setup. Preserve existing sites and global configuration; **do not overwrite a
+   multi-site Caddyfile with the example**.
+2. Replace `reservation.example.org` with your service hostname/address. Keep
+   `reverse_proxy 127.0.0.1:8000` (or your selected loopback app port).
+3. Configure your operator-owned TLS arrangement: Caddy automatic HTTPS or
+   institutionally supplied certificates. Replace/remove the placeholder email.
+4. Validate the **complete candidate configuration**, including existing sites:
+
+   ```bash
+   read -r -p "Complete candidate Caddyfile path: " SAR_CADDY_CONFIG
+   caddy validate --config "$SAR_CADDY_CONFIG" --adapter caddyfile
+   ```
+
+5. Install the validated configuration through the host's existing Caddy process
+   manager. For the standard package's existing `caddy` systemd service, after
+   placing the complete validated configuration at its configured path:
+
+   ```bash
+   sudo systemctl reload caddy
+   ```
+
+   A first Caddy installation needs that service installed and started; a custom
+   service/config path needs its own documented reload procedure. See
+   [Caddy service operation](https://caddyserver.com/docs/running#using-the-service).
+6. Verify HTTPS health from another computer using step 9.
+7. Verify administrator login using step 9.
+
+Keep the shipped forwarding/header/body/read/log-privacy protections. Trusted
+peers, overwrite-not-append forwarding, CSRF and equivalent Nginx requirements
+are in the [proxy security reference](docs/deployment.md#8-reverse-proxy-and-tls).
+Only the proxy owns the external listener; Gunicorn stays private.
+
+### 9. Verify the installation — REQUIRED
+
+From a client that should reach the service:
+
+```bash
+read -r -p "Service hostname (without scheme/path): " SAR_SERVICE_HOST
+curl -fsS "https://${SAR_SERVICE_HOST}/health/live"
+curl -fsS "https://${SAR_SERVICE_HOST}/health/ready"
+curl -sS -o /dev/null -w '%{http_code}\n' "https://${SAR_SERVICE_HOST}/login/"
+```
+
+Open `https://<your-service-hostname>/` in a browser, choose **Log in** or
+**Administration**, and sign in with the administrator created in step 7.
+
+**Installation complete** when:
+
+- the HTTPS URL opens;
+- `/health/live` returns **200**;
+- `/health/ready` returns **200**;
+- administrator login works.
+
+Create ordinary accounts and your verified assets through Administration;
+manage policies through `/manage/`. The default policy permits reservations
+immediately for active/reservable assets. **OPTIONAL:** use the fictitious demo
+only for a fresh evaluation database, following [QUICKSTART](QUICKSTART.md).
+**Never import the demo during an upgrade.**
+
+## Post-installation operations and reference
+
+The required installation path ends above. The following material covers
+configuration rationale, readiness, backup/recovery and routine operation.
+
+[Configuration](#application-configuration-details) · [Readiness and rehearsal](#6-rehearsal-what-it-does-and-does-not-prove) · [Backup/restore](#8-backup-and-restore) · [Upgrades](#9-upgrading-to-a-new-reviewed-revision-manual-procedure) · [Troubleshooting](#15-troubleshooting)
+
+### Application configuration details
+
+Then replace every placeholder in the git-ignored `deploy/env.production`
+from a protected secret store — never commit it, and keep it mode
+`0600`:
+
+- `SLAIF_DJANGO_SECRET_KEY` (at least 32 bytes);
+- `SLAIF_ALLOWED_HOSTS` — **both** the approved service hostname
+  (the service hostname served through the HTTPS proxy) **and**
+  `127.0.0.1`. The service hostname serves browser/API traffic through
+  the proxy; `127.0.0.1` is required because the Compose app
+  healthcheck probes `http://127.0.0.1:8000/health/live` from inside
+  the application container, and Django rejects a host not in
+  `ALLOWED_HOSTS`. Omitting `127.0.0.1` leaves the app container
+  permanently unhealthy. Entries are validated fail-closed at settings
+  load: explicit bare hostnames, IPv4/IPv6 literals, or Django dotted
+  subdomain wildcards (`.example.org`) only — schemes, ports, userinfo,
+  whitespace, and malformed entries are rejected without echoing the
+  configured value, and the bare `*` wildcard is unsafe and refused.
+- `SLAIF_CSRF_TRUSTED_ORIGINS` (the approved service hostname,
+  `https://` origin);
+- `SLAIF_API_TOKEN_PEPPER` (at least 32 bytes, distinct from
+  `SLAIF_DJANGO_SECRET_KEY`);
+- `DATABASE_URL` — the database password here **must match** the secret
+  file from step 3.
+- `SLAIF_TRUSTED_PROXY_PEERS` — start with `127.0.0.1` for the
+  in-container probe. After PostgreSQL creates the Compose network in
+  required step 5, discover and add the actual host-proxy socket peer before
+  starting the application. Entries are explicit IP addresses or
+  point-to-point networks (IPv4 `/31`, IPv6 `/127`); broad ranges are
+  rejected.
+
+Do not weaken `SLAIF_SECURE_SSL_REDIRECT` or the trusted-peer list to
+make the healthcheck pass: the probe dials `127.0.0.1` from inside the
+application container and sends `X-Forwarded-Proto: https`, so
+`127.0.0.1` must be present in `SLAIF_TRUSTED_PROXY_PEERS` (and in
+`SLAIF_ALLOWED_HOSTS`, as above). The production settings no longer use
+a blanket `SECURE_PROXY_SSL_HEADER`: only the listed trusted peers may
+supply TLS/client-identity forwarding, and the reverse proxy must
+overwrite `X-Forwarded-Proto` / `X-Forwarded-For` from the real
+connection (required step 8).
+
+
+### Default policy and inventory
+
+A fresh database has the active global fallback policy `default` with these
+explicit defaults: minimum duration 1 minute; maximum duration
+2880 minutes (48 hours / 2 days); booking horizon 7 days by reservation
+START; minimum lead 0; cancellation cutoff 0; purpose optional; no
+restricted operating-hour window; and, per principal across all assets
+and that principal's API tokens, up to 50 upcoming reservations, and a
+new booking requires fewer than 8 existing blocking records intersecting
+the proposed interval (8 or more existing intersecting records rejects
+it; the new record would be the 8th). This is a count of records
+intersecting the proposed interval, not a maximum simultaneous-occupancy
+sweep. Manual policy creation is no longer a
+prerequisite for a fresh install. Staff manage all policies through the
+existing audited services in the staff management UI at `/manage/`.
+Reservations resolve an active policy for the exact asset, its parent
+machine, or global; a missing or ambiguous policy fails closed.
+
+
+### 1. Supported deployment shape
 
 ```text
 clients (browsers, API agents)
@@ -55,7 +321,7 @@ which must buffer client bodies and enforce its own read/idle timeouts.
 See `docs/deployment.md` (section 5, "Gunicorn worker pool") for the full
 rationale and the responsiveness regression.
 
-## 2. Prerequisites
+### 2. Prerequisites
 
 What this deployment actually requires:
 
@@ -71,13 +337,13 @@ What this deployment actually requires:
 - For real HTTPS: a DNS name resolving to the host and a TLS plan (Caddy
   automatic TLS, or institutionally managed certificates).
 - A protected secret store or host-only protected secret files for the
-  values in sections 5.2 and 5.3.
+  values in required steps 2 and 3.
 - The database role that runs migrations must be able to create the
   `btree_gist` extension in the application database. The Compose defaults
   satisfy this: the `postgres:17` image grants the initial `POSTGRES_USER`
   role (default `slaif`) superuser rights.
 
-## 3. Fast local evaluation (Docker, loopback only)
+### 3. Fast local evaluation (Docker, loopback only)
 
 The shortest truthful Docker path to a running instance is
 [QUICKSTART.md](QUICKSTART.md): the committed development `compose.yaml`
@@ -87,7 +353,7 @@ migrations, an optional fictitious demo import, and an interactive
 first administrator. It is for local evaluation and development, not
 long-running service deployment.
 
-## 4. Development installation (uv — development path)
+### 4. Development installation (uv — development path)
 
 The developer workflow — Python 3.13 managed by `uv` with the committed
 `uv.lock`, PostgreSQL 17 through the development Compose file, `.env`
@@ -95,301 +361,7 @@ handling, and the standard verification command set — is documented in
 [CONTRIBUTING.md](CONTRIBUTING.md), with required test tooling and
 evidence rules in [TESTING.md](TESTING.md). It is not the recommended
 long-running service deployment; use the controlled operator procedure in
-section 5 for a service.
-
-## 5. Authenticated pilot Docker deployment (canonical procedure)
-
-Before deployment, select a reviewed immutable commit with green checks and
-current qualification/audit evidence, complete the local rehearsals (section 6),
-and approve the real host, accounts, secrets, DNS/TLS and operating responsibilities.
-Development checks and local rehearsal do not perform those real actions.
-
-1. **Clone and checkout the reviewed commit.** The reviewed commit is
-   operator-selected (reviewed and qualified, with green CI). The
-   read prompt keeps it out of any committed command and requires the
-   full commit, not a prefix:
-
-   ```bash
-   git clone https://github.com/ulfe-lmi/slaif-asset-reservation.git slaif-asset-reservation
-   cd slaif-asset-reservation
-   read -r -p "Reviewed commit SHA (full 40-character): " REVIEWED_SHA
-   [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Not a full commit SHA." >&2; exit 1; }
-   git checkout "$REVIEWED_SHA"
-   ```
-
-   **Choose and record the Compose project name before running any Compose command.**
-   For a new service installation:
-
-   ```bash
-   SAR_COMPOSE_PROJECT=slaif-asset-reservation
-   ```
-
-   For an existing installation, set `SAR_COMPOSE_PROJECT` to its existing project
-   name instead. Find it in the deployment record or the container's
-   `com.docker.compose.project` label, and verify the database container's volume
-   mount. Use the same value in every shell running the commands below. Do not
-   switch an existing `slaif-test`, evaluation or other project to the new name:
-   that selects a different `<project>_postgres-data` volume and can start an empty
-   database. A rename requires a separate backed-up migration, explicit volume
-   identity checks and verified proxy peers; never adopt or delete volumes by name.
-
-2. **Prepare the application environment file.** If
-   `deploy/env.production` already exists on this host, review and reuse
-   it — do not overwrite it with the example. To create it fresh, set
-   the restrictive umask and mode **before** real values are written:
-
-   ```bash
-   umask 077
-   install -m 0600 deploy/env.production.example deploy/env.production
-   ```
-
-   Then replace every placeholder in the git-ignored `deploy/env.production`
-   from a protected secret store — never commit it, and keep it mode
-   `0600`:
-
-   - `SLAIF_DJANGO_SECRET_KEY` (at least 32 bytes);
-   - `SLAIF_ALLOWED_HOSTS` — **both** the approved service hostname
-     (the service hostname served through the HTTPS proxy) **and**
-     `127.0.0.1`. The service hostname serves browser/API traffic through
-     the proxy; `127.0.0.1` is required because the Compose app
-     healthcheck probes `http://127.0.0.1:8000/health/live` from inside
-     the application container, and Django rejects a host not in
-     `ALLOWED_HOSTS`. Omitting `127.0.0.1` leaves the app container
-     permanently unhealthy. Entries are validated fail-closed at settings
-     load: explicit bare hostnames, IPv4/IPv6 literals, or Django dotted
-     subdomain wildcards (`.example.org`) only — schemes, ports, userinfo,
-     whitespace, and malformed entries are rejected without echoing the
-     configured value, and the bare `*` wildcard is unsafe and refused.
-   - `SLAIF_CSRF_TRUSTED_ORIGINS` (the approved service hostname,
-     `https://` origin);
-   - `SLAIF_API_TOKEN_PEPPER` (at least 32 bytes, distinct from
-     `SLAIF_DJANGO_SECRET_KEY`);
-   - `DATABASE_URL` — the database password here **must match** the secret
-     file from step 3.
-   - `SLAIF_TRUSTED_PROXY_PEERS` — start with `127.0.0.1` for the
-     in-container probe. After PostgreSQL creates the Compose network in
-     step 6, discover and add the actual host-proxy socket peer before
-     starting the application. Entries are explicit IP addresses or
-     point-to-point networks (IPv4 `/31`, IPv6 `/127`); broad ranges are
-     rejected.
-
-   Do not weaken `SLAIF_SECURE_SSL_REDIRECT` or the trusted-peer list to
-   make the healthcheck pass: the probe dials `127.0.0.1` from inside the
-   application container and sends `X-Forwarded-Proto: https`, so
-   `127.0.0.1` must be present in `SLAIF_TRUSTED_PROXY_PEERS` (and in
-   `SLAIF_ALLOWED_HOSTS`, as above). The production settings no longer use
-   a blanket `SECURE_PROXY_SSL_HEADER`: only the listed trusted peers may
-   supply TLS/client-identity forwarding, and the reverse proxy must
-   overwrite `X-Forwarded-Proto` / `X-Forwarded-For` from the real
-   connection (step 12).
-
-3. **Prepare the PostgreSQL secret file.** If it already exists, retain it and
-   verify that it matches the existing database role and application URL. Do not
-   rotate it as an installation step: changing the file does not change the
-   password in an initialized PostgreSQL volume. For a new installation only:
-
-   ```bash
-   install -d -m 700 deploy/secrets
-   umask 077
-   test ! -e deploy/secrets/postgres_password || { echo "Existing secret: review and reuse it." >&2; exit 1; }
-   head -c 32 /dev/urandom | base64 | tr -d '=+/\n' | head -c 32 \
-     > deploy/secrets/postgres_password
-   ```
-
-   The file contains exactly one line: the database password, with no
-   trailing newline. The same password is structurally required in TWO
-   places: the `db` container reads `deploy/secrets/postgres_password` via
-   `POSTGRES_PASSWORD_FILE`, and the app connects through `DATABASE_URL` in
-   `deploy/env.production`. If the two do not match, the app cannot start.
-
-4. **Build the image at the reviewed commit.** The production Compose
-   example expects the tag `slaif-asset-reservation:pilot`, which
-   is a mutable tag: build it at the reviewed commit, and keep a
-   commit-addressable copy for application rollback.
-
-   ```bash
-   docker build --tag slaif-asset-reservation:pilot .
-   docker tag slaif-asset-reservation:pilot \
-     "slaif-asset-reservation:$(git rev-parse --short HEAD)"
-   ```
-
-   There is no release platform or registry; the image is built on the
-   deployment host from the reviewed commit.
-
-5. **Render and validate the configuration.** Use the quiet form — it
-   exits non-zero on a broken configuration and prints nothing:
-
-   ```bash
-   docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml config --quiet
-   ```
-
-   Do not run plain `config` while real values are in place: it prints the
-   fully resolved environment, including the `deploy/env.production`
-   values (secret key, pepper, and the database password inside
-   `DATABASE_URL`).
-
-6. **Start PostgreSQL only.**
-
-   ```bash
-   docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml up -d db
-   docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml ps
-   ```
-
-   Wait until the `db` service is healthy. Its private network now exists;
-   inspect the network name and gateway without printing application secrets:
-
-   ```bash
-   SAR_DB_CONTAINER=$(docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml ps -q db)
-   SAR_COMPOSE_NETWORK=$(docker inspect "$SAR_DB_CONTAINER" --format '{{range $name, $network := .NetworkSettings.Networks}}{{$name}}{{end}}')
-   docker network inspect "$SAR_COMPOSE_NETWORK" --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
-   ```
-
-   For the canonical host-side Caddy proxy dialing the published loopback port,
-   the app normally observes this bridge gateway as its peer. Add that explicit
-   IP to `SLAIF_TRUSTED_PROXY_PEERS` in the protected application environment,
-   retaining `127.0.0.1` for the in-container probe. Verify the actual peer during
-   the HTTPS checks; Docker forwarding behavior can vary. Do not trust the whole
-   subnet or copy an address from another installation.
-
-7. **Run migrations deliberately.**
-
-   ```bash
-   docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
-     python manage.py migrate --noinput
-   ```
-
-   This installs the `btree_gist` extension and the
-   `reservation_no_overlap_per_asset` exclusion constraint.
-
-   Then initialize the fresh-install default policy, deliberately and
-   immediately after migrations:
-
-   ```bash
-   docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
-     python manage.py initialize_default_policy
-   ```
-
-   On a fresh database this creates the active global fallback policy
-   `default` (step 9 documents its values). On a database that already
-   has any policy row it is a no-op: no writes, no audit, no
-   reactivation. Migrations and application startup never run it
-   implicitly.
-
-8. **Run the operational check.**
-
-   ```bash
-   docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
-     python manage.py operational_check
-   ```
-
-9. **Configure initial assets and policies.** Create your own verified inventory
-   through administration. The bundled 14-asset inventory is entirely fictitious;
-   the commands below are optional for a fresh evaluation database, not a real
-   service inventory or an upgrade. [Bootstrap format](data/bootstrap/README.md). A fresh database already has the
-   step 7 initializer's active global fallback policy `default` with these
-   chosen explicit defaults: minimum duration 1 minute; maximum duration
-   2880 minutes (48 hours / 2 days); booking horizon 7 days by reservation
-   START; minimum lead 0; cancellation cutoff 0; purpose optional; no
-   restricted operating-hour window; and, per principal across all assets
-   and that principal's API tokens, up to 50 upcoming reservations, and a
-   new booking requires fewer than 8 existing blocking records intersecting
-   the proposed interval (8 or more existing intersecting records rejects
-   it; the new record would be the 8th). This is a count of records
-   intersecting the proposed interval, not a maximum simultaneous-occupancy
-   sweep. Manual policy creation is no longer a
-   prerequisite for a fresh install. Staff manage all policies through the
-   existing audited services in the staff management UI at `/manage/`.
-   Reservations resolve an active policy for the exact asset, its parent
-   machine, or global; a missing or ambiguous policy fails closed.
-
-   ```bash
-   docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
-     python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml
-   docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
-     python manage.py import_bootstrap_assets --input data/bootstrap/assets.yaml --apply
-   ```
-
-10. **Create the first administrator** (interactive; accounts are
-    administrator-created; the account's email address is its login
-    identifier).
-
-    ```bash
-    docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
-      python manage.py createsuperuser
-    ```
-
-    The command is interactive: it prompts for `Email`, then `Password`
-    (entered twice to confirm).
-
-11. **Start the application service.**
-
-    ```bash
-    docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml up -d app
-    ```
-
-12. **Configure the reverse proxy** from `deploy/Caddyfile.example`
-    (qualified with Caddy v2.11.6): replace the placeholder hostname and
-    replace or remove the placeholder email. The operator owns certificate
-    provisioning: Caddy automatic HTTPS or institutionally managed certificates.
-    Qualification uses synthetic certificates and does not provision public ACME. The
-    example overwrites (never appends) `X-Forwarded-Proto` and
-    `X-Forwarded-For` from the actual client connection, caps body size and
-    read/idle time, drops the `Server` and `Via` identity headers, and
-    applies its `Referrer-Policy` edge policy as a **deferred default**
-    (Caddy `?` modifier) so stricter per-view policies — in particular the
-    one-time token page's `no-referrer` / `no-store, private` contract —
-    pass through the proxy unchanged. Set
-    `SLAIF_TRUSTED_PROXY_PEERS` to the source peer the application actually
-    sees from the proxy. For a host proxy dialing a Docker-published loopback
-    port, this is normally the bridge gateway; discover and verify it as
-    in step 6. Keep `127.0.0.1` separately for the in-container probe: the application
-    honors that peer's forwarding and treats every other peer as a direct
-    client. In both cases the application strips every forwarding header it
-    does not consume (trusted and untrusted alike), keeps the original
-    socket peer separately from the normalized client identity
-    (`request.client_ip`), and logs only the safe normalized client in its
-    request log. Browser POSTs must present an `Origin` exactly matching
-    the `SLAIF_CSRF_TRUSTED_ORIGINS` entry. Nginx remains acceptable if
-    already operated institutionally; it must implement the same
-    overwrite-not-append forwarding, peer allowlist, and deferred-default
-    header semantics. Full contract: `docs/deployment.md` section 8.
-
-13. **Verify HTTPS end to end** from outside the host. Enter the approved
-    service hostname (without a scheme or path); reuse it for the checks
-    below in the same shell:
-
-    ```bash
-    read -r -p "Approved service hostname: " SAR_SERVICE_HOST
-    curl -fsS "https://${SAR_SERVICE_HOST}/health/live"
-    ```
-
-14. **`/health/live`** returns HTTP 200 (liveness; no database dependency).
-
-15. **`/health/ready`** returns HTTP 200 (database reachable, migration state
-    current).
-
-16. **`/login/`** returns HTTP 200; sign in with the administrator. `/manage/`
-    is active-staff-only and redirects safely for everyone else. An
-    unauthenticated API probe must return HTTP 401 — a status-only
-    check, deliberately without `curl -f` (which would report the expected
-    401 as a curl failure):
-
-    ```bash
-    curl -sS -o /dev/null -w '%{http_code}\n' "https://${SAR_SERVICE_HOST}/api/v1/me/"
-    # expected: 401 (body intentionally not captured here)
-    ```
-
-17. **Once the pilot database is prepared** (assets, staff, users, and
-    policies configured), run the pilot readiness gate:
-
-    ```bash
-    docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app \
-      python manage.py pilot_readiness_check --strict
-    ```
-
-    This checks database/inventory/account/policy readiness; it does not qualify
-    public TLS, proxy trust, abuse capacity or the operator's incident/backup
-    arrangements. Pair it with the current HTTPS/security qualification.
+the required installation steps above for a service.
 
 ### Shared authentication and API budgets
 
@@ -452,7 +424,7 @@ operator contract (slots, formats, size limits, refresh/cache semantics,
 trust model and failure behavior) is [docs/branding.md](docs/branding.md).
 The same overlay also works with `compose.yaml` for local evaluation.
 
-## 6. Rehearsal: what it does and does not prove
+### 6. Rehearsal: what it does and does not prove
 
 `deploy/rehearse_internal_alpha_deployment.sh` runs a disposable,
 synthetic-value, production-shaped rehearsal on this machine:
@@ -509,7 +481,7 @@ create/remove deployment configuration and volumes; existing files or foreign
 resources are refused. Neither modifies DNS, issues real certificates, changes
 host trust or publishes a service. See [Testing](TESTING.md) for the isolation rules.
 
-## 7. Persistence
+### 7. Persistence
 
 - All database state lives in the Compose named volume `postgres-data`
   (on-disk name `<compose-project>_postgres-data`, where the project name
@@ -518,7 +490,7 @@ host trust or publishes a service. See [Testing](TESTING.md) for the isolation r
   database. Never use it as a routine stop; see section 10.
 - Inspect: `docker volume ls | grep postgres-data`.
 
-## 8. Backup and restore
+### 8. Backup and restore
 
 The application image deliberately does not bundle PostgreSQL client tools;
 in the Compose deployment shape, backups therefore run from the PostgreSQL
@@ -581,7 +553,7 @@ target has been verified (`restore_drill` or an equivalent drill), treat
 backups as unverified. Scheduled, off-host backup remains an
 operator-owned responsibility; the repository provides no scheduler.
 
-## 9. Upgrading to a new reviewed revision (manual procedure)
+### 9. Upgrading to a new reviewed revision (manual procedure)
 
 Before upgrading, recover the recorded Compose project name and set
 `SAR_COMPOSE_PROJECT` to that exact name. **Never import the demo inventory as an
@@ -590,7 +562,7 @@ alias is `slaif-asset-reservation:pilot`; older installations may have used
 `:internal-alpha`. Record the previous image identity for rollback before building
 the new alias. Changing the image alias does not change project or volume identity.
 
-1. Obtain the reviewed revision (commit with green CI) and human approval.
+1. Obtain the desired revision using required step 1 above (current `origin/main` by default), record its full SHA, and obtain operator approval.
 2. Back up the database first (section 8).
 3. Build the new image at the new commit under the example tag; do NOT delete
    the previous commit-addressable image tag — it is the application
@@ -654,7 +626,7 @@ If the already-applied migrations are not compatible with the older code,
 an application rollback is unsafe: do not guess with `git revert` or
 `migrate` — restore from the approved backup (section 8) instead.
 
-## 10. Shutdown and restart
+### 10. Shutdown and restart
 
 ```bash
 # stop/start/restart preserve all persistent data
@@ -671,7 +643,7 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
   `postgres-data` volume. `docker compose down -v` deletes the database
   (section 7).
 
-## 11. Security boundaries
+### 11. Security boundaries
 
 - Never commit `deploy/env.production` or `deploy/secrets/` (both are
   git-ignored); keep the secret file mode `0600` and its directory `0700`.
@@ -702,7 +674,7 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
 - No real secret, token, credential, or private export may ever enter the
   repository, the image, logs, or this document.
 
-## 12. Operating limits
+### 12. Operating limits
 
 - No institutional OIDC or SSO; accounts are administrator-created only.
 - No password reset or email workflow; lost credentials require
@@ -724,7 +696,7 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
   effective policy. This is the current authenticated-pilot authorization
   model; account creation does not create project-scoped resource permissions.
 
-## 13. Documentation map
+### 13. Documentation map
 
 - [QUICKSTART.md](QUICKSTART.md) — shortest local Docker evaluation path.
 - `docs/deployment.md` — deeper deployment reference and rationale
@@ -737,7 +709,7 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
 - `docs/api-contract.md`, `docs/human-ui.md`, `docs/security-model.md` —
   implemented API contract, UI, and security references.
 
-## 14. Uninstall and data retention
+### 14. Uninstall and data retention
 
 Stopping is not uninstalling: `stop` and `down` (without `-v`) leave the
 named volume `postgres-data` — the entire database — on disk. Make the
@@ -763,17 +735,17 @@ data-retention decision deliberately.
   your secret-retention policy), and the proxy vhost. This deployment
   installs no scheduler or other host service.
 
-## 15. Troubleshooting
+### 15. Troubleshooting
 
 | Symptom | First checks |
 | --- | --- |
 | Compose cannot publish the app port | The loopback port is taken (for example `ss -ltnp`): coordinate with the owner or change `SLAIF_APP_HOST_PORT` consistently. Never stop a service you do not own. |
 | App cannot start: database password mismatch | The password in `DATABASE_URL` (`deploy/env.production`) must equal the content of `deploy/secrets/postgres_password`. If the `postgres-data` volume already exists, changing `POSTGRES_PASSWORD_FILE` does **not** change the existing database's password — PostgreSQL applies it only when initializing an empty volume. Align the password file with the existing database, or re-provision the volume (destructive). |
-| App unhealthy / liveness probe fails with HTTP 400 | `DisallowedHost`: `SLAIF_ALLOWED_HOSTS` is missing `127.0.0.1` (the in-container healthcheck probe) or the service hostname (step 2). |
-| `/health/ready` returns 503 | Database unreachable or migrations not applied: check `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml ps` and the `db` logs, then run the deliberate migration step (section 5, step 7). |
-| HTTPS redirect or CSRF failures behind the proxy (301 loops, missing secure cookies, CSRF 403) | The trusted-peer list must include the peer the proxy actually presents: `SLAIF_TRUSTED_PROXY_PEERS` needs `127.0.0.1` (in-container probe) and, for a Docker-network proxy, the bridge gateway IP; the proxy must overwrite `X-Forwarded-Proto` from the real connection (steps 2 and 12). `SLAIF_CSRF_TRUSTED_ORIGINS` must be the exact `https://` service origin, and browser POSTs must carry the matching `Origin`. |
+| App unhealthy / liveness probe fails with HTTP 400 | `DisallowedHost`: `SLAIF_ALLOWED_HOSTS` is missing `127.0.0.1` (the in-container healthcheck probe) or the service hostname (required step 2). |
+| `/health/ready` returns 503 | Database unreachable or migrations not applied: check `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml ps` and the `db` logs, then run the deliberate migration step (required step 6). |
+| HTTPS redirect or CSRF failures behind the proxy (301 loops, missing secure cookies, CSRF 403) | The trusted-peer list must include the peer the proxy actually presents: `SLAIF_TRUSTED_PROXY_PEERS` needs `127.0.0.1` (in-container probe) and, for a Docker-network proxy, the bridge gateway IP; the proxy must overwrite `X-Forwarded-Proto` from the real connection (required steps 2 and 8). `SLAIF_CSRF_TRUSTED_ORIGINS` must be the exact `https://` service origin, and browser POSTs must carry the matching `Origin`. |
 | Underscore header variants (`X_Forwarded_*` etc.) have no effect | Deliberate: Gunicorn runs with `--header-map drop`, so wire headers containing underscores are discarded at the parser and never reach the application; the supported contract uses only the canonical hyphenated names written by the trusted proxy. |
-| No reservation accepted | No unambiguous active policy resolves for the asset (exact asset, parent machine, global) — the system fails closed. Fresh installs run `initialize_default_policy` after migrate (section 5, step 7); otherwise configure a policy in `/manage/`. |
+| No reservation accepted | No unambiguous active policy resolves for the asset (exact asset, parent machine, global) — the system fails closed. Fresh installs run `initialize_default_policy` after migrate (required step 6); otherwise configure a policy in `/manage/`. |
 | Backup/restore tools missing in the app container | The application image deliberately contains no PostgreSQL client tools; backups run from the `db` container (section 8), and the `manage.py` wrappers run host-side where a pg client and `DATABASE_URL` are available. |
 
 ### Abuse-control configuration and cleanup

@@ -16,30 +16,15 @@ production deployment has happened.
 
 ## Steps
 
-The complete, verified command procedure is owned by `INSTALL.md`, section 5
-("Authenticated pilot Docker deployment"). In summary, the operator must:
+Follow [INSTALL's required steps](../../INSTALL.md#installation--required-steps)
+in order. The first-install default fetches current `origin/main`, checks it out
+detached and records the full SHA. Existing installations retain their project
+name and volume and use INSTALL's upgrade section instead.
 
-Record the Compose project name first: new services use `slaif-asset-reservation`;
-existing installations retain their actual project name and database volume. Use
-INSTALL's explicit `-p` commands throughout. Do not import the demo on upgrades.
-
-1. Build the reviewed image at the reviewed commit (example tag
-   `slaif-asset-reservation:pilot`, plus a commit-addressable tag for rollback).
-2. Prepare `deploy/env.production` from `deploy/env.production.example` with real values from a
-   protected secret store. Never commit `deploy/env.production`.
-3. Store the PostgreSQL password in `deploy/secrets/postgres_password`, matching the
-   `DATABASE_URL` password in `deploy/env.production`.
-4. Review `compose.production.example.yaml`; do not publish PostgreSQL publicly.
-5. Start PostgreSQL, then run migrations and `operational_check` deliberately (see `INSTALL.md`
-   section 5, steps 6–8).
-6. Configure initial assets and policies, and create the first administrator (see `INSTALL.md`
-   section 5, steps 9–10).
-7. Start the application and verify `/health/live`, `/health/ready`, `/login/`, `/manage/`, and a
-   safe unauthenticated API failure (see `INSTALL.md` section 5, steps 11–16).
-8. Configure Caddy or another reverse proxy for HTTPS from `deploy/Caddyfile.example` (it
-   forwards to the loopback application port), then verify HTTPS end to end.
-9. Once the pilot database is prepared, run `pilot_readiness_check --strict` (see `INSTALL.md`
-   section 5, step 17).
+Database initialization is required. HTTPS proxy configuration and administrator
+login verification complete the installation. Readiness, backup/recovery and
+routine operations are post-installation responsibilities; use the referenced
+runbooks for those procedures.
 
 ## Not Covered
 
