@@ -2,7 +2,9 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from django.test import override_settings
 from playwright.sync_api import expect
+from tests.browser.test_slaif_design import CUSTOM, inspect_surface
 from tests.test_reservation_shortcuts import NOW
 
 from slaif_reservation.accounts.models import User
@@ -71,12 +73,17 @@ def login(page, live_server, member):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("width", [1440, 390])
+@pytest.mark.parametrize("theme", ["default", "custom"])
 def test_quick_duration_browser_and_range(
-    page, live_server, clock, member, asset, policy, width, output_path
+    page, live_server, clock, member, asset, policy, width, theme, output_path, request
 ):
+    branding = override_settings(BRANDING_DIR=str(CUSTOM) if theme == "custom" else None)
+    branding.enable()
+    request.addfinalizer(branding.disable)
     page.set_viewport_size({"width": width, "height": 1200})
     login(page, live_server, member)
     page.goto(f"{live_server.url}/assets/{asset.id}/reserve/")
+    inspect_surface(page, output_path, "reserve-custom-selected", width, theme)
     start = page.locator("#id_start")
     assert start.get_attribute("min") == "2026-10-24T14:16"
     assert start.get_attribute("max") == "2026-10-31T13:45"
@@ -103,7 +110,8 @@ def test_quick_duration_browser_and_range(
     page.get_by_role("button", name="Create reservation").scroll_into_view_if_needed()
     page.evaluate("window.scrollTo(0, 0)")
     Path(output_path).mkdir(parents=True, exist_ok=True)
-    page.screenshot(path=f"{output_path}/reservation-shortcuts-{width}.png")
+    inspect_surface(page, output_path, "reserve-quick-selected", width, theme)
+    page.screenshot(path=f"{output_path}/reservation-shortcuts-{theme}-{width}.png")
     page.get_by_role("button", name="Create reservation").click()
     page.wait_for_url("**/reservations/**/")
     reservation = Reservation.objects.get(requested_by_user=member)
