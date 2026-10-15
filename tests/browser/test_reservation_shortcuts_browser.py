@@ -85,6 +85,8 @@ def test_quick_duration_browser_and_range(
     page.goto(f"{live_server.url}/assets/{asset.id}/reserve/")
     inspect_surface(page, output_path, "reserve-custom-selected", width, theme)
     start = page.locator("#id_start")
+    expect(start).to_have_value("2026-10-24T14:16")
+    expect(page.locator("#id_end")).to_have_value("2026-10-24T15:16")
     assert start.get_attribute("min") == "2026-10-24T14:16"
     assert start.get_attribute("max") == "2026-10-31T13:45"
     expect(page.get_by_text("Reservations may start between", exact=False)).to_be_visible()
@@ -148,3 +150,22 @@ def test_browser_policy_choices_and_stale_forged_post(
         page.get_by_text("The reservation starts beyond the booking horizon.", exact=True)
     ).to_be_visible()
     assert Reservation.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("width", [1440, 390])
+def test_browser_can_reserve_with_prefilled_times(
+    page, live_server, clock, member, asset, policy, width, output_path
+):
+    page.set_viewport_size({"width": width, "height": 1200})
+    login(page, live_server, member)
+    page.goto(f"{live_server.url}/assets/{asset.id}/reserve/")
+    expect(page.locator("#id_start")).to_have_value("2026-10-24T14:16")
+    expect(page.locator("#id_end")).to_have_value("2026-10-24T15:16")
+    expect(page.get_by_role("radio", name="Custom end time", exact=True)).to_be_checked()
+    inspect_surface(page, output_path, "reserve-prefilled", width, "default")
+    page.get_by_role("button", name="Create reservation").click()
+    page.wait_for_url("**/reservations/**/")
+    reservation = Reservation.objects.get(requested_by_user=member)
+    assert reservation.start_at == NOW.replace(minute=31, second=0)
+    assert reservation.end_at == reservation.start_at + timedelta(hours=1)
