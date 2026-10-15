@@ -211,6 +211,22 @@ class ReservationForm(forms.Form):
                     "max": last_local.strftime("%Y-%m-%dT%H:%M"),
                 }
             )
+            if not self.is_bound and "start" not in self.initial and first_minute <= last_minute:
+                # Defaults come from real instants, in the member's timezone.
+                # Never replace submitted values, even after validation errors.
+                minutes = max(policy.min_duration_minutes, min(60, policy.max_duration_minutes))
+                end_local = (first_minute + timedelta(minutes=minutes)).astimezone(zone)
+                for name, value in (("start", first_local), ("end", end_local)):
+                    if name not in self.initial:
+                        self.initial[name] = value.strftime("%Y-%m-%dT%H:%M")
+                        # At fall-back this exact instant already determines
+                        # which occurrence to use; ordinary times stay Automatic.
+                        ambiguous = (
+                            value.utcoffset() != value.replace(fold=1 - value.fold).utcoffset()
+                        )
+                        self.initial.setdefault(
+                            f"{name}_fold", str(value.fold) if ambiguous else ""
+                        )
             self.fields["start"].help_text += " " + _(
                 "Reservations may start between %(earliest)s and %(latest)s. "
                 "This picker range is guidance; checked again on submission."

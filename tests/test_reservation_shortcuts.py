@@ -271,3 +271,103 @@ def test_forged_extreme_start_is_a_form_error_not_a_server_exception():
     form = ReservationForm({"start": "9999-12-31T23:00", "duration": "240"}, timezone_name="UTC")
     assert not form.is_valid()
     assert "supported date range" in str(form.errors["start"])
+
+
+@pytest.mark.parametrize(
+    ("minimum", "maximum", "lead", "expected_start", "expected_end"),
+    [
+        (15, 240, 0, "2026-10-24T13:46", "2026-10-24T14:46"),
+        (15, 240, 30, "2026-10-24T14:16", "2026-10-24T15:16"),
+        (90, 180, 0, "2026-10-24T13:46", "2026-10-24T15:16"),
+        (15, 30, 0, "2026-10-24T13:46", "2026-10-24T14:16"),
+    ],
+)
+def test_new_form_defaults_use_current_time_profile_and_policy(
+    minimum, maximum, lead, expected_start, expected_end
+):
+    policy = ReservationPolicy(
+        min_duration_minutes=minimum,
+        max_duration_minutes=maximum,
+        min_lead_minutes=lead,
+        booking_horizon_days=7,
+    )
+    form = ReservationForm(timezone_name="Asia/Kathmandu", policy=policy, now=NOW)
+    assert form["start"].value() == expected_start
+    assert form["end"].value() == expected_end
+    assert form["duration"].value() == "custom"
+    assert form["start_fold"].value() == form["end_fold"].value() == ""
+
+
+@pytest.mark.parametrize(
+    ("instant", "start", "end", "start_fold", "end_fold"),
+    [
+        (datetime(2026, 3, 29, 0, 30, tzinfo=UTC), "2026-03-29T01:30", "2026-03-29T03:30", "", ""),
+        (
+            datetime(2026, 10, 25, 0, 15, tzinfo=UTC),
+            "2026-10-25T02:15",
+            "2026-10-25T02:15",
+            "0",
+            "1",
+        ),
+        (
+            datetime(2026, 10, 25, 1, 15, tzinfo=UTC),
+            "2026-10-25T02:15",
+            "2026-10-25T03:15",
+            "1",
+            "",
+        ),
+    ],
+)
+def test_generated_defaults_roundtrip_across_dst(instant, start, end, start_fold, end_fold):
+    policy = ReservationPolicy(
+        min_duration_minutes=15, max_duration_minutes=240, booking_horizon_days=7
+    )
+    form = ReservationForm(timezone_name="Europe/Ljubljana", policy=policy, now=instant)
+    assert form["start"].value() == start
+    assert form["end"].value() == end
+    assert form["start_fold"].value() == start_fold
+    assert form["end_fold"].value() == end_fold
+    submitted = ReservationForm(form.initial, timezone_name="Europe/Ljubljana")
+    assert submitted.is_valid(), submitted.errors
+    assert submitted.cleaned_data["start_instant"] == instant
+    assert submitted.cleaned_data["end_instant"] == instant + timedelta(hours=1)
+
+
+def test_defaults_do_not_replace_bound_empty_or_invalid_values_or_explicit_initial():
+    policy = ReservationPolicy(
+        min_duration_minutes=15, max_duration_minutes=240, booking_horizon_days=7
+    )
+    for data in ({}, {"start": "invalid", "end": "", "start_fold": "1"}):
+        form = ReservationForm(data, timezone_name="UTC", policy=policy, now=NOW)
+        assert form["start"].value() == data.get("start")
+        assert form["end"].value() == data.get("end")
+        assert not form.is_valid()
+        assert form.initial == {}
+    initial = {"start": "2026-10-26T09:00", "end": "2026-10-26T11:00", "start_fold": "1"}
+    form = ReservationForm(timezone_name="UTC", policy=policy, now=NOW, initial=initial)
+    assert form.initial == initial
+
+
+def test_no_defaults_when_no_policy_or_no_start_minute_is_available():
+    form = ReservationForm(timezone_name="UTC", now=NOW)
+    assert form.initial == {}
+    policy = ReservationPolicy(
+        min_duration_minutes=15, max_duration_minutes=240, booking_horizon_days=0
+    )
+    form = ReservationForm(timezone_name="UTC", policy=policy, now=NOW)
+    assert form.initial == {}
+
+
+@pytest.mark.django_db
+def test_new_form_defaults_can_be_submitted_unchanged(clock, policy, client, member, asset):
+    client.force_login(member)
+    response = client.get(f"/assets/{asset.id}/reserve/")
+    form = response.context["form"]
+    response = client.post(
+        f"/assets/{asset.id}/reserve/",
+        {name: form[name].value() or "" for name in form.fields},
+    )
+    assert response.status_code == 302
+    reservation = Reservation.objects.get()
+    assert reservation.start_at == NOW.replace(minute=31, second=0)
+    assert reservation.end_at == reservation.start_at + timedelta(hours=1)

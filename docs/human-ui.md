@@ -60,10 +60,13 @@ Availability helps choose a time; it is not a booking guarantee or proof that
 hardware is online. Accepted reservations are entitlements. The application
 neither runs workloads nor enforces physical usage.
 
-#For a short reservation, select the start in your profile timezone and choose
+For a short reservation, select the start in your profile timezone and choose
 **1 hour**, **2 hours** or **4 hours** when the policy permits it. **Custom end time**
 retains explicit end entry. Quick choices measure elapsed time from the interpreted
-start, including DST changes. The picker shows current lead-time/horizon bounds;
+start, including DST changes. A new form prefills the start to the next valid minute
+in your profile timezone, allowing for policy lead time. Custom end initially gives
+one hour, adjusted to the policy's minimum/maximum duration. You can change both times.
+The picker shows current lead-time/horizon bounds;
 the service checks the policy and availability again when you submit.
 
 ## API tokens
