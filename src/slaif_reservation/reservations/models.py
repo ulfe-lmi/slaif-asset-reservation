@@ -315,6 +315,18 @@ class Reservation(models.Model):
 
     class Meta:
         ordering = ["start_at", "id"]
+        permissions = [
+            ("book_assets", "Book assets."),
+            ("view_all_reservations", "View all reservations."),
+            ("cancel_others_reservations", "Cancel other users' reservations."),
+            ("release_others_reservations", "Release other users' reservations."),
+            ("view_booking_policies", "View booking policies."),
+            ("manage_booking_policies", "Manage booking policies."),
+            ("view_maintenance_blackouts", "View maintenance blackouts."),
+            ("manage_maintenance_blackouts", "Manage maintenance blackouts."),
+            ("view_audit_history", "View audit history."),
+            ("export_audit_history", "Export audit history."),
+        ]
         indexes = [
             models.Index(
                 fields=["asset", "start_at", "effective_end_at"], name="reservation_asset_time_idx"

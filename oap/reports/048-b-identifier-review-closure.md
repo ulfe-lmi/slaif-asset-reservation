@@ -1,0 +1,267 @@
+<!-- OAP-META
+{
+  "kind": "report",
+  "id": "048-b",
+  "order_path": "oap/orders/048-b-identifier-review-closure.md",
+  "order_sha256": "150ba4785dcfeb6aae9a69cc4f2e12f5b51edfe0f93269b9df53e93998aa1b05",
+  "repo": "ulfe-lmi/slaif-asset-reservation",
+  "issue_number": 99,
+  "pr_number": 100,
+  "branch": "codex/99-oap-048-a-authorization-foundation",
+  "implementation_head": "f6eca5b1f91dfa57640fe04aa1e31a27c93ec2cd",
+  "base_sha": "1baffe27a66609944f4d7b8e5c12dc69dfaa00b9",
+  "result": "PARTIAL",
+  "observed_implementation_ci": {
+    "observed_head": "f6eca5b1f91dfa57640fe04aa1e31a27c93ec2cd",
+    "runs": [
+      {
+        "run_id": 39062814396,
+        "workflow": "oap",
+        "jobs": {
+          "oap-harness": "success"
+        }
+      },
+      {
+        "run_id": 39062814291,
+        "workflow": "CI",
+        "jobs": {
+          "quality": "success",
+          "security": "success",
+          "container": "success",
+          "test": "failure"
+        }
+      }
+    ]
+  },
+  "report_head_ci": "NOT YET OBSERVED AT AUTHORING"
+}
+-->
+
+# 048-b — single collected identifier review closure
+
+Implementation head SHA: f6eca5b1f91dfa57640fe04aa1e31a27c93ec2cd
+Report publication commit: SELF
+
+PARTIAL for the 048-b identifier review closure (D0). Same objective 48,
+issue 99, SAME branch `codex/99-oap-048-a-authorization-foundation`, SAME
+PR #100 (AMEND, body restructured via structured REST; `Closes #99`
+retained), original main base `1baffe27a66609944f4d7b8e5c12dc69dfaa00b9`,
+started from frozen 048-a report head
+`fdb004125e262cee8c6efd6a01e8f8b05d395454` (implementation
+`6b548eb465eb9fc679546c6c7c57c264a2f13432`). Fresh coding context; the
+048-a order and report remain byte-identical and untouched. All six
+collected corrections were implemented, tested and pushed; the normal
+FULL CI at the implementation head has exactly ONE failing check, and it
+is a documented environment flake in an unrelated image-ownership test
+helper (diagnosis below), not an in-scope product defect: no unrelated
+test/helper was modified and, per the order and the strategy local
+testing notes, the same-head retry decision is strategy's. Everything
+else at that head passed (1114/1115 product tests; quality/security/
+container/oap-harness all green). No merge, no auto-merge, no CRITICAL
+mutation, no deployment, no real DB/data/exposure operation.
+
+## Acceptance evidence (order corrections 1–6)
+
+1. **Opaque value mutation fixed (no normalization).**
+   - `src/slaif_reservation/accounts/admin.py`: `UserAdmin` now overrides
+     `formfield_for_dbfield` so the generated `external_identifier`
+     `forms.CharField` has `strip = False`; the form preserves every
+     character (spaces, case, leading zeroes) and the 128-character limit
+     is measured on the whole value. No other UserAdmin fields or
+     validation were replaced or weakened.
+   - `src/slaif_reservation/accounts/models.py`: `User.clean()` and a new
+     `User.save()` normalize ONLY the exact empty string to `NULL` (on
+     the `full_clean` validation path and every ordinary persistence
+     path respectively), so `create_user`, `create` and
+     save/update all treat `""` as UNASSIGNED and multiple unassigned
+     accounts coexist without blank-unique collisions. No stripping,
+     casefolding, parsing or backfill of populated values anywhere; no
+     data migration for normalization (none needed).
+   - Proven on real PostgreSQL: `tests/test_accounts.py` (12 passed,
+     4 new: exact-empty on the manager path for two users → both NULL;
+     empty clears on ordinary save and plain `create`; whitespace-only
+     and padded values are POPULATED and preserved byte-for-byte; the
+     128 limit counts the whole value including spaces, 129 rejected by
+     `full_clean`). End-to-end admin HTTP: `tests/test_authorization_foundation.py::test_admin_user_change_preserves_opaque_whitespace_end_to_end`
+     posts `" 00042-Ext "` through the real form → stored `" 00042-Ext "`,
+     rendered back unchanged, and a 129-char value is rejected with the
+     stored value unchanged. The three independent root probes
+     (`test_review_048.py`, byte-identical frozen source) now all pass
+     (was 2 FAIL/1 PASS); their equivalents are durable regressions in
+     the repository suite, not private probes only.
+2. **Visible product meaning corrected.** The User field help, the SAME
+   unmerged `accounts/0005` migration field help (kept byte-identical to
+   the model string so `makemigrations --check --dry-run` reports no
+   changes) and the form-guidance inventory row now state the value MAY
+   represent an external account identifier (including a Linux UID) but
+   is opaque: not validated as a UID, not a credential, grants no
+   machine access, and does not replace the account's UUID/email/
+   password/token identity. The unmerged 0005 header no longer claims
+   generator provenance/version ("Generated by Django 5.2.15"); it is a
+   plain authored-purpose comment. No older merged migration was
+   rewritten; no new schema migration or column.
+3. **Negative evidence completed (all prior assertions preserved).**
+   - `tests/test_authorization_foundation.py`: forged-POST denials for a
+     non-staff user (redirected to admin login) and staff without
+     `accounts.change_user` (403), using the SAME payload as the
+     existing valid authorized positive control, with the stored
+     identifier unchanged after each denial; missing `--user` for
+     `grant_management_access` refuses (`CommandError: the following
+     arguments are required: --user`) with zero writes; a fault-injection
+     test makes the SECOND real through-table grant write fail inside the
+     command's atomic block and proves the earlier real grant is rolled
+     back (user ends with 0 grants, flags/groups untouched), matching the
+     root independent rollback probe (which already passed at 048-a).
+   - `tests/test_authorization_upgrade.py`: the subsequent unprivileged
+     users are now created BEFORE the idempotent re-`migrate`, and the
+     test asserts after the re-run that they still receive NO
+     grants/groups while the original baselines and legacy rows are
+     unchanged (pre-run/post-run grant-set equality plus explicit
+     baseline re-assertions). The token snapshot no longer carries the
+     raw verifier into an assertion: preservation is compared via
+     SHA-256 digests of both sides with a safe failure message (no
+     secret can be printed on regression). SQL uniqueness, actual PG
+     migration, privilege-denial and idempotence tests were not diluted;
+     no new general test/permission framework.
+   - `tests/browser/test_authorization_admin_browser.py`: the real
+     Chromium flow additionally round-trips a full 128-character value
+     with boundary spaces (leading zeroes case preserved), then clears
+     back to NULL.
+4. **Operator guide repaired.** `docs/authorization.md`: the false
+   "PR #99" reference is gone (99 is the issue; PR 100 is the PR); the
+   first-screen narrative is now a concise available-now vs planned
+   (enforcement NOT yet active) status with no order/PR delivery
+   chronology; the permission matrix and current staff behavior are
+   preserved verbatim; the explicit migration/setup procedure is
+   executable in the currently supported Docker workflow — it references
+   INSTALL.md, uses its retained `SAR_COMPOSE_PROJECT` convention, the
+   production Compose path (`compose.production.example.yaml`) and
+   `python manage.py` commands (the file is 100644, hence invoked via
+   `python`), and states that existing installations MUST keep their
+   same project name/volume identity. No README/INSTALL or unrelated
+   docs rewritten; no TLS/install-security procedure duplicated; no
+   Compose/runtime/config change; no pretendation of later
+   gates/read-all routes/scopes.
+5. **048-a report preserved; unverified claims superseded here (not by
+   rewrite).** `oap/reports/048-a-authorization-foundation.md` is
+   byte-identical to the frozen head. Authoritative correction: the
+   048-a report's changed-paths list named `tests/test_form_guidance.py`,
+   but the actual Git diff of implementation commit
+   `6b548eb465eb9fc679546c6c7c57c264a2f13432` does NOT touch that file
+   (verified against the commit object); actual Git diff is authoritative.
+   It also remains unchanged in this round (no change needed: it asserts
+   the rendered 037-a guidance surfaces and does not assert the
+   identifier help text). The 048-a local-rehearsal speculation that a
+   foreign 5-day pilot compose stack caused those local failures is
+   UNPROVEN: the named test cases (~600/716/747) use `fake_docker`
+   synthetic rows, and the proved local boundary was the disposable
+   source copy lacking Git metadata. This report does not repeat those
+   local attempts, does not turn that speculation into a product finding,
+   and made no source/test/helper/framework change for them.
+6. **Focused verification only (no detours).** Only the ordered focused
+   set ran locally, against the existing owned isolated environment
+   (owned Python 3.13.14 venv + owned PostgreSQL 17 container
+   `slaif-auth-048-922064` on loopback + owned Chromium), with
+   `OAP_ROLE` unset for every test process:
+   - `uv run pytest tests/test_authorization_foundation.py
+     tests/test_authorization_upgrade.py tests/test_accounts.py
+     tests/test_form_guidance.py` → **66 passed** (0 failed/skipped;
+     21 foundation + 1 upgrade + 12 accounts + 32 form-guidance), at the
+     final implementation head after a byte-identical source sync
+     (md5-verified over all 578 synced files).
+   - `uv run pytest tests/browser/test_authorization_admin_browser.py
+     --output <owned>` → **1 passed** (real Chromium at 1440 and 390).
+     Two privacy-safe screenshots were actually viewed in this fresh
+     context: SLAIF branding (no Django/framework text), the corrected
+     associated identifier help rendered, safe "Password set." status,
+     no token/verifier/CSRF/cookie/private data, no horizontal overflow,
+     keyboard-reachable control.
+   - `ruff check .` clean; `ruff format --check .` clean (227 files);
+     `mypy src` clean (137 files); `manage.py check` (test settings)
+     no issues; `manage.py makemigrations --check --dry-run` no changes
+     detected; changed-docs relative link (`../INSTALL.md`) resolves;
+     `git diff --check` clean; OAP stdlib harness
+     (`env -u OAP_ROLE python3 -m unittest discover -s tests/oap -p
+     'test_*.py'`) → **Ran 160 tests, OK**.
+   - NO local full pytest, NO operational/rehearsal/HTTPS/Gunicorn/
+     restore sweep, no Caddy/pg_dump install, no synthetic Git, no
+     foreign resource touched. The normal FULL CI is the required full
+     suite and ran at the final implementation head (status below).
+
+## Changed paths
+
+Order commit `859b4055852b5ce6a6bff170c3b0d5a6c1624002`:
+`oap/orders/048-b-identifier-review-closure.md` (exact order bytes,
+SHA-256 `150ba4785dcfeb6aae9a69cc4f2e12f5b51edfe0f93269b9df53e93998aa1b05`)
+and `oap/active` (`048-b` LF, 1 line changed; the original `048-a`
+order/pointer bytes remain in history untouched).
+
+Implementation commit `f6eca5b1f91dfa57640fe04aa1e31a27c93ec2cd`
+(9 files, +331/−47), all within allowed_paths:
+`src/slaif_reservation/accounts/models.py`,
+`src/slaif_reservation/accounts/admin.py`,
+`src/slaif_reservation/accounts/migrations/0005_user_external_identifier.py`,
+`tests/test_accounts.py`, `tests/test_authorization_foundation.py`,
+`tests/test_authorization_upgrade.py`,
+`tests/browser/test_authorization_admin_browser.py`,
+`docs/authorization.md`, `docs/ux/form-guidance-inventory.md`. No
+dependency/lockfile, bootstrap, merged-migration, deployment,
+permission-helper, baseline-migration-logic or command-write-logic
+change beyond the ordered corrections; no protected Administration
+boundary change; no enforcement/booking/read-all API/token work.
+`git diff --check`: clean.
+
+## Implementation CI at exact head f6eca5b (observed)
+
+- CI run 39062814291: quality PASS (19s), security PASS (15s),
+  container PASS (24s), **test FAIL (9m38s): 1 failed, 1114 passed**.
+- oap run 39062814396: oap-harness PASS (38s).
+
+The single failure is OUTSIDE this order's scope and matches a
+previously documented flake:
+
+- `tests/test_qualification_image_ownership.py::test_cached_created_requires_actual_construction_proof`
+  — `AssertionError: stale image construction output` in the
+  `tests/test_branding.py` `_OwnedDocker.build_image` HELPER (line 702):
+  `assert metadata.st_mtime >= started` failed with
+  `1792266034.944909 >= 1792266034.9449453` — a 36-microsecond race
+  between the filesystem mtime of the fake build's `--iidfile` output
+  and the wall-clock `time.time()` taken just before, on the CI runner's
+  filesystem. This test builds NO real image (its `docker build` is the
+  test's own simulated contract) and the 048-a report already records
+  `test_qualification_image_ownership` as a known mtime flake.
+- This diff touches only accounts field/admin/migration/help, its tests,
+  and two docs files: no Dockerfile, image, branding, rehearsal, HTTPS,
+  Gunicorn or restore code path. The 1114 passing tests include every
+  account/authorization/upgrade/form-guidance surface changed here.
+- Per the order ("no source/test helper/framework fixes for those
+  unrelated failures") and the strategy local testing notes ("diagnose
+  actual failure and report honestly; strategy decides same-head retry
+  if evidenced"), NO unrelated test/helper was modified and NO
+  same-head retry was performed by coding. Evidence for the retry
+  decision: the diagnosis above; focused in-scope suites 66/66 + 1/1
+  browser + 160/160 harness at this head; all other CI jobs green.
+
+## Uncertainty, privacy, dependencies, DHA, limits
+
+- The normal full CI at the implementation head is not fully green
+  (one unrelated flake, diagnosed above); whether to retry the test job
+  at this same head is a strategy decision. Report-head CI is not
+  observed at authoring and is preserved as a separate required check
+  for the report-only commit (NOT YET OBSERVED AT AUTHORING).
+- No credentials, private artifacts or sensitive data in this report;
+  all test evidence uses synthetic values (e.g.
+  `foundation-*@example.com`, `auth048-*@example.com`). The token
+  preservation evidence uses digests only.
+- DHA per the order's deferred adjudication: `Decision: NONE`. No CRITICAL
+  mutation. No product milestone acceptance, release or deployment
+  authorization; the SAR-048..SAR-053 target remains UNPROVEN until the
+  later enforcement/read-only purposes and a fresh independent ICA at the
+  exact merged revision. This round closes one collected corrective
+  purpose only — enforcement, read-all interfaces, asset-group
+  eligibility and qualification remain NOT implemented and are NOT
+  claimed here.
+- Limits: local verification was focused per order item 6; full-suite
+  qualification rests on the normal CI at the implementation head, whose
+  single failure is documented above with the retry decision deferred to
+  strategy.

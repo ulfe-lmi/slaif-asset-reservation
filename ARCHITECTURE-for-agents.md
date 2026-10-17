@@ -130,11 +130,17 @@ UNPROVEN until a fresh ICA at the exact merged revision.
 ## Selected group authorization target (A-16)
 
 Selected 2026-10-17 (M-GROUP-AUTHORIZATION). This section carries the A-16 executor
-obligations directly; it is a selected target, NOT implemented: no capability, route,
-scope, field, command or migration below exists yet, and nothing here authorizes
-deployment, real exposure, DNS/TLS/firewall, identity/secret administration, execution or
-physical allocation. Root A-16 is reference only. All facets remain UNPROVEN until a
-fresh independent ICA at the exact merged revision (SAR-048..SAR-053).
+obligations directly; it is a selected target. At contract time (2026-10-17) no
+capability, route, scope, field, command or migration below existed; ordered
+implementation 048-a (issue #99) then delivered the additive foundation only: the ten
+reservations-namespace permission records, `User.external_identifier`, the one-time
+existing-human booking baseline grant migration, the `accounts/authorization.py`
+helper and the explicit `grant_management_access` setup command. Enforcement, routes,
+token scopes and the cross-user read interfaces remain NOT implemented by that order
+and arrive with their ordered purposes. Nothing here authorizes deployment, real
+exposure, DNS/TLS/firewall, identity/secret administration, execution or physical
+allocation. Root A-16 is reference only. All facets remain UNPROVEN until a fresh
+independent ICA at the exact merged revision (SAR-048..SAR-053).
 
 **One additive grant system.** Reuse Django Group, user group membership and individual
 permissions; grants combine across all groups and individual assignments; no parallel

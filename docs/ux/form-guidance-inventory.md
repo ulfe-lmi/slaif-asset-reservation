@@ -1,7 +1,8 @@
 # Form and choice guidance inventory
 
 **Order:** 037-a (SAR-044), accuracy-closed in 037-b, administration
-guidance closed in 037-c. This inventory maps every
+guidance closed in 037-c; the user external identifier row added in 048-a.
+This inventory maps every
 ACTUAL runtime control (bound form fields, model-generated
 admin add/change/password/group fields, dynamically renamed fields, and raw
 template filters/actions) to rendered, accessible guidance. The earlier
@@ -102,6 +103,7 @@ Existing permission, admission and crypto rules remain unchanged. The member dur
 | User change: password | same | yes (read-only) | inherited hash summary (algorithm + masked salt/hash) + broken relative "Reset password" link | REPLACED: safe status only ("Password set" / "No password set" / unrecognized format) + real permitted action = per-user password-change form (`.../password/`, permission-checked, audited); no hash fragment rendered |
 | User change: display name / timezone | same | yes | bare | help: shown to staff / IANA name for web booking |
 | User change: is_service_account | same | yes | bare | help: machine account, cannot sign in to member site or administration |
+| User change: external identifier | same | yes | not present (added 048-a) | help: optional opaque external-system identifier (max 128 chars, case-sensitive; every character — spaces, case, leading zeroes — preserved exactly; the 128 limit covers the whole value); may represent an external account identifier (including a Linux UID) but is opaque: not UID-validated, not a credential, grants no machine access; populated values unique, exactly-empty clears to NULL (no blank-unique collisions), does not replace UUID/email/password/token identity |
 | User change: is_active / is_staff / is_superuser | same | yes | bare | precise flag effects incl. entry follows the active staff flag (not individual permission selections), superuser does not bypass the active-human/staff admission gate, and the matching model permissions are additionally required for per-model ADMINISTRATION operations only (management itself needs none of them) |
 | User change: groups / user_permissions | same | yes (filter_horizontal) | bare | help: site permissions govern per-model administration operations in the administration only and do NOT grant management access (which follows the active staff flag); NOT project/membership authorization, do not change reservable-asset policy, and do not admit a session by themselves; after the admin select-filter JS initializes, BOTH generated list boxes of each selector bind the rendered field help (`aria-describedby`) via `web/admin-form-guidance.js` |
 | User password change form | `/admin/accounts/user/<id>/password/` | `SlaifAdminPasswordChangeForm` (subclass) | generic built-in `usable_password` help mentioned SSO/LDAP although no such backend is configured | `usable_password` (added dynamically only while the user has a usable password) carries product help: disabling loses the current password and blocks password sign-in; no alternate human login backend exists; the built-in warning is preserved verbatim; a presentation-only `RadioSelect` subclass keeps a bindable help id (`id_usable_password_0_helptext`) and BOTH rendered choices carry the matching `aria-describedby`, the field label binds the first choice and the second choice is keyboard-focusable (verified in the browser after widget initialization); password1/password2 keep the built-in rule list/confirm help with their `aria-describedby`; validators/hashing/conditional field/actions/permissions unchanged |
@@ -168,7 +170,8 @@ adds and removes no routes.
   both the member reservation and staff blackout forms; form-level explicit
   occurrence (two real instants) and nonexistent spring-forward negatives;
   admin password-change page GET/invalid-POST and enable/disable behavior;
-  last_login/date_joined help. Validation negatives unchanged.
+  last_login/date_joined help; the 048-a external identifier help and its
+  bound association on the user change page. Validation negatives unchanged.
 - `tests/browser/test_form_guidance_browser.py`: Playwright seeded forms at
   1440/390 (reservation, token create, profile, policy, blackout, reservation/
   audit filters, and ALL admin surfaces: login, user add/change, password
