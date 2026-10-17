@@ -5,6 +5,7 @@ from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.utils import timezone
 from playwright.sync_api import Error as PlaywrightError
 
@@ -14,18 +15,30 @@ from slaif_reservation.reservations.models import Reservation, ReservationPolicy
 from slaif_reservation.reservations.services import create_reservation
 
 
+def _grant_booking(created: User) -> User:
+    # A16: explicit baseline booking capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
+
+
 @pytest.fixture
 def member_user() -> User:
-    return User.objects.create_user(
-        email="browser-member@example.com",
-        password="not-a-secret",
-        timezone="Europe/Ljubljana",
+    return _grant_booking(
+        User.objects.create_user(
+            email="browser-member@example.com",
+            password="not-a-secret",
+            timezone="Europe/Ljubljana",
+        )
     )
 
 
 @pytest.fixture
 def other_user() -> User:
-    return User.objects.create_user(email="browser-other@example.com", password="not-a-secret")
+    return _grant_booking(
+        User.objects.create_user(email="browser-other@example.com", password="not-a-secret")
+    )
 
 
 @pytest.fixture

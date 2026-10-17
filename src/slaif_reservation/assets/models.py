@@ -63,6 +63,25 @@ class Asset(models.Model):
     timezone = models.CharField(max_length=64, default="Europe/Ljubljana")
     active = models.BooleanField(default=True)
     reservable = models.BooleanField(default=False)
+    booking_restricted = models.BooleanField(
+        default=False,
+        help_text=(
+            "Restrict booking of this asset to members of the "
+            "selected allowed groups. Unrestricted assets remain "
+            "bookable by any user holding the booking permission."
+        ),
+    )
+    allowed_booking_groups = models.ManyToManyField(
+        "auth.Group",
+        blank=True,
+        related_name="allowed_booking_assets",
+        help_text=(
+            "Existing permission groups whose members may book "
+            "this asset while it is restricted. Membership in any "
+            "one selected group is sufficient. Ignored while the "
+            "asset is unrestricted."
+        ),
+    )
     capabilities = models.JSONField(default=dict, blank=True, validators=[validate_capabilities])
     verification_required = models.BooleanField(default=True)
     physical_locator = models.CharField(max_length=180, blank=True)

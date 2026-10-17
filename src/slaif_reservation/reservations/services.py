@@ -10,6 +10,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from slaif_reservation.assets.authorization import user_can_book_asset
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
 from slaif_reservation.audit.services import append_audit_event
@@ -18,6 +19,7 @@ from slaif_reservation.reservations.exceptions import (
     ASSET_NOT_RESERVABLE,
     BLACKOUT_CONFLICT,
     BOOKING_HORIZON_VIOLATION,
+    BOOKING_NOT_AUTHORIZED,
     CANCELLATION_CUTOFF,
     DURATION_TOO_LONG,
     DURATION_TOO_SHORT,
@@ -258,6 +260,11 @@ def create_reservation(
     with transaction.atomic():
         principal = _lock_principal(requested_by_user)
         locked_asset = _lock_asset(asset)
+        if not user_can_book_asset(principal, locked_asset):
+            _raise(
+                BOOKING_NOT_AUTHORIZED,
+                "The principal is not authorized to book this asset.",
+            )
         _validate_asset(locked_asset)
         policy = lock_effective_policy(locked_asset)
         _enforce_policy(

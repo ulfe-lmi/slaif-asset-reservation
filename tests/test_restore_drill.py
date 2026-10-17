@@ -26,6 +26,7 @@ from urllib.parse import quote
 
 import psycopg
 import pytest
+from django.contrib.auth.models import Permission
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
@@ -112,6 +113,11 @@ def _seed_source() -> dict:
         email="drill-staff@example.com", password="not-a-secret", is_staff=True
     )
     member = User.objects.create_user(email="drill-member@example.com", password="not-a-secret")
+    # A16: the drill member books a seed reservation and therefore carries
+    # the explicit baseline booking capability (real Permission row).
+    member.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
     services.create_policy(
         actor_user=staff,
         name="drill-global",

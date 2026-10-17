@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.utils import timezone
 
 from slaif_reservation.accounts.models import User
@@ -33,12 +34,17 @@ from slaif_reservation.reservations.models import Reservation, ReservationPolicy
 
 @pytest.fixture
 def pilot_member() -> User:
-    return User.objects.create_user(
+    created = User.objects.create_user(
         email="pilot-member@example.com",
         password="not-a-secret",
         display_name="Pilot Member",
         timezone="Europe/Ljubljana",
     )
+    # A16: explicit baseline booking capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 @pytest.fixture

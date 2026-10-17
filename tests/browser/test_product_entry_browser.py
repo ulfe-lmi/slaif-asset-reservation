@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from django.contrib.auth.models import Permission
 from playwright.sync_api import Page
 
 from slaif_reservation.accounts.models import User
@@ -22,11 +23,16 @@ MOBILE = {"width": 390, "height": 844}
 
 @pytest.fixture
 def member_user() -> User:
-    return User.objects.create_user(
+    created = User.objects.create_user(
         email="entry-member@example.com",
         password="not-a-secret",
         timezone="Europe/Ljubljana",
     )
+    # A16: explicit baseline booking capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 @pytest.fixture

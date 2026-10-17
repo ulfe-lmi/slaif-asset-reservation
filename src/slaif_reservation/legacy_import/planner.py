@@ -7,6 +7,7 @@ from typing import Any, Literal
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
+from slaif_reservation.assets.authorization import user_can_book_asset
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.legacy_import.mapping import LegacyMapping, map_asset, map_user_id
 from slaif_reservation.legacy_import.models import LegacyImportRecord
@@ -41,6 +42,7 @@ PLAN_CLASSIFICATIONS = (
     "invalid_time",
     "asset_not_reservable",
     "policy_not_configured",
+    "booking_not_authorized",
     "blackout_conflict",
     "reservation_conflict",
     "unsupported_status",
@@ -288,6 +290,32 @@ def plan_import(export: NormalizedLegacyExport, mapping: LegacyMapping) -> Impor
                             "reservation_conflict",
                             appointment.legacy_id,
                             "Appointment overlaps an existing blocking reservation.",
+                        ),
+                    ),
+                )
+            )
+            continue
+
+        # Future confirmed appointments are ordinary new bookings in
+        # disguise: they reuse the SAME current booking authorization
+        # predicate (global book_assets capability plus exact-asset group
+        # eligibility).  Completed-past appointments keep the documented
+        # historical import exception and are not checked here.
+        if appointment.start_at >= timezone.now() and not user_can_book_asset(user, asset):
+            planned.append(
+                PlannedAppointment(
+                    appointment=appointment,
+                    classification="error",
+                    asset_id=str(asset.id),
+                    user_id=str(user.id),
+                    messages=(
+                        _message(
+                            "booking_not_authorized",
+                            appointment.legacy_id,
+                            "Mapped requester does not meet the current "
+                            "booking authorization (booking permission or "
+                            "asset group eligibility).",
+                            level="error",
                         ),
                     ),
                 )

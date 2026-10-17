@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.db import IntegrityError
 from django.utils import timezone
 
@@ -39,7 +40,22 @@ from slaif_reservation.reservations.models import Reservation, ReservationPolicy
 
 
 def user(email: str = "user@example.com", **overrides: object) -> User:
-    return User.objects.create_user(email=email, password="not-a-secret", **overrides)
+    created = User.objects.create_user(email=email, password="not-a-secret", **overrides)
+    grant_booking(created)
+    return created
+
+
+def grant_booking(target: User) -> None:
+    """Explicit A16 baseline booking capability (real Permission row).
+
+    Pre-049 semantics let any active human book; the selected A16 target
+    replaces that with the explicit ``reservations.book_assets`` grant, so
+    these positive booking fixtures grant it deliberately instead of
+    relying on any test-wide default.
+    """
+    target.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
 
 
 def asset(slug: str = "asset-a", **overrides: object) -> Asset:

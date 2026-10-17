@@ -9,6 +9,7 @@ no one-time token page, no entered credentials, no CSRF/cookie material.
 from __future__ import annotations
 
 import pytest
+from django.contrib.auth.models import Permission
 from playwright.sync_api import Page
 
 from slaif_reservation.accounts.models import User
@@ -24,12 +25,17 @@ MOBILE = {"width": 390, "height": 844}
 
 @pytest.fixture
 def member_user() -> User:
-    return User.objects.create_user(
+    created = User.objects.create_user(
         email="guidance-member@example.com",
         password="not-a-secret",
         display_name="Guidance Member",
         timezone="Europe/Ljubljana",
     )
+    # A16: explicit baseline booking capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 @pytest.fixture
@@ -628,12 +634,16 @@ def test_browser_admin_group_and_asset_forms_guidance(
     page.goto(f"{live_server.url}/admin/auth/group/add/")
     page.set_viewport_size(DESKTOP)
     _assert_select_filter_bound(page, "id_permissions", "id_permissions_helptext")
-    assert "Site permissions granted through this group" in page.content()
+    assert "Permissions granted through this group" in page.content()
     assert (
-        "not management access, which follows the active human staff status"
+        "a group with reservations.book_assets lets its members create new reservations"
         in page.locator("#id_permissions_helptext").inner_text()
     )
-    assert "NOT project or membership authorization" in page.content()
+    assert (
+        "do not grant management access (which follows the active staff flag)"
+        in page.locator("#id_permissions_helptext").inner_text()
+    )
+    assert "not project or membership authorization" in page.content()
     _assert_no_horizontal_overflow(page)
     _capture(page, output_path, "admin-group-add-1440", full_page=True)
     page.set_viewport_size(MOBILE)
@@ -649,9 +659,21 @@ def test_browser_admin_group_and_asset_forms_guidance(
     _assert_help_near_control(page, "#id_slug", "id_slug_helptext")
     _assert_help_near_control(page, "#id_kind", "id_kind_helptext")
     _assert_help_near_control(page, "#id_booking_mode", "id_booking_mode_helptext")
+    _assert_help_near_control(page, "#id_booking_restricted", "id_booking_restricted_helptext")
+    _assert_select_filter_bound(
+        page, "id_allowed_booking_groups", "id_allowed_booking_groups_helptext"
+    )
     _assert_help_near_control(page, "#id_timezone", "id_timezone_helptext")
     _assert_help_near_control(page, "#id_physical_locator", "id_physical_locator_helptext")
     assert "a machine itself never has a parent" in page.locator("#id_parent_helptext").inner_text()
+    assert (
+        "a restricted asset with no allowed groups denies everyone"
+        in page.locator("#id_booking_restricted_helptext").inner_text()
+    )
+    assert (
+        "Membership in ANY ONE selected group is enough"
+        in page.locator("#id_allowed_booking_groups_helptext").inner_text()
+    )
     assert (
         "changing the slug does not change those URLs"
         in page.locator("#id_slug_helptext").inner_text()

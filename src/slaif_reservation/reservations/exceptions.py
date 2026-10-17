@@ -9,6 +9,7 @@ class ReservationDomainError(Exception):
 
 
 POLICY_NOT_CONFIGURED = "policy_not_configured"
+BOOKING_NOT_AUTHORIZED = "booking_not_authorized"
 POLICY_AMBIGUOUS = "policy_ambiguous"
 POLICY_MUTATION_NOT_AUTHORIZED = "policy_mutation_not_authorized"
 INVALID_POLICY_UPDATE = "invalid_policy_update"

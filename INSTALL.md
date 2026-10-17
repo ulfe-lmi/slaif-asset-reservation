@@ -691,10 +691,19 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
 - Shared privileged PostgreSQL role: the application, migrations, and
   backups all run as the same database role (`slaif`, a superuser under the
   Compose defaults). Role separation is a known operational limitation.
-- No project/group authorization: every active human account may browse
-  active assets and request any active, reservable, exclusive asset with an
-  effective policy. This is the current authenticated-pilot authorization
-  model; account creation does not create project-scoped resource permissions.
+- Booking authorization: creating a reservation requires the
+  `reservations.book_assets` capability (granted through permission groups or
+  individual permissions); group-restricted assets additionally require
+  membership in at least one of the asset's allowed groups, and a restricted
+  asset with no allowed groups denies everyone. Existing accounts received the
+  capability through the one-time baseline grant in the 048 migration. New
+  ordinary accounts receive NO automatic grants: to let a new account book,
+  grant `reservations.book_assets` deliberately (directly or via an operator
+  group) and, for restricted assets, add the account to an allowed group.
+  Project/group resource authorization beyond booking (projects,
+  organizational memberships, cross-user read access) is not implemented yet;
+  account creation does not create project-scoped resource permissions. See
+  [docs/authorization.md](docs/authorization.md).
 
 ### 13. Documentation map
 

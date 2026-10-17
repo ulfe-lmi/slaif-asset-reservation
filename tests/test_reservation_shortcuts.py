@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.contrib.auth.models import Permission
 
 from slaif_reservation.accounts.models import User
 from slaif_reservation.assets.models import Asset
@@ -20,9 +21,14 @@ def clock(monkeypatch):
 
 @pytest.fixture
 def member():
-    return User.objects.create_user(
+    created = User.objects.create_user(
         email="uat-member@example.test", password="not-a-secret", timezone="Asia/Kathmandu"
     )
+    # A16: explicit baseline booking capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 @pytest.fixture

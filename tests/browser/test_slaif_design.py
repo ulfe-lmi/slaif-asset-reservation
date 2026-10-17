@@ -7,6 +7,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.test import override_settings
 from django.utils import timezone
 from playwright.sync_api import Page
@@ -29,6 +30,10 @@ WIDTHS = (1440, 1024, 768, 390)
 def visual_records():
     member = User.objects.create_user(
         email="visual-member@example.com", password="synthetic-pass", display_name="Research member"
+    )
+    # A16: explicit baseline booking capability (real Permission row).
+    member.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
     )
     staff = User.objects.create_superuser(
         email="visual-staff@example.com", password="synthetic-pass", display_name="Lab operator"

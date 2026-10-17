@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.db import close_old_connections
 from django.utils import timezone
 
@@ -28,7 +29,13 @@ from slaif_reservation.reservations.models import (
 
 
 def make_user(email: str) -> User:
-    return User.objects.create_user(email=email, password="not-a-secret")
+    created = User.objects.create_user(email=email, password="not-a-secret")
+    # A16: positive booking fixtures explicitly carry the baseline
+    # reservations.book_assets capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 def make_asset(slug: str) -> Asset:

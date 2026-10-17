@@ -50,17 +50,27 @@ _USER_FIELD_HELP: dict[str, Any] = {
         "inactive or service-account superuser is still denied everywhere."
     ),
     "groups": _(
-        "Site permission groups only: they grant the group's per-model site "
-        "permissions. Groups are NOT project or membership authorization "
-        "and do not change who can reserve assets. They do not admit a "
-        "session by themselves; entry requires the active staff flag."
+        "Permission groups. Each group's permissions apply to all of its "
+        "members additively, together with their individual permissions. "
+        "This includes the documented reservations-namespace application "
+        "permissions: a group carrying reservations.book_assets lets its "
+        "members create new reservations, and membership in a group listed "
+        "on a restricted asset's allowed groups is what lets a member book "
+        "that asset. Groups are not project or membership authorization "
+        "and grant no machine or login access. They do not admit a session "
+        "by themselves; staff entry requires the active staff flag."
     ),
     "user_permissions": _(
-        "Individual site permissions. They govern per-model "
-        "administration operations in this administration only and do "
-        "not grant management access, which follows the active staff "
-        "flag. They do not affect reservable-asset policy and do not "
-        "admit a session by themselves."
+        "Individual permissions, combined additively with all group "
+        "permissions. Includes the documented reservations-namespace "
+        "application permissions: selecting reservations.book_assets lets "
+        "this account create new reservations (restricted assets "
+        "additionally require membership in the asset's allowed groups). "
+        "The remaining management and cross-user capabilities are "
+        "documented for their planned purposes and take effect when their "
+        "enforcement is active. They do not grant management access, "
+        "which follows the active staff flag, and they do not admit a "
+        "session by themselves."
     ),
     "last_login": _(
         "When the user last signed in successfully (stored in UTC). Updated "
@@ -348,12 +358,15 @@ class GroupAdmin(DjangoGroupAdmin):
     def formfield_for_manytomany(self, db_field: Any, request: HttpRequest, **kwargs: Any) -> Any:
         if db_field.name == "permissions":
             kwargs["help_text"] = _(
-                "Site permissions granted through this group. They govern "
-                "per-model administration operations in the "
-                "administration only, not management access, which "
-                "follows the active human staff status. These are NOT "
-                "project or membership authorization and do not change "
-                "who can reserve assets."
+                "Permissions granted through this group, applied "
+                "additively to each of its members. Includes the "
+                "documented reservations-namespace application "
+                "permissions: a group with reservations.book_assets lets "
+                "its members create new reservations, and membership in "
+                "this group can also satisfy a restricted asset's "
+                "allowed-group requirement. They do not grant management "
+                "access (which follows the active staff flag) and are "
+                "not project or membership authorization."
             )
         form_field = super().formfield_for_manytomany(db_field, request=request, **kwargs)
         if db_field.name == "permissions" and form_field is not None:

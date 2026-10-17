@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from django.contrib.auth.models import Permission
 from django.db import close_old_connections
 from django.utils import timezone
 
@@ -57,7 +58,14 @@ BLOCKING_STATUSES = [Reservation.STATUS_CONFIRMED, Reservation.STATUS_RELEASED]
 
 
 def make_user(email: str) -> User:
-    return User.objects.create_user(email=email, password="not-a-secret")
+    created = User.objects.create_user(email=email, password="not-a-secret")
+    # A16: mapped import principals are ordinary future bookings and need
+    # the explicit baseline reservations.book_assets capability (real
+    # Permission row); blackout actors (make_staff) do not book.
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 def make_staff(email: str) -> User:
