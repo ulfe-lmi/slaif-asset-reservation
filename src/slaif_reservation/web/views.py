@@ -30,6 +30,7 @@ from slaif_reservation.accounts.tokens import OneTimeBearerToken
 from slaif_reservation.accounts.validators import validate_timezone_name
 from slaif_reservation.assets.authorization import (
     STATE_ELIGIBLE,
+    STATE_NO_ALLOWED_GROUP,
     STATE_NO_BOOKING_PERMISSION,
     batch_asset_booking_states,
 )
@@ -282,6 +283,29 @@ def _booking_note(state: str) -> str:
     )
 
 
+def _reserve_denial_reason(asset: Asset, state: str) -> str:
+    """Truthful denial reason for a DIRECT reserve request.
+
+    Mirrors the authoritative service order: the principal's current
+    booking state first, then the asset-side state that makes this page
+    unusable (non-reservable, or not exclusive mode).  A member who is
+    personally eligible is never told they lack a group (or capability)
+    when the asset itself cannot be reserved through this page.
+    """
+    if state == STATE_NO_BOOKING_PERMISSION:
+        return _(
+            "Your account does not have the booking permission, so this asset cannot be reserved."
+        )
+    if state == STATE_NO_ALLOWED_GROUP:
+        return _(
+            "This asset can only be booked by members of specific approved "
+            "groups; your account is not currently one of them."
+        )
+    if not asset.reservable:
+        return DOMAIN_ERROR_MESSAGES[ASSET_NOT_RESERVABLE]
+    return DOMAIN_ERROR_MESSAGES[UNSUPPORTED_BOOKING_MODE]
+
+
 def _booking_access(state: str) -> str:
     if state == STATE_ELIGIBLE:
         return _("You can book this asset.")
@@ -379,10 +403,10 @@ def reserve_asset(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
         policy = None
     if not bookable:
         if request.method != "POST":
-            messages.error(request, _booking_note(state))
+            messages.error(request, _reserve_denial_reason(asset, state))
             return redirect("web:asset-detail", asset_id=asset.id)
         form = ReservationForm(request.POST, timezone_name=timezone_name, policy=policy)
-        form.add_error(None, _booking_note(state))
+        form.add_error(None, _reserve_denial_reason(asset, state))
         return render(
             request,
             "web/reserve.html",

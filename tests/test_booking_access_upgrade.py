@@ -25,6 +25,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.apps.registry import Apps
+from django.contrib.auth.models import Group
 from django.core.management import call_command
 from django.db import connection
 from django.db.migrations.loader import MigrationLoader
@@ -398,11 +399,26 @@ def test_populated_upgrade_migrates_assets_unrestricted_and_preserves_rows(
     assert member_now.has_perm("reservations.book_assets")
     assert User.objects.get(id=snapshot["staff_id"]).is_staff
 
-    # Idempotence: a normal re-run of migrate changes nothing.
-    before = Asset.objects.order_by("id").values_list("id", "booking_restricted", "updated_at")
+    # Idempotence: a normal re-run of migrate changes nothing — including a
+    # deliberately operator-configured restriction, which must survive the
+    # re-run rather than being reset by it.  The before snapshot is
+    # MATERIALIZED before the command (an unevaluated queryset would be
+    # evaluated after the migrate and compare against itself).
+    restrict_group = Group.objects.create(name=f"{GROUP_NAME}-restrict")
+    gpu_now.booking_restricted = True
+    gpu_now.allowed_booking_groups.add(restrict_group)
+    gpu_now.save()
+    before = list(
+        Asset.objects.order_by("id").values_list("id", "booking_restricted", "updated_at")
+    )
     call_command("migrate", interactive=False, verbosity=0)
-    after = Asset.objects.order_by("id").values_list("id", "booking_restricted", "updated_at")
-    assert list(before) == list(after)
+    after = list(Asset.objects.order_by("id").values_list("id", "booking_restricted", "updated_at"))
+    assert before == after
+    gpu_restricted = Asset.objects.get(id=gpu_now.id)
+    assert gpu_restricted.booking_restricted is True
+    assert gpu_restricted.allowed_booking_groups.count() == 1
+    assert gpu_restricted.allowed_booking_groups.first().id == restrict_group.id
+    restrict_group.delete()
 
     # New assets default to unrestricted.
     fresh = Asset.objects.create(

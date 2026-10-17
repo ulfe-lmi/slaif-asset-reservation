@@ -291,18 +291,19 @@ def test_direct_requests_denied_for_ineligible(
     assert Reservation.objects.count() == 0
 
     # Forged direct POST (the form is not even offered to this member):
-    # the session CSRF token comes from the cookie, nothing is created.
+    # a REAL form-encoded request carrying the valid existing session CSRF
+    # token (cookie + csrftoken form field), with a valid reservation
+    # payload; nothing is created.
     cookie = next(c for c in page.context.cookies() if c["name"] == "csrftoken")
     response = page.request.post(
         f"{live_server.url}/assets/{restricted_asset.id}/reserve/",
-        data={
+        form={
             "csrfmiddlewaretoken": cookie["value"],
             "start": _local_value(start, member_user),
             "end": _local_value(end, member_user),
             "duration": "custom",
             "purpose": "forged",
         },
-        headers={"X-CSRFToken": cookie["value"]},
     )
     assert response.status == 200
     body = response.text()
@@ -360,11 +361,6 @@ def test_admin_booking_access_controls(
     # The selected operator group is listed (staff surface only).
     assert GROUP_NAME in page.content()
     _assert_no_horizontal_overflow(page)
-    # Screenshot 2 of 2: admin configuration view (no member data).
-    page.screenshot(
-        path=f"{output_path}/booking-eligibility-admin-asset-1440.png",
-        full_page=True,
-    )
 
     # --- 390 ------------------------------------------------------------------
     page.set_viewport_size(MOBILE)
@@ -372,7 +368,13 @@ def test_admin_booking_access_controls(
         control = page.locator(f"#id_allowed_booking_groups{suffix}")
         assert control.count() == 1
         assert control.first.is_visible()
+    assert GROUP_NAME in page.content()
     _assert_no_horizontal_overflow(page)
+    # Screenshot 2 of 2: admin configuration view at 390 (no member data).
+    page.screenshot(
+        path=f"{output_path}/booking-eligibility-admin-asset-390.png",
+        full_page=True,
+    )
 
 
 # --- custom theme ------------------------------------------------------------------
@@ -394,6 +396,18 @@ def test_custom_theme_renders_booking_access(
     assert page.locator("img.brand-logo").get_attribute("src") == "/branding/logo"
     assert _bookable_cell(page, open_asset.name) == "yes"
     assert _bookable_cell(page, restricted_asset.name) == "no"
+
+    page.goto(f"{live_server.url}/assets/{restricted_asset.id}/")
+    assert "Restricted to specific approved groups" in page.content()
+    assert page.get_by_role("link", name="Reserve this asset").count() == 0
+    _assert_no_horizontal_overflow(page)
+
+    # The custom-brand eligibility controls are checked at 390 as well.
+    page.goto(f"{live_server.url}/assets/")
+    page.set_viewport_size(MOBILE)
+    assert _bookable_cell(page, open_asset.name) == "yes"
+    assert _bookable_cell(page, restricted_asset.name) == "no"
+    _assert_no_horizontal_overflow(page)
 
     page.goto(f"{live_server.url}/assets/{restricted_asset.id}/")
     assert "Restricted to specific approved groups" in page.content()

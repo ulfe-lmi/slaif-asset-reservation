@@ -57,6 +57,7 @@ from slaif_reservation.legacy_import.planner import plan_import
 from slaif_reservation.reservations.exceptions import (
     BOOKING_NOT_AUTHORIZED,
     DURATION_TOO_LONG,
+    PRINCIPAL_INACTIVE,
     RESERVATION_CONFLICT,
     ReservationDomainError,
 )
@@ -373,6 +374,37 @@ def test_service_denies_inactive_and_service_accounts(
             end_at=end,
             purpose="",
         )
+    # Superuser status does not bypass the active/service-account rules
+    # either (not only ordinary service accounts): an inactive superuser
+    # is inactive, and a service-account superuser is a service account.
+    inactive_super = User.objects.create_superuser(
+        email="049a-inactive-super@example.com", password="not-a-secret"
+    )
+    inactive_super.is_active = False
+    inactive_super.save(update_fields=["is_active"])
+    with pytest.raises(ReservationDomainError, check=lambda exc: exc.code == PRINCIPAL_INACTIVE):
+        create_reservation(
+            asset=unrestricted,
+            requested_by_user=inactive_super,
+            start_at=start,
+            end_at=end,
+            purpose="",
+        )
+    service_super = User.objects.create_superuser(
+        email="049a-service-super@example.com", password="not-a-secret"
+    )
+    service_super.is_service_account = True
+    service_super.save(update_fields=["is_service_account"])
+    with pytest.raises(
+        ReservationDomainError, check=lambda exc: exc.code == BOOKING_NOT_AUTHORIZED
+    ):
+        create_reservation(
+            asset=unrestricted,
+            requested_by_user=service_super,
+            start_at=start,
+            end_at=end,
+            purpose="",
+        )
 
 
 def test_service_denies_restricted_without_membership(
@@ -453,6 +485,44 @@ def test_restricted_empty_fail_closed_including_after_last_group_deletion(
         )
 
 
+def test_last_allowed_group_deletion_denies_new_keeps_existing(
+    direct_booker, restricted_empty, group_a
+) -> None:
+    """A real Group.delete() of the only allowed group (not just an M2M
+    clear) leaves the asset restricted with an empty list: new creation is
+    denied, the accepted booking is untouched."""
+    restricted_empty.allowed_booking_groups.add(group_a)
+    direct_booker.groups.add(group_a)
+    start, end = future_window()
+    existing = create_reservation(
+        asset=restricted_empty,
+        requested_by_user=direct_booker,
+        start_at=start,
+        end_at=end,
+        purpose="accepted before deletion",
+    ).reservation
+
+    group_a.delete()  # real deletion of the last allowed group row
+
+    restricted_empty.refresh_from_db()
+    assert restricted_empty.booking_restricted is True
+    assert restricted_empty.allowed_booking_groups.count() == 0
+    start2, end2 = future_window(hours=3)
+    with pytest.raises(
+        ReservationDomainError, check=lambda exc: exc.code == BOOKING_NOT_AUTHORIZED
+    ):
+        create_reservation(
+            asset=restricted_empty,
+            requested_by_user=direct_booker,
+            start_at=start2,
+            end_at=end2,
+            purpose="",
+        )
+    existing.refresh_from_db()
+    assert existing.status == Reservation.STATUS_CONFIRMED
+    assert existing.asset_id == restricted_empty.id
+
+
 @pytest.mark.parametrize(
     ("parent_restricted", "child_restricted"),
     [
@@ -480,23 +550,13 @@ def test_no_parent_inheritance_either_direction(
         child.allowed_booking_groups.add(group_a)
     start, end = future_window()
 
-    # The parent's setting never applies to the child and vice versa:
-    # union_booker (member of group_a) books exactly the assets that are
-    # unrestricted OR list group_a, and only those.
+    # The parent's setting never applies to the child and vice versa.
+    # direct_booker holds the global capability but is NOT a member of
+    # group_a, so each asset is decided purely by its own flag/allow-list:
+    # restricted parent denied / unrestricted child allowed, and
+    # unrestricted parent allowed / restricted child denied.
     for asset in (parent, child):
-        allowed = (not asset.booking_restricted) or asset.allowed_booking_groups.filter(
-            id=group_a.id
-        ).exists()
-        if allowed:
-            result = create_reservation(
-                asset=asset,
-                requested_by_user=union_booker,
-                start_at=start,
-                end_at=end,
-                purpose="exact asset check",
-            )
-            assert result.reservation.asset_id == asset.id
-        else:
+        if asset.booking_restricted:
             with pytest.raises(
                 ReservationDomainError, check=lambda exc: exc.code == BOOKING_NOT_AUTHORIZED
             ):
@@ -507,6 +567,28 @@ def test_no_parent_inheritance_either_direction(
                     end_at=end,
                     purpose="",
                 )
+        else:
+            result = create_reservation(
+                asset=asset,
+                requested_by_user=direct_booker,
+                start_at=start,
+                end_at=end,
+                purpose="exact asset check",
+            )
+            assert result.reservation.asset_id == asset.id
+    # Eligible-member positive control on the restricted asset, in a
+    # non-conflicting window: membership decides it regardless of the
+    # counterpart's different setting.
+    restricted_asset = parent if parent_restricted else child
+    start2, end2 = future_window(hours=3)
+    result = create_reservation(
+        asset=restricted_asset,
+        requested_by_user=union_booker,
+        start_at=start2,
+        end_at=end2,
+        purpose="member of allowed group",
+    )
+    assert result.reservation.asset_id == restricted_asset.id
 
 
 @pytest.mark.parametrize(
@@ -628,6 +710,58 @@ def test_browser_denies_direct_get_and_post_for_unauthorized(
     assert post_response.status_code == 200
     content = post_response.content
     assert b"cannot book this asset" in content or b"booking permission" in content
+    assert Reservation.objects.count() == 0
+    assert AuditEvent.objects.count() == 0
+
+
+def test_browser_denial_reason_is_truthful_for_nonreservable_asset(
+    direct_booker, no_grant, client
+) -> None:
+    """A direct reserve URL must state the ACTUAL reason: an otherwise
+    eligible member is told the asset is not reservable, never that they
+    lack a group or the capability."""
+    asset = make_asset("049a-nonres", reservable=False)
+    start, end = future_window()
+
+    client.force_login(direct_booker)
+    get_response = client.get(f"/assets/{asset.id}/reserve/")
+    assert get_response.status_code == 302
+    assert get_response.url == reverse("web:asset-detail", args=[asset.id])
+    detail = client.get(reverse("web:asset-detail", args=[asset.id])).content.decode()
+    assert "This asset is not reservable." in detail
+    assert "approved groups" not in detail
+
+    post_response = client.post(
+        f"/assets/{asset.id}/reserve/",
+        {
+            "start": _local(start, direct_booker),
+            "end": _local(end, direct_booker),
+            "duration": "custom",
+            "purpose": "forged",
+        },
+    )
+    assert post_response.status_code == 200
+    content = post_response.content.decode()
+    assert "This asset is not reservable." in content
+    assert "approved groups" not in content
+    assert Reservation.objects.count() == 0
+    assert AuditEvent.objects.count() == 0
+
+    # Missing the capability: the truthful user-state reason is stated.
+    client.force_login(no_grant)
+    post_response = client.post(
+        f"/assets/{asset.id}/reserve/",
+        {
+            "start": _local(start, no_grant),
+            "end": _local(end, no_grant),
+            "duration": "custom",
+            "purpose": "forged",
+        },
+    )
+    assert post_response.status_code == 200
+    content = post_response.content.decode()
+    assert "booking permission" in content
+    assert "approved groups" not in content
     assert Reservation.objects.count() == 0
     assert AuditEvent.objects.count() == 0
 
@@ -765,6 +899,79 @@ def test_owner_retains_lifecycle_after_losing_capability_and_membership(
     active_reservation.refresh_from_db()
     assert active_reservation.status == Reservation.STATUS_RELEASED
 
+    # Bearer leg: the SAME retention holds on the API routes — list,
+    # detail, cancel AND release (including bearer release, which the
+    # browser-only leg never exercised) — after exact-asset eligibility
+    # loss, under the current lifecycle/cutoff rules.
+    start3, end3 = future_window(hours=7)
+    upcoming_bearer = Reservation.objects.create(
+        asset=unrestricted,
+        requested_by_user=direct_booker,
+        source=Reservation.SOURCE_API,
+        status=Reservation.STATUS_CONFIRMED,
+        start_at=start3,
+        end_at=end3,
+        effective_end_at=end3,
+        purpose="upcoming bearer",
+    )
+    # A distinct asset: the browser leg already occupies an active window
+    # on unrestricted (its consumed prefix would exclude this one).
+    active_bearer = Reservation.objects.create(
+        asset=restricted_a,
+        requested_by_user=group_booker,
+        source=Reservation.SOURCE_API,
+        status=Reservation.STATUS_CONFIRMED,
+        start_at=now - timedelta(hours=1),
+        end_at=now + timedelta(hours=1),
+        effective_end_at=now + timedelta(hours=1),
+        purpose="active bearer",
+    )
+
+    bearer_direct = _token(
+        direct_booker, ["reservations:read", "reservations:cancel", "reservations:release"]
+    )
+    listing = client.get(
+        "/api/v1/reservations/",
+        HTTP_AUTHORIZATION=f"Bearer {bearer_direct.bearer_token}",
+    )
+    assert listing.status_code == 200
+    detail = client.get(
+        f"/api/v1/reservations/{upcoming_bearer.id}/",
+        HTTP_AUTHORIZATION=f"Bearer {bearer_direct.bearer_token}",
+    )
+    assert detail.status_code == 200
+    cancel = client.post(
+        f"/api/v1/reservations/{upcoming_bearer.id}/cancel/",
+        {"reason": "bearer cancellation after loss"},
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {bearer_direct.bearer_token}",
+        HTTP_IDEMPOTENCY_KEY="049a-bearer-cancel-1",
+    )
+    assert cancel.status_code == 200
+    upcoming_bearer.refresh_from_db()
+    assert upcoming_bearer.status == Reservation.STATUS_CANCELLED
+
+    bearer_group = _token(
+        group_booker, ["reservations:read", "reservations:cancel", "reservations:release"]
+    )
+    active_detail = client.get(
+        f"/api/v1/reservations/{active_bearer.id}/",
+        HTTP_AUTHORIZATION=f"Bearer {bearer_group.bearer_token}",
+    )
+    assert active_detail.status_code == 200
+    release = client.post(
+        f"/api/v1/reservations/{active_bearer.id}/release/",
+        {},
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {bearer_group.bearer_token}",
+        HTTP_IDEMPOTENCY_KEY="049a-bearer-release-1",
+    )
+    assert release.status_code == 200
+    active_bearer.refresh_from_db()
+    assert active_bearer.status == Reservation.STATUS_RELEASED
+    assert active_bearer.released_at is not None
+    assert active_bearer.effective_end_at == active_bearer.released_at
+
 
 # --- bearer API --------------------------------------------------------------
 
@@ -867,6 +1074,120 @@ def test_api_authorization_rechecked_before_cached_replay(
     assert replay.json() == original_body
     assert Reservation.objects.count() == 1
     assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 1
+
+
+def _post_create(client, token, payload: dict, key: str):
+    return client.post(
+        "/api/v1/reservations/",
+        payload,
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {token.bearer_token}",
+        HTTP_IDEMPOTENCY_KEY=key,
+    )
+
+
+def _assert_denied_403(denied) -> None:
+    assert denied.status_code == 403
+    assert denied.json()["code"] == BOOKING_NOT_AUTHORIZED
+    assert denied.headers.get("X-Idempotent-Replay") is None
+
+
+def _assert_original_replay(client, token, payload: dict, key: str, original) -> None:
+    replay = _post_create(client, token, payload, key)
+    assert replay.status_code == 201
+    assert replay.headers.get("X-Idempotent-Replay") == "true"
+    assert replay.json() == original.json()
+    assert replay.headers.get("X-Request-ID") == original.headers.get("X-Request-ID")
+    # Restored access replays the ORIGINAL record: no second reservation or
+    # second creation audit.
+    assert Reservation.objects.count() == 1
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 1
+
+
+def test_api_capability_group_removal_denies_new_and_cached_then_replays(client) -> None:
+    """Removing the group that carries book_assets, with a valid unchanged
+    bearer token, blocks NEW and cached create POSTs; restoring the group
+    replays the original response."""
+    group = Group.objects.create(name="049a-cap-group")
+    group.permissions.add(book_permission())
+    owner = User.objects.create_user(
+        email="049a-caploss@example.com", password="not-a-secret", display_name="Cap Loss"
+    )
+    owner.groups.add(group)
+    asset = make_asset("049a-caploss")
+    token = _token(owner, ["reservations:create"])
+    start, end = future_window()
+    payload = _create_payload(asset, start, end)
+
+    original = _post_create(client, token, payload, "049a-caploss-1")
+    assert original.status_code == 201
+
+    owner.groups.remove(group)  # capability gone; the token stays valid
+    _assert_denied_403(_post_create(client, token, payload, "049a-caploss-2"))
+    _assert_denied_403(_post_create(client, token, payload, "049a-caploss-1"))
+    assert Reservation.objects.count() == 1
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 1
+
+    owner.groups.add(group)  # restore
+    _assert_original_replay(client, token, payload, "049a-caploss-1", original)
+
+
+def test_api_asset_membership_removal_denies_new_and_cached_then_replays(client) -> None:
+    """Removing only the asset-allowed membership while retaining
+    book_assets blocks NEW and cached create POSTs; restoring membership
+    replays the original response."""
+    group = Group.objects.create(name="049a-mem-group")
+    owner = User.objects.create_user(
+        email="049a-memloss@example.com", password="not-a-secret", display_name="Mem Loss"
+    )
+    owner.user_permissions.add(book_permission())  # keep the global capability
+    owner.groups.add(group)
+    asset = make_asset("049a-memloss", booking_restricted=True)
+    asset.allowed_booking_groups.add(group)
+    token = _token(owner, ["reservations:create"])
+    start, end = future_window()
+    payload = _create_payload(asset, start, end)
+
+    original = _post_create(client, token, payload, "049a-memloss-1")
+    assert original.status_code == 201
+
+    owner.groups.remove(group)  # book_assets retained; asset membership lost
+    _assert_denied_403(_post_create(client, token, payload, "049a-memloss-2"))
+    _assert_denied_403(_post_create(client, token, payload, "049a-memloss-1"))
+    assert Reservation.objects.count() == 1
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 1
+
+    owner.groups.add(group)  # restore
+    _assert_original_replay(client, token, payload, "049a-memloss-1", original)
+
+
+def test_api_asset_allowlist_removal_denies_new_and_cached_then_replays(client) -> None:
+    """Removing the group from the asset's allow-list (owner keeps both the
+    capability and the membership) blocks NEW and cached create POSTs;
+    re-adding the group replays the original response."""
+    group = Group.objects.create(name="049a-acl-group")
+    owner = User.objects.create_user(
+        email="049a-aclloss@example.com", password="not-a-secret", display_name="ACL Loss"
+    )
+    owner.user_permissions.add(book_permission())
+    owner.groups.add(group)
+    asset = make_asset("049a-aclloss", booking_restricted=True)
+    asset.allowed_booking_groups.add(group)
+    token = _token(owner, ["reservations:create"])
+    start, end = future_window()
+    payload = _create_payload(asset, start, end)
+
+    original = _post_create(client, token, payload, "049a-aclloss-1")
+    assert original.status_code == 201
+
+    asset.allowed_booking_groups.remove(group)  # capability + membership intact
+    _assert_denied_403(_post_create(client, token, payload, "049a-aclloss-2"))
+    _assert_denied_403(_post_create(client, token, payload, "049a-aclloss-1"))
+    assert Reservation.objects.count() == 1
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 1
+
+    asset.allowed_booking_groups.add(group)  # restore
+    _assert_original_replay(client, token, payload, "049a-aclloss-1", original)
 
 
 def test_api_missing_asset_404_callback_preserved_when_authorized(direct_booker, client) -> None:

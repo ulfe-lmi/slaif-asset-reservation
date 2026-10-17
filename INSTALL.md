@@ -208,7 +208,18 @@ Open `https://<your-service-hostname>/` in a browser, choose **Log in** or
 
 Create ordinary accounts and your verified assets through Administration;
 manage policies through `/manage/`. The default policy permits reservations
-immediately for active/reservable assets. **OPTIONAL:** use the fictitious demo
+immediately for active/reservable assets.
+
+Creating an ordinary account does NOT make it able to book: grant the
+`reservations.book_assets` application permission deliberately — through an
+operator permission group (recommended) or as an individual permission — and,
+for group-restricted assets, add the account to at least one of that asset's
+allowed groups. New accounts receive no automatic grants. The administrator
+created in step 7 (superuser) already meets the global capability through
+Django's permission semantics, but still needs an allowed group for restricted
+assets. See [docs/authorization.md](docs/authorization.md).
+
+**OPTIONAL:** use the fictitious demo
 only for a fresh evaluation database, following [QUICKSTART](QUICKSTART.md).
 **Never import the demo during an upgrade.**
 
@@ -696,8 +707,9 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
   individual permissions); group-restricted assets additionally require
   membership in at least one of the asset's allowed groups, and a restricted
   asset with no allowed groups denies everyone. Existing accounts received the
-  capability through the one-time baseline grant in the 048 migration. New
-  ordinary accounts receive NO automatic grants: to let a new account book,
+  capability through the one-time baseline grant migration that accompanied
+  the booking-authority upgrade. New ordinary accounts receive NO automatic
+  grants: to let a new account book,
   grant `reservations.book_assets` deliberately (directly or via an operator
   group) and, for restricted assets, add the account to an allowed group.
   Project/group resource authorization beyond booking (projects,

@@ -31,8 +31,11 @@ The delivered foundation, and only this:
   `BOOKING_BASELINE_PERMISSION`, `has_reservation_permission`) that checks
   one explicit capability for an active authenticated non-service-account
   human through Django's permission machinery (groups combined additively
-  with individual permissions; superuser semantics retained). It wires no
-  endpoint or service enforcement yet and caches nothing across calls.
+  with individual permissions; superuser semantics retained). It is the
+  foundation of the active booking-eligibility enforcement (the
+  `assets/authorization.py` predicate and the `create_reservation` gate
+  build on it) and will carry the management and cross-user read-all
+  enforcement when those arrive. It caches nothing across calls.
 - **A one-time baseline booking grant** in the accounts migration: existing
   non-service-account users (including inactive rows, so a later normal
   reactivation preserves their former baseline) received the direct
@@ -76,8 +79,10 @@ not published interfaces.
   list/detail routes (including the `reservations:read_all` scope).
 - Token-scope issuance refusal for `read_all`/`create` authority and the
   minimal cross-user representation.
-- Any change to existing tokens, policies, exclusivity, lifecycle, audit,
-  idempotency or booking behavior.
+- No change to existing tokens, policies, exclusivity, lifecycle, audit or
+  idempotency behavior; booking behavior already carries the active
+  eligibility gate documented above, and no further booking behavior change
+  is planned in this target.
 
 ## Current baseline (implemented today)
 
@@ -254,7 +259,12 @@ landing without unauthorized counts, data, links or actions.
   silently revoke the baseline booking grant or any operator-configured
   grant (removing grants is a deliberate operator action); Git rollback of
   the code does **not** restore identity data or revert an applied
-  database; a real upgrade requires an operator backup/restore plan.
+  database; a real upgrade requires an operator backup/restore plan. The
+  new asset booking configuration (`booking_restricted` and the
+  allowed-group list) is ordinary database state: normal database backups
+  include it and restoring from such a backup restores it; dropping or
+  reverting that migration after the fact would delete that configuration,
+  and a code rollback does not restore it.
 
 ## Deferrals unchanged by this target
 

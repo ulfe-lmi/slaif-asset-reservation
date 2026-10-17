@@ -59,8 +59,13 @@ the target server; missing `pg_dump`/`pg_restore` on PATH; an unwritable workdir
 The connecting user must have `CREATEDB` on the target server; a disposable local PostgreSQL 17
 instance is sufficient. The source database must contain at least one confirmed reservation (the
 drill overlaps it to prove the named GiST exclusion constraint `reservation_no_overlap_per_asset`
-survives the restore and still blocks overlapping inserts) and at least one active, reservable,
-exclusive asset with a resolvable policy (the point-in-time probe).
+survives the restore and still blocks overlapping inserts) and at least one active human user who
+is currently authorized to book at least one active, reservable, exclusive asset with a resolvable
+policy (the point-in-time probe): the user must hold the `reservations.book_assets` capability and,
+for a group-restricted asset, belong to at least one of its allowed groups. The drill selects the
+first such user/asset pair with the same shared booking-eligibility predicate as the product; it
+never grants permissions or changes asset configuration, and with no eligible pair it fails
+clearly before any probe write.
 
 On success the command prints structured key=value evidence: per-table row counts (users, assets,
 reservation policies, reservations, maintenance blackouts, audit events, API tokens, idempotency

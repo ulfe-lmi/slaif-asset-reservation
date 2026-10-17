@@ -612,7 +612,12 @@ def test_integrated_pilot_path_shared_state_across_surfaces(
             now=now - timedelta(minutes=5),
         )
     assert Reservation.objects.filter(asset=asset).count() == 5
-    page.goto(f"{base}/assets/{asset.id}/")
+    # The availability window is explicit: start it at active_start's date
+    # in the MEMBER PROFILE timezone and span two local days, so the
+    # default current-day window cannot clip a consumed prefix that began
+    # late the previous local day.  Domain timing is untouched.
+    active_local = active_start.astimezone(ZoneInfo(member.timezone))
+    page.goto(f"{base}/assets/{asset.id}/?date={active_local.date().isoformat()}&days=2")
     busy_text = _availability_section_text(page, 0)
     assert _local_display(active_start, member) in busy_text
     assert _local_display(active.effective_end_at, member) in busy_text
