@@ -221,7 +221,10 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
     search_fields = ["email", "display_name"]
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Profile", {"fields": ("display_name", "timezone", "is_service_account")}),
+        (
+            "Profile",
+            {"fields": ("display_name", "timezone", "is_service_account", "external_identifier")},
+        ),
         (
             "Permissions",
             {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")},
@@ -275,6 +278,7 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                     "display_name",
                     "timezone",
                     "is_service_account",
+                    "external_identifier",
                     "is_active",
                     "is_staff",
                     "is_superuser",

@@ -80,6 +80,20 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_service_account = models.BooleanField(default=False)
+    external_identifier = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        unique=True,
+        help_text=(
+            "Optional opaque identifier for an external system, at most 128 "
+            "characters, case-sensitive. Numeric strings and leading zeroes "
+            "are preserved exactly as entered. Populated values must be "
+            "unique; leave empty to unset it. It is not a credential, not a "
+            "Linux UID, and it does not replace the account's UUID, email, "
+            "password or token identity."
+        ),
+    )
     date_joined = models.DateTimeField(default=django_timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

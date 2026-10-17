@@ -1,32 +1,90 @@
-# Authorization — selected group target (NOT IMPLEMENTED BY THIS CONTRACT)
+# Authorization — selected group target (foundation implemented; enforcement NOT yet implemented)
 
-**Status: SELECTED TARGET — NOT IMPLEMENTED BY THIS CONTRACT.** This page records the
-human-selected M-GROUP-AUTHORIZATION contract (ARCHITECTURE.md A-16, 2026-10-17; stable rows
-SAR-048–SAR-053, all initially UNPROVEN). Nothing on this page exists in the running
-application yet: no new permission records, routes, token scopes, user fields, setup
-commands or migrations. Commands and endpoints named as target behavior are targets, not
-published interfaces. Current behavior is described only where it is needed to understand
-the change.
+**Status: SELECTED TARGET — foundation implemented by order 048-a (PR #99);
+enforcement NOT yet implemented.** This page records the human-selected
+M-GROUP-AUTHORIZATION contract (ARCHITECTURE.md A-16, 2026-10-17; stable rows
+SAR-048–SAR-053, all UNPROVEN until a fresh independent ICA at the exact
+merged revision).
+
+## Implemented by the 048-a foundation
+
+At the time of the contract (2026-10-17) none of the A-16 machinery existed.
+The ordered foundation purpose (048-a) has since delivered, and only this:
+
+- **The ten documented application permissions** on the existing
+  `Reservation` content type, in the `reservations` namespace
+  (`book_assets`, `view_all_reservations`, `cancel_others_reservations`,
+  `release_others_reservations`, `view_booking_policies`,
+  `manage_booking_policies`, `view_maintenance_blackouts`,
+  `manage_maintenance_blackouts`, `view_audit_history`,
+  `export_audit_history`), registered through the model `Meta` and a
+  forward migration. They are distinct from Administration model View
+  permissions.
+- **An optional opaque `User.external_identifier`** (max 128 characters,
+  case-sensitive, populated values unique, unset is NULL) with a forward
+  migration; existing accounts migrated to NULL with no inference or
+  backfill. It is editable on the existing authorized user change page in
+  the Administration only (not on the member profile, not in bearer API
+  surfaces).
+- **A small `accounts/authorization.py` constants/helper module**
+  (`RESERVATIONS_PERMISSIONS`, `MANAGEMENT_PERMISSIONS`,
+  `BOOKING_BASELINE_PERMISSION`, `has_reservation_permission`) that checks
+  one explicit capability for an active authenticated non-service-account
+  human through Django's permission machinery (groups combined additively
+  with individual permissions; superuser semantics retained). It wires no
+  endpoint or service enforcement yet and caches nothing across calls.
+- **A one-time baseline booking grant** in the accounts migration: existing
+  non-service-account users (including inactive rows, so a later normal
+  reactivation preserves their former baseline) received the direct
+  `book_assets` grant. Service accounts received nothing; no group was
+  created or changed; no other permission was granted.
+- **`manage.py grant_management_access`**, an explicit dry-run-first setup
+  command (see the deliberate upgrade section below).
+
+Everything else on this page is still target behavior: **no route, view,
+bearer scope, eligibility check or service gate enforces any of these
+permissions yet.** Commands and endpoints named as target behavior are
+targets, not published interfaces.
+
+## Not yet implemented
+
+- Management/member route gating by explicit capabilities (today
+  `is_staff` still admits `/manage/` and the member routes are still
+  owner-scoped as before).
+- The separate All reservations browser view and the cross-user bearer
+  list/detail routes (including the `reservations:read_all` scope).
+- Exact-asset group-restriction eligibility on assets (all assets behave
+  as today; the field and migration arrive with their ordered purpose).
+- Token-scope issuance refusal for `read_all`/`create` authority and the
+  minimal cross-user representation.
+- Any change to existing tokens, policies, exclusivity, lifecycle, audit,
+  idempotency or booking behavior.
 
 ## Current baseline (implemented today)
 
-- Member routes: active non-service-account human sessions; reservations are
-  owner-scoped (list/detail/cancel/release of one's own records).
-- Management routes (/manage/): blanket admission for active, non-service-account
-  **staff** sessions; cross-user lifecycle, policy and blackout operations run through
-  existing audited services.
-- Administration (/admin/): staff admission with existing model permissions; protected
-  records are read-only or service-backed.
-- Bearer API: owner-only reservations:read/create/cancel/release plus availability:read;
-  asset list/detail remain staff-session-only.
-- There is no asset-group booking eligibility, no cross-user read surface and no
-  external user identifier today.
+- Member routes: active non-service-account human sessions; reservations
+  are owner-scoped (list/detail/cancel/release of one's own records).
+- Management routes (/manage/): blanket admission for active,
+  non-service-account **staff** sessions; cross-user lifecycle, policy and
+  blackout operations run through existing audited services. (Replacing
+  this blanket admission with explicit management capabilities is a later
+  ordered purpose; until then `is_staff` alone remains the admission rule.)
+- Administration (/admin/): staff admission with existing model
+  permissions; protected records are read-only or service-backed. The user
+  change page now exposes the optional external identifier.
+- Bearer API: owner-only reservations:read/create/cancel/release plus
+  availability:read; asset list/detail remain staff-session-only. The API
+  accepts only its bounded known fields; `external_identifier` is not an
+  API input.
+- There is no asset-group booking eligibility, no cross-user read surface
+  and no enforcement of the new application permissions yet.
 
 ## Permission matrix (selected target)
 
-Grants combine by union across all of a user's groups and individual permissions; there is
-no parallel membership, no hardcoded operator group names and no explicit deny. Every
-application access still requires an active non-service-account human.
+Grants combine by union across all of a user's groups and individual
+permissions; there is no parallel membership, no hardcoded operator group
+names and no explicit deny. Every application access still requires an
+active non-service-account human.
 
 | Application permission (reservations namespace) | Target meaning |
 |---|---|
@@ -41,98 +99,134 @@ application access still requires an active non-service-account human.
 | reservations.view_audit_history | Existing bounded filtered audit browser. |
 | reservations.export_audit_history | Existing filtered bounded CSV export; does not implicitly grant unrelated audit/reservation UI access. |
 
-Application permissions are documented custom permissions in the reservations namespace;
-they are distinct from Administration model View permissions. A mutation capability
-without read-all must not incidentally disclose another owner's record through redirects,
-overlap previews, errors or audit. Partial-capability users receive a useful management
+Application permissions are documented custom permissions in the
+reservations namespace; they are distinct from Administration model View
+permissions. A mutation capability without read-all must not incidentally
+disclose another owner's record through redirects, overlap previews,
+errors or audit. Partial-capability users receive a useful management
 landing without unauthorized counts, data, links or actions.
 
 ## Admin vs staff (target distinction)
 
-- **Staff** is admission to /admin/ only, with existing model permissions. Staff or
-  unrelated Administration permissions confer **no** application management or booking
-  bypass.
-- **Trusted active human superusers** retain Django's application-permission semantics and
-  all protected-record/domain restrictions; they still meet exact-asset group eligibility
-  when creating bookings. Administration can deliberately configure access, not bypass it
-  through a reservation adapter.
-- Enforcement is server-side at direct GET/POST endpoints and the shared services that
-  serve them; buttons and navigation only reflect the same checks.
+- **Staff** is admission to /admin/ only, with existing model permissions.
+  Staff or unrelated Administration permissions confer **no** application
+  management or booking bypass. The explicit capability grants from
+  `grant_management_access` are direct application permissions, not
+  implicit `is_staff` authority; per-model Administration access remains
+  governed by the framework's model permissions.
+- **Trusted active human superusers** retain Django's
+  application-permission semantics and all protected-record/domain
+  restrictions; they still meet exact-asset group eligibility when
+  creating bookings. Administration can deliberately configure access,
+  not bypass it through a reservation adapter.
+- Enforcement is server-side at direct GET/POST endpoints and the shared
+  services that serve them; buttons and navigation only reflect the same
+  checks.
 
 ## Exact-asset booking eligibility (target semantics)
 
 - Each asset is explicitly **unrestricted** or **group-restricted**.
-- A restricted asset requires membership in **at least one** of its allowed existing
-  groups; restricted with no allowed groups **fails closed**.
-- Only the asset being booked is checked; there is **no implicit parent inheritance**.
+- A restricted asset requires membership in **at least one** of its allowed
+  existing groups; restricted with no allowed groups **fails closed**.
+- Only the asset being booked is checked; there is **no implicit parent
+  inheritance**.
 - **All existing assets migrate unrestricted** in the upgrade.
-- Browser and bearer creation share the same authoritative check around the existing
-  reservation service; token creation additionally requires the token's action scope and
-  the owner's current capability/membership.
-- Existing active/reservable/exclusive checks, UTC/DST rules, policies/counters,
-  PostgreSQL exclusion/locking and atomic audit are unchanged.
-- Assets remain browsable and show whether the member is eligible; sensitive
-  account/group metadata is not disclosed.
-- Access changes **never rewrite existing bookings**. Owners may still list/inspect/
-  cancel/release accepted reservations after losing booking capability or asset-group
-  membership, subject to existing lifecycle/cutoff rules.
+- Browser and bearer creation share the same authoritative check around
+  the existing reservation service; token creation additionally requires
+  the token's action scope and the owner's current capability/membership.
+- Existing active/reservable/exclusive checks, UTC/DST rules, policies/
+  counters, PostgreSQL exclusion/locking and atomic audit are unchanged.
+- Assets remain browsable and show whether the member is eligible;
+  sensitive account/group metadata is not disclosed.
+- Access changes **never rewrite existing bookings**. Owners may still
+  list/inspect/cancel/release accepted reservations after losing booking
+  capability or asset-group membership, subject to existing lifecycle/
+  cutoff rules.
 
 ## Future owner-only vs separate read-all bearer contract
 
-- `reservations:read` remains **owner-only**, even for staff/superusers; existing token
-  scope records never change automatically.
-- A new explicit `reservations:read_all` scope authorizes cross-user list/detail routes
-  **only when the owner also currently holds** `view_all_reservations`; both are rechecked
-  per request; there is no process-global grant cache; group/permission removal takes
-  effect on subsequent requests with the same token.
-- Issuance refuses authority-exceeding read-all and create scopes; expiry/revocation,
-  activity, service-account and shared abuse controls apply unchanged.
+- `reservations:read` remains **owner-only**, even for staff/superusers;
+  existing token scope records never change automatically.
+- A new explicit `reservations:read_all` scope authorizes cross-user
+  list/detail routes **only when the owner also currently holds**
+  `view_all_reservations`; both are rechecked per request; there is no
+  process-global grant cache; group/permission removal takes effect on
+  subsequent requests with the same token.
+- Issuance refuses authority-exceeding read-all and create scopes;
+  expiry/revocation, activity, service-account and shared abuse controls
+  apply unchanged.
 - There is **no cross-user bearer mutation surface** in this target.
-- The cross-user representation is minimal and explicit: reservation/asset UUID and safe
-  asset identity, owner UUID plus external_identifier (null when unset), aware original
-  start/end, effective_end, status/lifecycle, release/cancellation timestamps and
-  unambiguous blocking/effective interval semantics. It excludes owner
-  email/display/profile/admin flags, passwords/verifiers/token secrets, private
-  locators, unrelated metadata and private purpose/cancellation/blackout free text.
-  Owner representations stay compatible.
+- The cross-user representation is minimal and explicit: reservation/asset
+  UUID and safe asset identity, owner UUID plus external_identifier (null
+  when unset), aware original start/end, effective_end, status/lifecycle,
+  release/cancellation timestamps and unambiguous blocking/effective
+  interval semantics. It excludes owner email/display/profile/admin flags,
+  passwords/verifiers/token secrets, private locators, unrelated metadata
+  and private purpose/cancellation/blackout free text. Owner
+  representations stay compatible.
 
-## External identifier and external enforcer boundary (target)
+## External identifier and external enforcer boundary (implemented field; target enforcement)
 
-- Optional `external_identifier` on the existing user: opaque, case-sensitive, at most
-  128 characters, numeric strings and leading zeroes preserved; populated values unique;
-  unset is NULL (multiple users may be unset); no inference or backfill; existing
-  accounts remain unset; only authorized account administrators edit it in existing
-  Administration; member profile and bearer input cannot modify it.
-- It is neither a credential nor Linux UID validation and does not replace
-  UUID/email/password/token identity.
-- The **external enforcer** owns account mapping, enforcement, polling, caches/refresh and
-  outages. No SSH/PAM, account synchronization, workload/container execution, GPU
-  allocation or automatic machine login grants enter this application. Reservation
-  entitlement is not login authority.
+- Optional `external_identifier` on the existing user: opaque,
+  case-sensitive, at most 128 characters, numeric strings and leading
+  zeroes preserved; populated values unique; unset is NULL (multiple users
+  may be unset); no inference or backfill; existing accounts remain unset.
+  Implemented by 048-a: the field, the unique constraint and admin-only
+  editing on the existing user change page.
+- Only authorized account administrators edit it in existing
+  Administration; the member profile and bearer API cannot modify it
+  (verified by tests). It is neither a credential nor Linux UID
+  validation and does not replace UUID/email/password/token identity.
+- The **external enforcer** owns account mapping, enforcement, polling,
+  caches/refresh and outages. No SSH/PAM, account synchronization,
+  workload/container execution, GPU allocation or automatic machine login
+  grants enter this application. Reservation entitlement is not login
+  authority.
 
-## Deliberate upgrade intent (target)
+## Deliberate upgrade (implemented foundation; operator steps)
 
-- Explicit migrations and setup docs preserve users/groups/reservations/policies/audits/
-  tokens and old individual permissions; every current management route/action is
-  inventoried and mapped to its grant.
-- A one-time **baseline booking-permission assignment** to existing non-service-account
-  users preserves their former booking access; its exact scope is documented and tested
-  against a populated pre-upgrade database.
-- Newly created accounts receive **no** automatic application grants or privileged-group
-  membership; the required booking grant is explained in account administration.
-- Current staff management access is **NOT** silently retained through is_staff: a
-  dry-run-first, explicit, idempotent operator setup procedure grants the chosen current
-  staff the management capability set. Read-all is never inferred from old Administration
-  View permissions.
-- Real deployed DB changes remain operator-owned, with backup/rollback guidance;
-  migrations are tested only on owned synthetic databases. Example operator groups (e.g.,
-  Administrators, Lab members, Students, Reservation readers) are illustrations, never
-  authorization constants.
+- The explicit migrations preserve users/groups/reservations/policies/
+  audits/tokens and old individual permissions; the populated-upgrade test
+  proves row preservation and grant scope against a real pre-upgrade
+  database state.
+- **Baseline booking grant scope (one-time):** the migration added ONLY
+  `reservations.book_assets` as a direct individual permission to every
+  existing non-service-account user (inactive rows included); service
+  accounts received nothing and no management/read-all permission was
+  granted. This mirrors the pre-target behavior in which any active human
+  could book. It does not restore or grant anything else.
+- **New users:** accounts created after the upgrade receive **no**
+  automatic application grants or privileged-group membership. To let a
+  new user book, grant `reservations.book_assets` (directly or via an
+  operator group) deliberately; the required booking grant is explained in
+  this guide, and the later booking-enforcement order will state it in the
+  relevant account help.
+- **Explicit chosen-staff upgrade steps (dry-run first):**
+  1. Take an operator backup of the deployed database first (real
+     deployments remain operator-owned; migrations here are tested only on
+     owned synthetic databases).
+  2. `manage.py migrate` (applies the permission records, the
+     `external_identifier` column and the one-time baseline grant).
+  3. `manage.py grant_management_access --user <STAFF_UUID> [--user ...]`
+     to review (dry-run writes nothing).
+  4. `manage.py grant_management_access --user <STAFF_UUID> [--user ...]
+     --apply` to grant the nine management/read-all capabilities
+     (all ten except `book_assets`) as direct permissions to exactly the
+     selected accounts. The command validates every selection before any
+     write, applies atomically and idempotently, never creates users,
+     changes staff/superuser flags or groups, and never grants read-all
+     from old Administration View permissions.
+- **Backup and reverse limits (honest):** downgrading does **not**
+  silently revoke the baseline booking grant or any operator-configured
+  grant (removing grants is a deliberate operator action); Git rollback of
+  the code does **not** restore identity data or revert an applied
+  database; a real upgrade requires an operator backup/restore plan.
 
 ## Deferrals unchanged by this target
 
-Projects, organizational trees, delegated group ownership, general policy languages,
-token/management admin or mutation bearer APIs, OIDC/password reset/notifications,
-monitoring stack, scheduler, automatic physical allocation, real migration/cutover and the
-execution gateway remain deferred (SAR-036 as amended by A-16). This target adds no
-execution, deployment or real-infrastructure authority.
+Projects, organizational trees, delegated group ownership, general policy
+languages, token/management admin or mutation bearer APIs, OIDC/password
+reset/notifications, monitoring stack, scheduler, automatic physical
+allocation, real migration/cutover and the execution gateway remain
+deferred (SAR-036 as amended by A-16). This target adds no execution,
+deployment or real-infrastructure authority.
