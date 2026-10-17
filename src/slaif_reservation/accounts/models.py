@@ -87,11 +87,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         unique=True,
         help_text=(
             "Optional opaque identifier for an external system, at most 128 "
-            "characters, case-sensitive. Numeric strings and leading zeroes "
-            "are preserved exactly as entered. Populated values must be "
-            "unique; leave empty to unset it. It is not a credential, not a "
-            "Linux UID, and it does not replace the account's UUID, email, "
-            "password or token identity."
+            "characters, case-sensitive. It may represent an external "
+            "account identifier (including a Linux UID), but the value is "
+            "opaque: it is not validated as a UID, it is not a credential "
+            "and it grants no machine access. Numeric strings and leading "
+            "zeroes are preserved exactly as entered. Populated values "
+            "must be unique; leave empty to unset it. It does not replace "
+            "the account's UUID, email, password or token identity."
         ),
     )
     date_joined = models.DateTimeField(default=django_timezone.now)
@@ -115,6 +117,20 @@ class User(AbstractBaseUser, PermissionsMixin):
     def clean(self) -> None:
         super().clean()
         self.email = type(self).objects.normalize_email(self.email)
+        # The exact empty string is UNASSIGNED, not a populated opaque
+        # value: normalize it before uniqueness validation so that any
+        # number of unassigned accounts may coexist (NULL is not unique).
+        if self.external_identifier == "":
+            self.external_identifier = None
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        # Same rule on the persistence path: only the exact empty string
+        # is unassigned (NULL); every other character of a populated
+        # value is preserved as entered (no stripping, folding or
+        # parsing), and the 128-character limit covers the whole value.
+        if self.external_identifier == "":
+            self.external_identifier = None
+        super().save(*args, **kwargs)
 
 
 class ApiToken(models.Model):

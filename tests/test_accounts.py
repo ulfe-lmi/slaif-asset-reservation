@@ -125,3 +125,85 @@ def test_external_identifier_clearing_frees_the_value_for_reuse() -> None:
     other.save(update_fields=["external_identifier"])
     assert other.external_identifier == "reuse-me"
     assert holder.external_identifier is None
+
+
+@pytest.mark.django_db
+def test_external_identifier_exact_empty_is_unassigned_not_populated() -> None:
+    # The exact empty string means UNASSIGNED on the manager path: it must
+    # be stored as NULL, so any number of unassigned accounts coexist
+    # without blank-unique collisions.
+    a = User.objects.create_user(
+        email="empty-a@example.com",
+        password="not-a-secret",
+        external_identifier="",
+    )
+    b = User.objects.create_user(
+        email="empty-b@example.com",
+        password="not-a-secret",
+        external_identifier="",
+    )
+    assert a.external_identifier is None
+    assert b.external_identifier is None
+    assert User.objects.get(pk=a.pk).external_identifier is None
+    assert User.objects.get(pk=b.pk).external_identifier is None
+
+
+@pytest.mark.django_db
+def test_external_identifier_empty_clears_on_ordinary_save_and_create() -> None:
+    holder = User.objects.create_user(
+        email="empty-clear@example.com",
+        password="not-a-secret",
+        external_identifier="was-set",
+    )
+    # Ordinary update path: assigning the exact empty string clears to NULL.
+    holder.external_identifier = ""
+    holder.save(update_fields=["external_identifier"])
+    assert holder.external_identifier is None
+    assert User.objects.get(pk=holder.pk).external_identifier is None
+
+    # Plain create() (no full_clean) normalizes the exact empty value too.
+    created = User.objects.create(
+        email="empty-create@example.com",
+        external_identifier="",
+    )
+    assert created.external_identifier is None
+
+
+@pytest.mark.django_db
+def test_external_identifier_whitespace_value_is_populated_and_preserved() -> None:
+    # Whitespace is content in an opaque value: a non-empty string that
+    # contains only spaces is POPULATED (not unassigned) and every
+    # character — including surrounding spaces — is preserved.
+    user = User.objects.create_user(
+        email="space-pad@example.com",
+        password="not-a-secret",
+        external_identifier="  00042-pad  ",
+    )
+    assert User.objects.get(pk=user.pk).external_identifier == "  00042-pad  "
+
+    only_spaces = User.objects.create_user(
+        email="space-only@example.com",
+        password="not-a-secret",
+        external_identifier="  ",
+    )
+    assert User.objects.get(pk=only_spaces.pk).external_identifier == "  "
+    assert only_spaces.external_identifier is not None
+
+    # A padded value round-trips through the ordinary save path unchanged.
+    user.external_identifier = " re-padded "
+    user.save(update_fields=["external_identifier"])
+    assert User.objects.get(pk=user.pk).external_identifier == " re-padded "
+
+
+@pytest.mark.django_db
+def test_external_identifier_128_limit_covers_the_whole_value() -> None:
+    # The limit is measured on the WHOLE value including spaces.
+    user = User.objects.create_user(email="whole-limit@example.com", password="not-a-secret")
+    user.external_identifier = " " + "x" * 127  # 128 characters total
+    user.full_clean(exclude=["password"])
+    user.save(update_fields=["external_identifier"])
+    assert User.objects.get(pk=user.pk).external_identifier == " " + "x" * 127
+
+    user.external_identifier = " " + "x" * 128  # 129 characters total
+    with pytest.raises(ValidationError):
+        user.full_clean(exclude=["password"])

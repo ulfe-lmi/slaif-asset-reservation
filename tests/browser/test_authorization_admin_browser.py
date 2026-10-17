@@ -140,6 +140,17 @@ def test_browser_admin_external_identifier_guidance_and_edit(
     assert page.locator("#id_external_identifier").input_value() == SYNTHETIC_IDENTIFIER
     assert User.objects.get(pk=member_user.pk).external_identifier == SYNTHETIC_IDENTIFIER
 
+    # A full-length (128 character) value with boundary spaces round-trips
+    # exactly: the form must not strip or truncate it.
+    full_128 = " " + "F" * 126 + " "
+    assert len(full_128) == 128
+    page.fill("#id_external_identifier", full_128)
+    page.get_by_role("button", name="Save", exact=True).click()
+    page.wait_for_url(f"{live_server.url}/admin/accounts/user/")
+    page.goto(change_url)
+    assert page.locator("#id_external_identifier").input_value() == full_128
+    assert User.objects.get(pk=member_user.pk).external_identifier == full_128
+
     # Clearing the field clears the stored value back to NULL.
     page.fill("#id_external_identifier", "")
     page.get_by_role("button", name="Save", exact=True).click()

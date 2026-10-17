@@ -243,6 +243,16 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
     readonly_fields = ["created_at", "updated_at"]
     change_password_form = SlaifAdminPasswordChangeForm
 
+    def formfield_for_dbfield(self, db_field: Any, request: HttpRequest, **kwargs: Any) -> Any:
+        form_field = super().formfield_for_dbfield(db_field, request, **kwargs)
+        if db_field.name == "external_identifier" and isinstance(form_field, forms.CharField):
+            # The opaque value must round-trip with EVERY character
+            # (spaces, case, leading zeroes) exactly as entered: the form
+            # must not strip or otherwise normalize it. The exact empty
+            # value means "unset" and clears the stored value to NULL.
+            form_field.strip = False
+        return form_field
+
     def get_form(
         self,
         request: HttpRequest,

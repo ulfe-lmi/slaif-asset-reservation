@@ -273,6 +273,45 @@ def test_admin_user_change_sets_and_clears_identifier(
 
 
 @pytest.mark.django_db
+def test_admin_user_change_preserves_opaque_whitespace_end_to_end(
+    client: Client, admin_user: User, member_user: User
+) -> None:
+    client.force_login(admin_user)
+    url = f"/admin/accounts/user/{member_user.pk}/change/"
+    base = {
+        "email": member_user.email,
+        "display_name": "Foundation Member",
+        "timezone": "UTC",
+        "is_active": "on",
+        "last_login_0": "",
+        "last_login_1": "",
+        "date_joined_0": member_user.date_joined.strftime("%Y-%m-%d"),
+        "date_joined_1": member_user.date_joined.strftime("%H:%M:%S"),
+    }
+
+    # Surrounding spaces are content in an opaque value: the form must
+    # not strip them and the stored value keeps every character.
+    response = client.post(url, {**base, "external_identifier": " 00042-Ext "})
+    assert response.status_code == 302
+    member_user.refresh_from_db()
+    assert member_user.external_identifier == " 00042-Ext "
+
+    # The rendered change form offers the value back unchanged.
+    html = client.get(url).content.decode()
+    assert 'value=" 00042-Ext "' in html
+
+    # 129 characters (spaces included) is rejected and the stored value
+    # is unchanged.
+    response = client.post(url, {**base, "external_identifier": " " + "y" * 128})
+    assert response.status_code == 200
+    assert "Ensure this value has at most 128 characters (it has 129)." in (
+        response.content.decode()
+    )
+    member_user.refresh_from_db()
+    assert member_user.external_identifier == " 00042-Ext "
+
+
+@pytest.mark.django_db
 def test_admin_identifier_editing_follows_model_permissions(
     client: Client,
     admin_user: User,
@@ -289,7 +328,35 @@ def test_admin_identifier_editing_follows_model_permissions(
     client.force_login(staff_user)
     assert client.get(url).status_code == 403
 
-    # Staff with the per-model permission may edit the identifier.
+    # Forged POST denials: the SAME payload an authorized staff member may
+    # submit is refused for a non-staff user and for staff without the
+    # model permission, and neither attempt changes the stored identifier.
+    forged = {
+        "email": member_user.email,
+        "display_name": "Foundation Member",
+        "timezone": "UTC",
+        "is_active": "on",
+        "external_identifier": "00077-Priv",
+        "last_login_0": "",
+        "last_login_1": "",
+        "date_joined_0": member_user.date_joined.strftime("%Y-%m-%d"),
+        "date_joined_1": member_user.date_joined.strftime("%H:%M:%S"),
+    }
+
+    client.force_login(member_user)
+    response = client.post(url, forged)
+    assert response.status_code == 302
+    assert "login" in response["Location"]
+    member_user.refresh_from_db()
+    assert member_user.external_identifier is None
+
+    client.force_login(staff_user)
+    assert client.post(url, forged).status_code == 403
+    member_user.refresh_from_db()
+    assert member_user.external_identifier is None
+
+    # Staff with the per-model permission may edit the identifier
+    # (valid same-payload positive control).
     privileged = User.objects.create_user(
         email="foundation-privileged@example.com",
         password="not-a-secret",
@@ -564,3 +631,66 @@ def test_grant_management_access_never_touches_groups_or_flags(
     staff_user.refresh_from_db()
     assert (staff_user.is_staff, staff_user.is_superuser, staff_user.is_active) == flags_before
     assert set(staff_user.groups.values_list("id", flat=True)) == {group.pk}
+
+
+@pytest.mark.django_db
+def test_grant_management_access_missing_user_refused_without_writes(
+    staff_user: User, application_permissions: dict[str, Permission]
+) -> None:
+    """Missing the required --user selection refuses with ZERO writes."""
+    from io import StringIO
+
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    out, err = StringIO(), StringIO()
+    with pytest.raises(CommandError, match="the following arguments are required: --user"):
+        call_command("grant_management_access", stdout=out, stderr=err)
+    staff_user.refresh_from_db()
+    assert staff_user.user_permissions.count() == 0
+
+
+@pytest.mark.django_db
+def test_grant_management_access_rolls_back_after_a_real_grant(
+    staff_user: User,
+    application_permissions: dict[str, Permission],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-write failure rolls back the earlier real grant.
+
+    Fault injection makes the SECOND through-table write fail after the
+    first grant has actually been written inside the command's atomic
+    block: the user must end with NO grants at all (earlier real writes
+    rolled back, groups/flags untouched), and the failure propagates.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+    from django.db.models.query import QuerySet
+
+    through = User.user_permissions.through
+    original = QuerySet.bulk_create
+    calls = 0
+
+    def fail_second(self, *args: object, **kwargs: object) -> object:
+        nonlocal calls
+        if self.model is through:
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("synthetic grant failure")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(QuerySet, "bulk_create", fail_second)
+    with pytest.raises(RuntimeError, match="synthetic grant failure"):
+        call_command(
+            "grant_management_access",
+            "--user",
+            str(staff_user.pk),
+            "--apply",
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+    assert calls == 2
+    staff_user.refresh_from_db()
+    assert staff_user.user_permissions.count() == 0
+    assert staff_user.is_staff and staff_user.is_active and not staff_user.is_superuser

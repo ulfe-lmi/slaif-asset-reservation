@@ -1,15 +1,14 @@
-# Authorization — selected group target (foundation implemented; enforcement NOT yet implemented)
+# Authorization — group-based access (available now vs planned)
 
-**Status: SELECTED TARGET — foundation implemented by order 048-a (PR #99);
-enforcement NOT yet implemented.** This page records the human-selected
-M-GROUP-AUTHORIZATION contract (ARCHITECTURE.md A-16, 2026-10-17; stable rows
-SAR-048–SAR-053, all UNPROVEN until a fresh independent ICA at the exact
-merged revision).
+**Status: available now — foundation (permission records, opaque external
+identifier, explicit chosen-staff setup command); planned — enforcement
+(NOT yet active).** This page records the selected M-GROUP-AUTHORIZATION
+contract (ARCHITECTURE.md A-16; stable rows SAR-048–SAR-053, all UNPROVEN
+until a fresh independent ICA at the exact merged revision).
 
-## Implemented by the 048-a foundation
+## Available now
 
-At the time of the contract (2026-10-17) none of the A-16 machinery existed.
-The ordered foundation purpose (048-a) has since delivered, and only this:
+The delivered foundation, and only this:
 
 - **The ten documented application permissions** on the existing
   `Reservation` content type, in the `reservations` namespace
@@ -46,7 +45,7 @@ bearer scope, eligibility check or service gate enforces any of these
 permissions yet.** Commands and endpoints named as target behavior are
 targets, not published interfaces.
 
-## Not yet implemented
+## Planned (enforcement NOT yet active)
 
 - Management/member route gating by explicit capabilities (today
   `is_staff` still admits `/manage/` and the member routes are still
@@ -54,7 +53,7 @@ targets, not published interfaces.
 - The separate All reservations browser view and the cross-user bearer
   list/detail routes (including the `reservations:read_all` scope).
 - Exact-asset group-restriction eligibility on assets (all assets behave
-  as today; the field and migration arrive with their ordered purpose).
+  as today; the field and migration arrive with their planned purpose).
 - Token-scope issuance refusal for `read_all`/`create` authority and the
   minimal cross-user representation.
 - Any change to existing tokens, policies, exclusivity, lifecycle, audit,
@@ -68,7 +67,7 @@ targets, not published interfaces.
   non-service-account **staff** sessions; cross-user lifecycle, policy and
   blackout operations run through existing audited services. (Replacing
   this blanket admission with explicit management capabilities is a later
-  ordered purpose; until then `is_staff` alone remains the admission rule.)
+  planned purpose; until then `is_staff` alone remains the admission rule.)
 - Administration (/admin/): staff admission with existing model
   permissions; protected records are read-only or service-backed. The user
   change page now exposes the optional external identifier.
@@ -171,12 +170,15 @@ landing without unauthorized counts, data, links or actions.
   case-sensitive, at most 128 characters, numeric strings and leading
   zeroes preserved; populated values unique; unset is NULL (multiple users
   may be unset); no inference or backfill; existing accounts remain unset.
-  Implemented by 048-a: the field, the unique constraint and admin-only
+  Available now: the field, the unique constraint and admin-only
   editing on the existing user change page.
 - Only authorized account administrators edit it in existing
   Administration; the member profile and bearer API cannot modify it
-  (verified by tests). It is neither a credential nor Linux UID
-  validation and does not replace UUID/email/password/token identity.
+  (verified by tests). It may represent an external account identifier
+  (including a Linux UID), but the application treats the value as
+  opaque: it is not validated as a UID, it is not a credential, it
+  grants no machine access, and it does not replace the account's
+  UUID, email, password or token identity.
 - The **external enforcer** owns account mapping, enforcement, polling,
   caches/refresh and outages. No SSH/PAM, account synchronization,
   workload/container execution, GPU allocation or automatic machine login
@@ -199,18 +201,24 @@ landing without unauthorized counts, data, links or actions.
   automatic application grants or privileged-group membership. To let a
   new user book, grant `reservations.book_assets` (directly or via an
   operator group) deliberately; the required booking grant is explained in
-  this guide, and the later booking-enforcement order will state it in the
-  relevant account help.
-- **Explicit chosen-staff upgrade steps (dry-run first):**
-  1. Take an operator backup of the deployed database first (real
-     deployments remain operator-owned; migrations here are tested only on
-     owned synthetic databases).
-  2. `manage.py migrate` (applies the permission records, the
-     `external_identifier` column and the one-time baseline grant).
-  3. `manage.py grant_management_access --user <STAFF_UUID> [--user ...]`
+  this guide and will be stated in the relevant account help once booking
+  enforcement is active.
+- **Explicit chosen-staff upgrade steps (dry-run first; supported Docker
+  workflow):** follow [INSTALL.md](../INSTALL.md) — recover the
+  installation's recorded Compose project name into
+  `SAR_COMPOSE_PROJECT` and keep the same project name and database volume
+  identity (never rename or adopt another project's volume). Run the
+  commands inside the running application service:
+  1. Take an operator backup of the deployed database first (INSTALL.md
+     section 8; real deployments remain operator-owned; these migrations
+     are tested only on owned synthetic databases).
+  2. `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py migrate --noinput`
+     (applies the permission records, the `external_identifier` column and
+     the one-time baseline grant).
+  3. `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py grant_management_access --user <STAFF_UUID> [--user ...]`
      to review (dry-run writes nothing).
-  4. `manage.py grant_management_access --user <STAFF_UUID> [--user ...]
-     --apply` to grant the nine management/read-all capabilities
+  4. `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py grant_management_access --user <STAFF_UUID> [--user ...] --apply`
+     to grant the nine management/read-all capabilities
      (all ten except `book_assets`) as direct permissions to exactly the
      selected accounts. The command validates every selection before any
      write, applies atomically and idempotently, never creates users,

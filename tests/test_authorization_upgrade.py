@@ -21,6 +21,7 @@ in the fixture's ``finally``.
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 import uuid as uuid_module
 from datetime import UTC, datetime, timedelta
@@ -319,6 +320,9 @@ def test_populated_upgrade_preserves_rows_and_grants_baseline_only(
         scopes=["reservations:read"],
         expires_at=now + timedelta(days=7),
     )
+    # Safe preservation handle for the raw verifier: a one-way digest, so
+    # no assertion message can ever print the secret itself.
+    token_verifier_digest = hashlib.sha256(token_verifier.encode("utf-8")).hexdigest()
     audit = hist_audit.objects.create(
         occurred_at=now,
         actor_user=legacy_member,
@@ -340,7 +344,13 @@ def test_populated_upgrade_preserves_rows_and_grants_baseline_only(
         "group_perms": set(legacy_group.permissions.values_list("id", flat=True)),
         "group_members": set(legacy_group.user_set.values_list("id", flat=True)),
         "direct_grants": set(legacy_direct.user_permissions.values_list("id", flat=True)),
-        "token": (token.pk, token.name, list(token.scopes), token_verifier, token.expires_at),
+        "token": (
+            token.pk,
+            token.name,
+            list(token.scopes),
+            token_verifier_digest,
+            token.expires_at,
+        ),
         "reservation": (
             reservation.pk,
             reservation.status,
@@ -379,7 +389,12 @@ def test_populated_upgrade_preserves_rows_and_grants_baseline_only(
     ) == (snapshot["direct_grants"] | {_book_assets_permission_id()})
 
     tok = ApiToken.objects.get(pk=snapshot["token"][0])
-    assert (tok.name, list(tok.scopes), tok.verifier, tok.expires_at) == snapshot["token"][1:]
+    assert (
+        tok.name,
+        list(tok.scopes),
+        hashlib.sha256(tok.verifier.encode("utf-8")).hexdigest(),
+        tok.expires_at,
+    ) == snapshot["token"][1:]
 
     res = Reservation.objects.get(pk=snapshot["reservation"][0])
     assert (
@@ -419,6 +434,14 @@ def test_populated_upgrade_preserves_rows_and_grants_baseline_only(
         content_type=ct, codename__in=list(RESERVATIONS_PERMISSIONS)
     ).count() == len(RESERVATIONS_PERMISSIONS)
 
+    # --- subsequently created accounts exist BEFORE the re-run ---------------
+    later_member = User.objects.create_user(
+        email=f"{EMAIL_PREFIX}later@example.com", password="not-a-secret"
+    )
+    later_staff = User.objects.create_user(
+        email=f"{EMAIL_PREFIX}later-staff@example.com", password="not-a-secret", is_staff=True
+    )
+
     # --- idempotence: a normal re-run of migrate changes nothing -------------
     grants_before = {u.pk: _custom_grants(u) for u in User.objects.all()}
     member_grant_rows_before = (
@@ -433,13 +456,13 @@ def test_populated_upgrade_preserves_rows_and_grants_baseline_only(
     )
 
     # --- no automatic grants for subsequently created accounts ---------------
-    later_member = User.objects.create_user(
-        email=f"{EMAIL_PREFIX}later@example.com", password="not-a-secret"
-    )
-    later_staff = User.objects.create_user(
-        email=f"{EMAIL_PREFIX}later-staff@example.com", password="not-a-secret", is_staff=True
-    )
+    # The new accounts already exist when the re-run happens: it must not
+    # grant them anything, and the original baseline/legacy rows are
+    # unchanged (covered by the grants_before/grants_after equality above).
     assert later_member.user_permissions.count() == 0
     assert later_member.groups.count() == 0
     assert later_staff.user_permissions.count() == 0
     assert later_staff.groups.count() == 0
+    assert _custom_grants(User.objects.get(pk=legacy_member.pk)) == {BOOKING_BASELINE_PERMISSION}
+    assert _custom_grants(User.objects.get(pk=legacy_staff.pk)) == {BOOKING_BASELINE_PERMISSION}
+    assert _custom_grants(User.objects.get(pk=legacy_service.pk)) == set()
