@@ -1,13 +1,17 @@
 # ARCHITECTURE-for-agents — executor projection
 
-Source: root ARCHITECTURE.md, 2026-10-04 edition (A-01..A-15, SAR-001..SAR-047); current
-full-source SHA-256 `2d300121b37b62eeeb0676764d5d82739adf006a13e70d35ff62b84c59f7eb43`. Initial projection source SHA-256
+Source: root ARCHITECTURE.md, 2026-10-17 edition (A-01..A-16, SAR-001..SAR-053); current
+full-source SHA-256 `4566e797b709b71f13b2929572a2d1145d15a5a7ab8b41db50ebfdab962628cd`. Initial projection source SHA-256
 `9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4` is historical provenance.
 Scope: preservation and bounded development of existing SLAIF Asset Reservation, including the
-selected M-INTERNET-UX-PILOT development target (A-15); real Internet exposure remains human D2.
-SAR-039..SAR-047 rows carry their executor-relevant conditions directly; root A-15 is reference
-only (not a mandatory read). Not independent architecture or approval. Normal coding reads this
-file, not the full source. A genuine gap goes to strategy for a bounded correction/excerpt.
+selected M-INTERNET-UX-PILOT development target (A-15) and the later-selected
+M-GROUP-AUTHORIZATION target (A-16); real Internet exposure remains human D2.
+SAR-039..SAR-047 rows carry their executor-relevant conditions directly; SAR-048..SAR-053 rows
+and the group-authorization clauses below carry the A-16 executor obligations directly; root
+A-15 and A-16 are reference only (not mandatory reads). All six SAR-048..SAR-053 rows are
+initially UNPROVEN until a fresh ICA at the exact merged revision. Not independent
+architecture or approval. Normal coding reads this file, not the full source. A genuine gap
+goes to strategy for a bounded correction/excerpt.
 
 Baseline (historical, 2026-09): private ulfe-lmi/slaif-asset-reservation; WO0001–0013 complete;
 main at the original projection observed 1fcc2c91d793556a91711365abef562604b62f84, and at this
@@ -34,19 +38,19 @@ UNPROVEN until a fresh ICA at the exact merged revision.
 
 **SAR-009 / Atomic audited lifecycle:** Create/cancel/release and audited policy/token/blackout mutations couple persistence and audit transactionally. An audit failure must roll back its domain mutation. Preserve consistent lock ordering across web/API/management/import paths.
 
-**SAR-010 / Reducing entitlement remains possible:** Owner or permitted active staff may release an active reservation even after asset or policy deactivation. Cancellation retains the accepted cutoff and ownership rules. No implicit cross-user member/API bypass.
+**SAR-010 / Reducing entitlement remains possible:** Owner or permitted active staff may release an active reservation even after asset or policy deactivation. Cancellation retains the accepted cutoff and ownership rules. No implicit cross-user member/API bypass. A-16 (selected target): implicit staff lifecycle authority is replaced by the relevant explicit capability while owner lifecycle rights are preserved.
 
 **SAR-011 / Human session boundary:** Only active non-service-account users enter member routes. POST logout/mutations require CSRF; GET never mutates. Disallowed sessions terminate safely without redirect loops. Accounts remain administrator-created.
 
-**SAR-012 / Member ownership:** Member and bearer reservation list/detail/cancel/release are owner-scoped, including staff acting on member/API routes. Other-owner and guessed IDs are non-disclosing 404s.
+**SAR-012 / Member ownership:** Member and bearer reservation list/detail/cancel/release are owner-scoped, including staff acting on member/API routes. Other-owner and guessed IDs are non-disclosing 404s. A-16 (selected target): only the separately named cross-user read surface (view_all_reservations plus the reservations:read_all bearer scope) may widen visibility; owner-only routes and non-disclosing 404s are otherwise unchanged.
 
-**SAR-013 / Management authority:** Separate /manage/ active-staff, non-service-account session routes allow audited cross-user lifecycle, policy and blackout operations; no delegated resource-manager role or management REST API is implied.
+**SAR-013 / Management authority:** Separate /manage/ active-staff, non-service-account session routes allow audited cross-user lifecycle, policy and blackout operations; no delegated resource-manager role or management REST API is implied. A-16 (selected target): blanket staff management admission is replaced by explicit management capabilities; active non-service-account human eligibility remains required.
 
 **SAR-014 / Token secrecy and lifecycle:** Tokens use sar_<uuidhex>_<CSPRNG secret>, at least 256 random bits, HMAC-SHA-256 over full token with a distinct server pepper, constant-time compare, mandatory exclusive expiry, revocation, canonical allowlisted scopes, and best-effort monotonic last use. No plaintext persistence or privileged issuance.
 
 **SAR-015 / One-time secret handling:** One-time token display is no-store/private/no-referrer, never session/messages/URLs/storage. Preserve history scrubbing and redacted repr/exception frames. Verifiers/peppers/credentials never enter UI, API, audit, logs, report artifacts or trace captures.
 
-**SAR-016 / Scoped API adapters:** Explicit bearer-only /me/, availability, and reservation endpoints use action scopes; authenticator is not global. Existing asset list/detail remain staff-session-only. A valid token alone does not grant admin or asset-discovery access.
+**SAR-016 / Scoped API adapters:** Explicit bearer-only /me/, availability, and reservation endpoints use action scopes; authenticator is not global. Existing asset list/detail remain staff-session-only. A valid token alone does not grant admin or asset-discovery access. A-16 (selected target): adds only the explicit reservations:read_all scope and a separate compatible cross-user read interface; existing tokens/endpoints never widen.
 
 **SAR-017 / Strict API contract:** API mutations accept bounded known fields and aware ISO instants, return UTC representations and safe problem details plus UUID correlation. No SQL, constraints, ORM text or other-user identity in errors. Keep v1 compatible.
 
@@ -86,7 +90,7 @@ UNPROVEN until a fresh ICA at the exact merged revision.
 
 **SAR-035 / Private infrastructure boundary:** Never access real lab machines/Neumann, private exports, production DBs, long-lived credentials, DNS/TLS or deployment targets to test this conversion. Development model calls and Git publication require separately configured authority; product runtime uses no LLM.
 
-**SAR-036 / Deferred product scope stays visible:** OIDC/password reset/notifications, projects/memberships/resource restrictions, token/management admin APIs, automatic physical allocation, monitoring stack, scheduler, real migration/cutover and gateway remain deferred. No assistant suggestion or draft silently authorizes them.
+**SAR-036 / Deferred product scope stays visible:** OIDC/password reset/notifications, projects/memberships/resource restrictions, token/management admin APIs, automatic physical allocation, monitoring stack, scheduler, real migration/cutover and gateway remain deferred. No assistant suggestion or draft silently authorizes them. A-16 (selected target) supersedes only the existing-group/resource-restriction and delegated-management-capabilities deferral; projects, organizational trees, delegated group ownership, general policy languages, management/mutation bearer APIs and all execution/infrastructure exclusions remain deferred.
 
 **SAR-037 / Canonical governance and projection:** Maintain canonical PLAN/ARCHITECTURE and preserved prior sources; compact coding projections are coverage-mapped and hash-bound, not independent law. Preserve security/reporting constraints while changing process authority deliberately.
 
@@ -109,7 +113,132 @@ UNPROVEN until a fresh ICA at the exact merged revision.
 
 **SAR-047 / Threaded Gunicorn responsiveness:** Deliberate threaded pool consistently (image/local/production/rehearsal); preserve any foreign fix found, else reproduce the old sync failure before changing configuration; real-server test holds six idle/slow clients while /health/live and login stay bounded; old-sync negative control fails or equivalent sensitivity proof; owned cleanup on failure; documented worker/thread/keepalive rationale; buffering/time-limited HTTPS proxy retained. Predecessor 031-a/PR62 independently reproduced and remediated the baseline on main; evidence indexed, not future work or a new ICA.
 
+**SAR-048 / Additive application capabilities:** One additive grant system: existing Django groups and individual permissions, grants combined by union across all groups and individual assignments; ten documented reservations-namespace application permissions (book_assets; view_all_reservations; cancel_others_reservations; release_others_reservations; view_booking_policies; manage_booking_policies incl. that module's read; view_maintenance_blackouts; manage_maintenance_blackouts incl. that module's read; view_audit_history; export_audit_history), distinct from Administration model View permissions. Every application access requires an active non-service-account human; staff is /admin/ admission only and confers no application booking/management bypass; trusted active superusers retain Django permission semantics and protected-record/domain restrictions and still meet exact-asset group eligibility when booking; partial-capability users get a useful management landing without unauthorized counts, data, links or actions; mutation capability without read-all must not disclose another owner's record.
+
+**SAR-049 / Exact-asset booking eligibility:** Assets are explicitly unrestricted or group-restricted; a restricted asset requires membership in at least one allowed existing group; restricted with no allowed groups fails closed; only the booked asset is checked, never parent inheritance; all existing assets migrate unrestricted; browser and bearer creation share the authoritative check around the existing reservation service; token creation also requires its action scope and the owner's current capability/membership; policies/counters, UTC/DST, exclusion, locking and atomic audit unchanged; assets remain browsable and show eligibility without disclosing sensitive account/group metadata; access changes never rewrite existing bookings; owners keep list/inspect/cancel/release of accepted reservations after losing capability or membership.
+
+**SAR-050 / Explicit cross-user browser visibility:** The separate All reservations browser view requires view_all_reservations and supports existing validated asset, status/lifecycle, time filters and pagination; authorized viewers inspect owner, asset, original times, effective end, status and lifecycle with mutation controls only for the corresponding capability; read-only viewers cannot cancel/release/edit by forged requests; owner pages remain private; policy/blackout/audit capabilities do not imply read-all; overlap previews without read-all show only the safe confirmation information needed for the blackout operation.
+
+**SAR-051 / Explicit read-all bearer authority:** New cross-user list/detail routes require BOTH the explicit reservations:read_all scope AND the owner's current view_all_reservations permission, rechecked per request; reservations:read remains owner-only even for staff/superusers; existing token scope records never change automatically; issuance refuses authority-exceeding read-all and create scopes; group/permission removal takes effect on subsequent requests with the same token, no process-global grant cache; no cross-user bearer mutation surface; minimal explicit cross-user representation (reservation/asset UUID and safe asset identity, owner UUID plus external_identifier null when unset, aware original start/end, effective_end, status/lifecycle, release/cancellation timestamps, unambiguous blocking/effective interval semantics) excluding owner email/display/profile/admin flags, passwords/verifiers/token secrets, private locators, unrelated metadata and private purpose/cancellation/blackout free text.
+
+**SAR-052 / Opaque external user identifier:** Optional external_identifier on the existing User: opaque case-sensitive string of at most 128 characters, numeric strings and leading zeroes preserved, populated values unique, unset is NULL (multiple users may be unset), no inference or backfill, existing accounts remain unset; only authorized account administrators edit it in existing Administration; member profile and bearer input cannot modify it; neither a credential nor Linux UID validation and no replacement for UUID/email/password/token identity; the external enforcer owns account mapping, enforcement, polling, caches/refresh and outages; no SSH/PAM, account synchronization, workload/container execution, GPU allocation or automatic machine login grants enter this application; reservation entitlement is not login authority.
+
+**SAR-053 / Authorization upgrade and qualification:** Deliberate upgrade inventories every current management route/action and maps its grant; explicit migrations and setup docs preserve users/groups/reservations/policies/audits/tokens and old individual permissions; one-time baseline booking-permission assignment to existing non-service-account users (documented, tested against a populated pre-upgrade database); newly created accounts receive no automatic application grants or privileged-group membership; current staff management access is NOT silently retained through is_staff: dry-run-first explicit idempotent operator setup grants the chosen management capability set; never infer read-all from old Administration View permissions; deployed DB changes remain operator-owned with backup/rollback guidance; migrations tested only on owned synthetic databases; example operator group names are never authorization constants; qualification covers direct endpoint/service denial, nonstaff partial grants, additive multi-group and individual grants, staff/no-grant and superuser boundaries, viewer mutation denial, removal while tokens stay valid, missing scopes, retained owner lifecycle access, opaque/unique/unset identifiers, minimal-response canaries, unchanged conflicts/lifecycle/audit/idempotency, and a fresh exact-revision independent ICA mapping all applicable stable rows.
+
 **Selected target qualification (A-15):** Real unit/integration tests, PostgreSQL concurrency/rollback, browser HTTP auth/CSRF/privacy, real Gunicorn positive plus old-sync negative, disposable Internet HTTPS proxy, shared abuse controls, production-settings negatives, container/Compose/health, fresh+upgrade policy init, default/custom branding; standard five exact-head checks plus links/pip audit; exact source/revision/evidence statuses, no mocked-boundary pass. Browser surfaces: anonymous landing/login/admin login; member dashboard/assets list+detail/availability/reservation create+list+detail/profile/token list+create; staff management/policy list+detail+form/blackout list+detail+form/reservations/audit list+detail+export controls; admin index/user list+change/asset list+change/relevant protected models. Real Playwright capture/view/iterate at ~1440/1024/768/390 desktop/mobile, default/custom, with STRATEGIC visual review mandatory; durable semantic assertions on overflow, actions, navigation, focus, labels, associated help, tables, forms, no framework text, no anonymous leak; privacy-safe screenshots (no tokens/passwords/verifiers/CSRF/cookies/raw traces/private data); no brittle pixel CI unless stability proven. Final fresh isolated full-architecture ICA over all SAR-001..SAR-047 at the exact merged revision runs AFTER implementation; the old internal audit is historical; findings require bounded repair then a FULL architecture-to-current-main re-audit, not closed-findings-only review. Human acceptance/release/D2 real resources remain separate. Product-first docs reconcile behavior without ledger or public-production claims.
+
+## Selected group authorization target (A-16)
+
+Selected 2026-10-17 (M-GROUP-AUTHORIZATION). This section carries the A-16 executor
+obligations directly; it is a selected target, NOT implemented: no capability, route,
+scope, field, command or migration below exists yet, and nothing here authorizes
+deployment, real exposure, DNS/TLS/firewall, identity/secret administration, execution or
+physical allocation. Root A-16 is reference only. All facets remain UNPROVEN until a
+fresh independent ICA at the exact merged revision (SAR-048..SAR-053).
+
+**One additive grant system.** Reuse Django Group, user group membership and individual
+permissions; grants combine across all groups and individual assignments; no parallel
+membership, no hardcoded operator group names, no explicit deny. Documented custom
+application permissions in the reservations namespace (they may attach to the existing
+Reservation content type without a new authority model), distinct from Administration
+model View permissions: reservations.book_assets (create new reservations, additionally
+subject to exact-asset eligibility and existing policy/domain checks);
+reservations.view_all_reservations (cross-user listing/detail in the separate All
+reservations browser/read-only API surfaces); reservations.cancel_others_reservations
+(audited cancellation of another owner's reservation; no implied read-all or release);
+reservations.release_others_reservations (audited release of another owner's
+reservation; no implied read-all or cancellation); reservations.view_booking_policies;
+reservations.manage_booking_policies (create/update/deactivate through existing audited
+services; includes that module's read interface); reservations.view_maintenance_blackouts;
+reservations.manage_maintenance_blackouts (create/deactivate through existing audited
+services; includes that module's read interface); reservations.view_audit_history
+(existing bounded filtered audit browser); reservations.export_audit_history (existing
+filtered bounded CSV export; does not implicitly grant unrelated audit/reservation UI).
+Every application access requires a current active non-service-account human. Staff is
+admission to /admin/ only, with existing model permissions; staff or unrelated
+Administration permissions confer no application management or booking bypass. Trusted
+active human superusers retain Django application-permission semantics and all
+protected-record/domain restrictions and still meet explicit asset group eligibility when
+creating bookings; Administration can deliberately configure access, not bypass it
+through a reservation adapter. Enforcement is server-side at direct GET/POST endpoints
+and relevant shared services; buttons/navigation reflect the same checks.
+Partial-capability users receive a useful management landing without unauthorized
+counts, data, links or actions. Mutation capability without read-all must not
+incidentally disclose another owner's record through redirects, overlap previews, errors
+or audit. Protected Administration records stay read-only/service-backed.
+
+**Booking eligibility.** Assets are explicitly unrestricted or group-restricted; a
+restricted asset requires membership in at least one of its allowed existing groups;
+restricted with no allowed groups fails closed; check only the asset being booked, never
+implicit parent inheritance; all existing assets migrate unrestricted. Browser and
+bearer creation share the authoritative authorization check around the existing
+reservation service; token creation also requires its action scope and the owner's
+current capability/membership. Keep active/reservable/exclusive checks, UTC/DST,
+policies/counters, PostgreSQL exclusion/locking and atomic audit unchanged. Assets
+remain browsable and show whether the member is eligible; do not disclose sensitive
+account/group metadata. Access changes never rewrite existing bookings. Owners may still
+list/inspect/cancel/release their accepted reservations after losing booking capability
+or asset group membership, subject to existing lifecycle/cutoff rules.
+
+**Separate cross-user read.** An explicit All reservations browser view requires
+view_all_reservations and supports existing validated asset, status/lifecycle, time
+filters and pagination; owner pages remain private; authorized viewers inspect owner,
+asset, original times, effective end, status and lifecycle with mutation controls only
+for the corresponding capability; read-only viewers cannot cancel/release/edit by forged
+requests; policy/blackout/audit capabilities do not imply read-all; overlap previews
+without read-all show only the safe confirmation information needed for the blackout
+operation. Add reservations:read_all as an explicit token scope; new cross-user
+list/detail routes require BOTH that scope AND the owner's current
+view_all_reservations permission; existing reservations:read remains owner-only even for
+staff/superusers; existing token scope records never change automatically; issuance
+refuses authority-exceeding read-all and create scopes; use rechecks current owner
+permissions/membership, expiry/revocation/activity/service-account rules and existing
+shared abuse controls; group/permission removal takes effect on subsequent requests with
+the same token; no process-global grant cache; no cross-user bearer mutation surface.
+Minimal explicit cross-user representation: reservation/asset UUID and safe asset
+identity, owner UUID plus external_identifier (null when unset), aware original
+start/end, effective_end, status/lifecycle, release/cancellation timestamps and
+unambiguous blocking/effective interval semantics; excludes owner email/display/profile/
+admin flags, passwords/verifiers/token secrets, private locators, unrelated metadata and
+private purpose/cancellation/blackout free text; existing owner representations remain
+compatible.
+
+**External identifier.** Optional external_identifier on the existing User: opaque
+case-sensitive string of at most 128 characters, numeric strings and leading zeroes
+preserved; populated values unique; unset is NULL and multiple users may be unset;
+existing accounts remain unset, no inference or backfill; only authorized account
+administrators edit it in existing Administration; member profile and bearer input cannot
+modify it; neither a credential nor Linux UID validation, and no replacement for
+UUID/email/password/token identity. The external enforcer owns account mapping,
+enforcement, polling, caches/refresh and outages. No SSH/PAM, account synchronization,
+workload/container execution, GPU allocation or automatic machine login grants enter
+this application. Reservation entitlement is not login authority.
+
+**Deliberate upgrade.** Inventory every current management route/action and map its
+grant. Explicit migrations and setup docs preserve users/groups/reservations/policies/
+audits/tokens and old individual permissions. A one-time baseline booking-permission
+assignment to existing non-service-account users preserves their former booking access
+(document its exact scope; test against a populated pre-upgrade database). Newly created
+accounts receive no automatic application grants or privileged-group membership; explain
+the required booking grant in account administration. Current staff management access is
+NOT silently retained through is_staff: a dry-run-first explicit idempotent setup
+command/procedure lets an operator grant chosen current staff the management capability
+set. Never infer read-all from old Administration View permissions. Real deployed DB
+changes remain operator-owned, with backup/rollback guidance; test migrations only on
+owned synthetic databases. Example operator groups may be Administrators, Lab members,
+Students and Reservation readers, but their names are never authorization constants.
+
+**Evidence.** Focused positive/negative tests per implementation purpose: direct endpoint
+and service denial, nonstaff partial grants, additive multi-group and individual grants,
+staff/no-grant and superuser boundaries, viewer mutation denial, browser/API asset
+parity, removal while tokens stay valid, missing scopes, owner-only tokens for
+privileged owners, inactive/service accounts, retained owner lifecycle access,
+opaque/unique/unset identifiers, minimal-response canaries, unchanged
+conflicts/lifecycle/audit/idempotency; meaningful Chromium flows/screenshots for new
+controls; upgrade tests; generated OpenAPI; docs links; full normal exact-head checks.
+The final independent audit starts with this human scope, full current architecture and
+the exact merged revision, maps all applicable stable requirements and records limits;
+it is not strategic self-certification or real deployment authorization.
 
 ## Component routing
 
@@ -127,6 +256,11 @@ Explicit bearer: /api/v1/me/; /api/v1/assets/{id}/availability/ with availabilit
 Idempotency-Key; own/guessed/other-user 404 is non-disclosing. Existing /api/v1/assets/ list/detail
 remain staff-session-only. No token-lifecycle/management/admin REST endpoints. /api/schema/ and
 /api/docs/ share private configuration, are disabled by default and staff-only when enabled; production never becomes public by convenience.
+
+Selected target (A-16, not implemented): explicit cross-user read-only list/detail
+bearer routes require BOTH the reservations:read_all scope AND the owner’s current
+view_all_reservations permission; until that target is implemented, every route above
+remains exactly as written, owner-only where stated.
 
 ## Verification cautions
 

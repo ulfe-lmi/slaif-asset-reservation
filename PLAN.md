@@ -6,7 +6,7 @@ byte-preserved finalized PLAN.md (none was present). **Observed software revisio
 This is a handoff agreement for preserving and governing an existing product, not a greenfield spec.
 **Temporal scope:** P-01–P-07 record the original 2026-09 conversion/baseline agreement; their
 chronology and evidence are preserved and are historical for that date. The current selected
-target (2026-10-04) is recorded in P-04 and P-06.
+targets (2026-10-04, 2026-10-17) are recorded in P-04, P-06 and P-08.
 
 ## P-01. Product meaning and users
 
@@ -189,3 +189,50 @@ Existing process state was absent in the inspected tracked tree. Bootstrap must 
 untracked/private state before writing. A pre-existing register or active order discovered locally
 is preserved and reconciled, never wiped. Empty CRITICAL seed here means no register was available,
 not that all future human risk decisions have been made.
+## P-08. Selected group authorization extension (2026-10-17)
+
+**Human provenance.** The attributable human selected M-GROUP-AUTHORIZATION on 2026-10-17
+(request sections 1–11: group-based capabilities, exact-asset booking, separate cross-user
+read bearer and external identifier; workflow clarification: concentrated OAP, coding agent).
+The selected target is recorded in ARCHITECTURE.md A-16 with stable rows SAR-048–SAR-053,
+each initially UNPROVEN until a fresh independent closure at the exact merged revision.
+Selection is not completion: no capability, route, scope, field, command or migration in
+A-16 exists yet.
+
+**Selected target, no infrastructure authorization.** Extend existing Django groups and
+individual permissions across member, management and Administration surfaces; explicit
+exact-asset booking eligibility; separately authorized cross-user read-only browser and
+bearer access; one optional external user identifier. This milestone authorizes bounded
+development and independent qualification only. It authorizes no deployment, real
+exposure, DNS/TLS/firewall, identity or secret administration, execution or physical
+allocation; the external enforcer owns account mapping and enforcement outside this
+application.
+
+**Prerequisite and development purposes (scoped future work, not completed).** The
+selected-target contract recorded by order 047-a (ARCHITECTURE.md A-16, SAR-048–SAR-053,
+compact projection, docs/authorization.md) is the binding prerequisite for every purpose
+below. Each purpose requires its own strategy-issued order with live authority, exact
+scope, base and PR; the numbering is a private orientation, not an active backlog:
+
+| # | Purpose (derived from A-16) | Stable rows |
+|---|---|---|
+| 048 | One additive grant system: documented application permissions, baseline booking-permission assignment for existing non-service-account users, optional external identifier, deliberate legacy-staff upgrade setup | SAR-048, SAR-052, SAR-053 |
+| 049 | Exact-asset booking eligibility: unrestricted/group-restricted assets, shared browser/bearer enforcement, no inheritance or historical reservation rewriting | SAR-049 |
+| 050 | Explicit cross-user management visibility: All reservations browser with validated filters/pagination and granular mutation controls | SAR-050 |
+| 051 | Explicit read-all bearer authority: reservations:read_all scope AND current owner permission, bounded issuance, live grant revocation, minimal cross-user representation | SAR-051 |
+| 052 | Full qualification and fresh independent ICA over SAR-001–SAR-053 at the exact merged revision, standard five exact-head checks; human milestone judgment separate | all rows |
+
+**Deferral reconciliation.** SAR-036’s deferral of existing-group/resource restriction
+and delegated management capabilities is superseded only by A-16. All other deferrals
+remain: projects, organizational trees, delegated group ownership, general policy
+languages, token/management admin or mutation bearer APIs, OIDC/password
+reset/notifications, monitoring stack, scheduler, automatic physical allocation, real
+migration/cutover and the execution gateway.
+
+**Milestone history preserved.** M-EXISTING, M-CONVERSION, M-LOCAL-PILOT-EVIDENCE,
+M-INTERNET-UX-PILOT and M-EXTERNAL-PILOT/M-RELEASE remain as recorded in P-06; their
+chronology, evidence and gates are unchanged. M-INTERNET-UX-PILOT remains the
+software-qualified baseline for the Internet/UX facets, and its prior evidence is
+historical context for this changed authorization target. Human milestone acceptance,
+release and all real infrastructure decisions remain separate and are not inferred from
+development evidence.
