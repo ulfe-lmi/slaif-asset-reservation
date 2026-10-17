@@ -519,9 +519,7 @@ class RestoreDrillProbeSelection(TestCase):
         before_reservations = Reservation.objects.count()
         before_audit = AuditEvent.objects.count()
 
-        with pytest.raises(
-            CommandError, match="no active human user is currently authorized"
-        ):
+        with pytest.raises(CommandError, match="no active human user is currently authorized"):
             self.command._create_probe_reservation()
 
         # Fail-safe: no probe write, no reservation, no audit, and no grant
