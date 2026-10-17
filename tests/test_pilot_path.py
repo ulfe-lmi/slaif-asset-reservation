@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.test import Client
 from django.utils import timezone
 
@@ -41,31 +42,46 @@ os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
 BEARER_RE = re.compile(r"sar_[0-9a-f]{32}_[A-Za-z0-9_-]+")
 
 
+def _grant_booking(created: User) -> None:
+    # A16: positive booking fixtures explicitly carry the baseline
+    # reservations.book_assets capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
+
+
 @pytest.fixture
 def pilot_member() -> User:
-    return User.objects.create_user(
-        email="pilot-member@example.com",
-        password="not-a-secret",
-        display_name="Pilot Member",
-        timezone="Europe/Ljubljana",
+    return _grant_booking(
+        User.objects.create_user(
+            email="pilot-member@example.com",
+            password="not-a-secret",
+            display_name="Pilot Member",
+            timezone="Europe/Ljubljana",
+        )
     )
 
 
 @pytest.fixture
 def pilot_agent() -> User:
-    return User.objects.create_user(
-        email="pilot-agent@example.com",
-        password="not-a-secret",
-        display_name="Pilot Agent",
+    return _grant_booking(
+        User.objects.create_user(
+            email="pilot-agent@example.com",
+            password="not-a-secret",
+            display_name="Pilot Agent",
+        )
     )
 
 
 @pytest.fixture
 def pilot_other() -> User:
-    return User.objects.create_user(
-        email="pilot-other@example.com",
-        password="not-a-secret",
-        display_name="Pilot Other",
+    return _grant_booking(
+        User.objects.create_user(
+            email="pilot-other@example.com",
+            password="not-a-secret",
+            display_name="Pilot Other",
+        )
     )
 
 
@@ -596,7 +612,12 @@ def test_integrated_pilot_path_shared_state_across_surfaces(
             now=now - timedelta(minutes=5),
         )
     assert Reservation.objects.filter(asset=asset).count() == 5
-    page.goto(f"{base}/assets/{asset.id}/")
+    # The availability window is explicit: start it at active_start's date
+    # in the MEMBER PROFILE timezone and span two local days, so the
+    # default current-day window cannot clip a consumed prefix that began
+    # late the previous local day.  Domain timing is untouched.
+    active_local = active_start.astimezone(ZoneInfo(member.timezone))
+    page.goto(f"{base}/assets/{asset.id}/?date={active_local.date().isoformat()}&days=2")
     busy_text = _availability_section_text(page, 0)
     assert _local_display(active_start, member) in busy_text
     assert _local_display(active.effective_end_at, member) in busy_text

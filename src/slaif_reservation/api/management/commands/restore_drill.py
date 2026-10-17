@@ -29,8 +29,12 @@ The connecting user must have CREATEDB on the target server; a disposable
 local PostgreSQL 17 instance is sufficient (see
 ``docs/runbooks/backup-and-restore.md``). The source database must contain
 at least one confirmed reservation (the drill overlaps it to prove the
-exclusion constraint) and at least one active, reservable, exclusive asset
-with a resolvable policy (the point-in-time probe).
+exclusion constraint) and at least one active human user who is currently
+authorized to book at least one active, reservable, exclusive asset with a
+resolvable policy (the point-in-time probe).  The drill selects the first
+such user/asset pair with the same shared booking-eligibility predicate as
+the product; it never grants permissions or changes asset configuration,
+and it fails before any probe write when no eligible pair exists.
 
 Set ``RESTORE_DRILL_TOKEN_PROBE`` to a bearer token plaintext so the drill
 can prove that one restored token authenticates through the real verifier
@@ -78,6 +82,7 @@ from slaif_reservation.api.management.commands.restore_database import (
     Command as RestoreDatabaseCommand,
 )
 from slaif_reservation.api.models import IdempotencyRecord
+from slaif_reservation.assets.authorization import user_can_book_asset
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
 from slaif_reservation.config.env import postgres_database_from_url
@@ -492,12 +497,10 @@ class Command(BaseCommand):
         self.stdout.write("token_round_trip=true")
 
     def _create_probe_reservation(self) -> Reservation:
-        principal = (
-            User.objects.filter(is_active=True, is_service_account=False).order_by("id").first()
-        )
-        if principal is None:
+        users = list(User.objects.filter(is_active=True, is_service_account=False).order_by("id"))
+        if not users:
             raise CommandError("point-in-time probe failed: no active human user on the source")
-        asset: Asset | None = None
+        eligible_assets: list[Asset] = []
         for candidate in Asset.objects.filter(
             active=True, reservable=True, booking_mode=Asset.BOOKING_EXCLUSIVE
         ).order_by("id"):
@@ -505,12 +508,34 @@ class Command(BaseCommand):
                 resolve_effective_policy(candidate)
             except ReservationDomainError:
                 continue
-            asset = candidate
-            break
-        if asset is None:
+            eligible_assets.append(candidate)
+        if not eligible_assets:
             raise CommandError(
                 "point-in-time probe failed: no active, reservable, exclusive asset with a "
                 "resolvable policy on the source"
+            )
+        # The probe principal and asset are selected TOGETHER: the first
+        # (user, asset) pair in stable id order that passes the SAME shared
+        # booking-eligibility predicate as the product.  The first active
+        # human may lack the booking capability or the exact-asset group
+        # membership; that is operator configuration this drill never
+        # changes.  create_reservation below remains the authority.
+        principal: User | None = None
+        asset: Asset | None = None
+        for user in users:
+            for candidate in eligible_assets:
+                if user_can_book_asset(user, candidate):
+                    principal = user
+                    asset = candidate
+                    break
+            if asset is not None:
+                break
+        if principal is None or asset is None:
+            raise CommandError(
+                "point-in-time probe failed: no active human user is currently authorized "
+                "to book any active, reservable, exclusive asset with a resolvable policy "
+                "on the source; the drill never grants permissions or changes asset "
+                "configuration"
             )
         now = timezone.now()
         last_error: ReservationDomainError | None = None

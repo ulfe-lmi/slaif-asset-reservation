@@ -58,6 +58,8 @@ class AssetAdminForm(forms.ModelForm):  # type: ignore[type-arg]
             "active",
             "reservable",
             "verification_required",
+            "booking_restricted",
+            "allowed_booking_groups",
             "capabilities",
             "tags",
             "physical_locator",
@@ -109,6 +111,25 @@ class AssetAdminForm(forms.ModelForm):  # type: ignore[type-arg]
                     "booked. An asset can only be reservable while active."
                 ),
                 "reservable": _("Only reservable assets offer the reserve action to members."),
+                "booking_restricted": _(
+                    "Whether only specific approved groups may book this asset. "
+                    "Unrestricted: any user holding the booking permission "
+                    "(reservations.book_assets) may book it. Restricted: only "
+                    "users who belong to at least one allowed group below; a "
+                    "restricted asset with no allowed groups denies everyone. "
+                    "Only this exact asset is checked - the parent machine's "
+                    "setting never applies to it and vice versa."
+                ),
+                "allowed_booking_groups": _(
+                    "Existing permission groups whose members may book this "
+                    "asset while it is restricted. Membership in ANY ONE "
+                    "selected group is enough; group grants and individual "
+                    "permissions combine additively. Selecting groups here "
+                    "grants no other access, and members still need the global "
+                    "reservations.book_assets permission. These group names are "
+                    "operator configuration, not authorization constants. The "
+                    "list is ignored while the asset is unrestricted."
+                ),
                 "verification_required": _(
                     "Displays 'unverified' to members until verified. A "
                     "display flag — no verification workflow is enforced yet."
@@ -138,6 +159,13 @@ class AssetTagAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
 @admin.register(Asset)
 class AssetAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
     form = AssetAdminForm
+
+    @property
+    def media(self) -> forms.Media:
+        # Binds the rendered help of the generated dual-select list boxes
+        # (allowed_booking_groups, tags) via the narrow local helper.
+        return super().media + forms.Media(js=["web/admin-form-guidance.js"])
+
     list_display = [
         "slug",
         "name",
@@ -148,10 +176,18 @@ class AssetAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
         "verification_required",
         "booking_mode",
     ]
-    list_filter = ["kind", "active", "reservable", "verification_required", "booking_mode", "tags"]
+    list_filter = [
+        "kind",
+        "active",
+        "reservable",
+        "booking_restricted",
+        "verification_required",
+        "booking_mode",
+        "tags",
+    ]
     search_fields = ["name", "slug", "legacy_id"]
     autocomplete_fields = ["parent", "tags"]
-    filter_horizontal = ["tags"]
+    filter_horizontal = ["tags", "allowed_booking_groups"]
     readonly_fields = ["legacy_source", "legacy_id", "legacy_metadata", "created_at", "updated_at"]
     fieldsets = [
         (
@@ -176,6 +212,15 @@ class AssetAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
                     "active",
                     "reservable",
                     "verification_required",
+                ]
+            },
+        ),
+        (
+            "Booking access",
+            {
+                "fields": [
+                    "booking_restricted",
+                    "allowed_booking_groups",
                 ]
             },
         ),

@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
+from slaif_reservation.assets.authorization import user_can_book_asset
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
 from slaif_reservation.audit.services import append_audit_event
@@ -323,6 +324,30 @@ def _revalidate_for_apply(item: PlannedAppointment) -> PlannedAppointment:
                     "reservation_conflict",
                     appointment.legacy_id,
                     "Appointment overlaps an existing blocking reservation.",
+                ),
+            ),
+        )
+
+    # A plan made before access removal is advisory: for future
+    # confirmed appointments the SAME current booking authorization
+    # predicate is rechecked on the locked, fresh principal and asset.
+    # No reservation or success audit is created when no longer
+    # authorized.  Completed-past appointments keep the documented
+    # historical import exception.
+    if appointment.start_at >= timezone.now() and not user_can_book_asset(user, asset):
+        return PlannedAppointment(
+            appointment=appointment,
+            classification="error",
+            asset_id=str(asset.id),
+            user_id=str(user.id),
+            messages=(
+                _message(
+                    "booking_not_authorized",
+                    appointment.legacy_id,
+                    "Mapped requester does not meet the current booking "
+                    "authorization (booking permission or asset group "
+                    "eligibility).",
+                    level="error",
                 ),
             ),
         )

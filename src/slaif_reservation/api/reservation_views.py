@@ -37,12 +37,14 @@ from slaif_reservation.api.serializers import (
     availability_representation,
     reservation_representation,
 )
+from slaif_reservation.assets.authorization import user_can_book_asset
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.reservations.exceptions import (
     ASSET_INACTIVE,
     ASSET_NOT_RESERVABLE,
     BLACKOUT_CONFLICT,
     BOOKING_HORIZON_VIOLATION,
+    BOOKING_NOT_AUTHORIZED,
     CANCELLATION_CUTOFF,
     DURATION_TOO_LONG,
     DURATION_TOO_SHORT,
@@ -245,6 +247,26 @@ class ReservationListCreateAPIView(BearerAPIView):
         serializer = ReservationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        # Authorization is part of the request contract, not of the
+        # idempotent result: recheck the owner's CURRENT booking
+        # capability and exact-asset eligibility on every creation
+        # request, BEFORE any cached idempotent response is returned.
+        # The asset predicate is prefetched only when the asset exists so
+        # the existing missing-asset 404 callback (and its idempotent
+        # recording) is preserved; the global capability check applies
+        # regardless.  The authoritative row-locked service rechecks the
+        # same predicate for actual new writes.
+        preflight_asset = _asset_or_none(serializer.validated_data["asset_id"])
+        if not user_can_book_asset(request.user, preflight_asset):
+            return problem_response(
+                request=request,
+                status_code=status.HTTP_403_FORBIDDEN,
+                code=BOOKING_NOT_AUTHORIZED,
+                title="Booking not authorized",
+                detail="You do not currently have permission to create this reservation.",
+                correlation_id=correlation_id,
+            )
+
         def mutate() -> MutationResult:
             try:
                 asset = Asset.objects.get(pk=serializer.validated_data["asset_id"])
@@ -430,6 +452,7 @@ class ReservationReleaseAPIView(BearerAPIView):
 
 DOMAIN_STATUS = {
     ASSET_INACTIVE: status.HTTP_409_CONFLICT,
+    BOOKING_NOT_AUTHORIZED: status.HTTP_403_FORBIDDEN,
     ASSET_NOT_RESERVABLE: status.HTTP_409_CONFLICT,
     UNSUPPORTED_BOOKING_MODE: status.HTTP_409_CONFLICT,
     POLICY_NOT_CONFIGURED: status.HTTP_409_CONFLICT,
@@ -583,6 +606,8 @@ def _title_for_code(code: str) -> str:
 def _detail_for_code(code: str) -> str:
     if code == RESERVATION_CONFLICT:
         return "The requested time is no longer available."
+    if code == BOOKING_NOT_AUTHORIZED:
+        return "You do not currently have permission to create this reservation."
     if code == BLACKOUT_CONFLICT:
         return "The requested time is unavailable."
     if code == RESERVATION_NOT_OWNED:

@@ -12,6 +12,7 @@ from datetime import UTC, timedelta
 import pytest
 from django.conf import settings
 from django.contrib.admin.sites import site
+from django.contrib.auth.models import Permission
 from django.contrib.messages import get_messages
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, IntegrityError, connection, transaction
@@ -61,7 +62,13 @@ from slaif_reservation.audit.validators import validate_audit_metadata
 
 
 def user(email: str = "token-owner@example.com", **overrides: object) -> User:
-    return User.objects.create_user(email=email, password="not-a-secret", **overrides)
+    created = User.objects.create_user(email=email, password="not-a-secret", **overrides)
+    # A16: positive booking fixtures explicitly carry the baseline
+    # reservations.book_assets capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 def issue(owner: User, **overrides: object):

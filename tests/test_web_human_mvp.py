@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.db import connection
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
@@ -26,19 +27,31 @@ from slaif_reservation.web.forms import ReservationForm
 OVERLONG_TIMEZONE = "A" * 1000
 
 
+def _grant_booking(target: User) -> None:
+    # A16: positive booking fixtures explicitly carry the baseline
+    # reservations.book_assets capability (real Permission row).
+    target.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+
+
 @pytest.fixture
 def member_user() -> User:
-    return User.objects.create_user(
+    created = User.objects.create_user(
         email="member@example.com",
         password="not-a-secret",
         display_name="Member User",
         timezone="Europe/Ljubljana",
     )
+    _grant_booking(created)
+    return created
 
 
 @pytest.fixture
 def other_user() -> User:
-    return User.objects.create_user(email="other@example.com", password="not-a-secret")
+    created = User.objects.create_user(email="other@example.com", password="not-a-secret")
+    _grant_booking(created)
+    return created
 
 
 @pytest.fixture

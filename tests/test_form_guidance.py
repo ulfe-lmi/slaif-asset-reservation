@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from html import unescape
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.test import Client
 from django.urls import resolve, reverse
 from django.utils import timezone
@@ -34,12 +35,17 @@ from slaif_reservation.reservations.models import (
 
 @pytest.fixture
 def member_user() -> User:
-    return User.objects.create_user(
+    created = User.objects.create_user(
         email="guidance-member@example.com",
         password="not-a-secret",
         display_name="Guidance Member",
         timezone="Europe/Ljubljana",
     )
+    # A16: explicit baseline booking capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 @pytest.fixture
@@ -509,7 +515,8 @@ def test_asset_list_filter_guidance(
     _assert_guided(
         html,
         "filter-reservable-help",
-        "Only assets you can book, or only assets you cannot book.",
+        "Filter by the asset reservable flag (a property of the asset, not of "
+        "your personal booking access).",
         control_id="filter-reservable",
     )
 
@@ -998,10 +1005,13 @@ def test_admin_user_change_safe_password_status_and_help(
         ("is_active", "Inactive accounts cannot sign in anywhere"),
         ("is_staff", "per-model administration operations in this administration only"),
         ("is_superuser", "does not bypass the active-human/staff admission gate"),
-        ("groups", "Groups are NOT project or membership authorization"),
+        (
+            "groups",
+            "a group carrying reservations.book_assets lets its members create new reservations",
+        ),
         (
             "user_permissions",
-            "govern per-model administration operations in this administration only",
+            "selecting reservations.book_assets lets this account create new reservations",
         ),
     ]:
         _assert_guided(html, f"id_{name}_helptext", fragment, control_id=f"id_{name}")
@@ -1188,11 +1198,15 @@ def test_admin_group_permissions_help(client: Client, admin_user: User) -> None:
     _assert_guided(
         html,
         "id_permissions_helptext",
-        "Site permissions granted through this group",
+        "Permissions granted through this group",
         control_id="id_permissions",
     )
-    assert "not management access, which follows the active human staff status" in unescape(html)
-    assert "NOT project or membership authorization" in html
+    assert (
+        "a group with reservations.book_assets lets its members create new reservations"
+        in unescape(html)
+    )
+    assert "do not grant management access (which follows the active staff flag)" in unescape(html)
+    assert "not project or membership authorization" in html
     # The select-filter association helper ships on the group pages too.
     assert "web/admin-form-guidance.js" in html
 

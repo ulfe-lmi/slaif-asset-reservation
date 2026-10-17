@@ -24,17 +24,25 @@ is temporarily unavailable. There is no permanent automatic account lockout.
 | Task | Where | Behavior |
 | --- | --- | --- |
 | See your bookings | Dashboard `/` and `/reservations/` | Active, upcoming and historical reservation sections belong to your account. |
-| Find an asset | `/assets/` | Filter active assets by name/slug/description, kind, parent, tag and reservable state. |
+| Find an asset | `/assets/` | Filter active assets by name/slug/description, kind, parent, tag and reservable state; the **You can book** column shows your current per-asset booking eligibility. |
 | Check availability | `/assets/<uuid>/` | Advisory free/busy intervals; other owners' identity and purpose are not disclosed. |
-| Make a booking | Asset's **Reserve this asset** action | Current policy, maintenance and PostgreSQL conflict checks decide acceptance. |
+| See your booking access | Asset page | The **Booking access** line states whether you can book the asset and, when you cannot, the reason; the **Reserve this asset** action is offered only when you are eligible. |
+| Make a booking | Asset's **Reserve this asset** action | Requires your current booking capability and the asset's group eligibility; current policy, maintenance and PostgreSQL conflict checks decide acceptance. |
 | Cancel or release | Your reservation detail | Cancel upcoming bookings; release active bookings early. Both actions are explicit and audited. |
 | Set your display preferences | `/profile/` | Display name and a required valid IANA timezone, used when entering and displaying booking times. |
 | Connect an API agent | `/tokens/` | Create scoped, expiring tokens, inspect their prefix/status and revoke them. |
 
-Accounts currently have broad access to active reservable exclusive assets with
-an effective policy. Site permission groups are not project memberships or
-resource-access restrictions. Staff-only internal location/physical metadata
-is not part of the member inventory.
+Booking access is explicit: creating a reservation requires the
+`reservations.book_assets` capability (granted through your permission groups
+or individual permissions) and, for restricted assets, membership in at least
+one of that asset's allowed groups. Assets stay fully browsable whatever your
+eligibility: the list shows a **You can book** column per asset and the asset
+page shows the **Booking access** line with a reason when you cannot book.
+Denied reserve requests create nothing, and direct requests are denied, not
+only hidden buttons. Project and organizational authorization is not
+implemented yet; site permission groups are not project memberships.
+Staff-only internal location/physical metadata is not part of the member
+inventory.
 
 ### Times and reservation rules
 

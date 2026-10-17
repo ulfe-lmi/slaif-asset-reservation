@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from django.contrib.auth.models import Permission
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.utils import timezone
@@ -163,6 +164,37 @@ def test_apply_is_order_independent_and_idempotent(tmp_path: Path, reverse_input
 
 
 @pytest.mark.django_db
+def test_repeated_apply_preserves_configured_booking_access(tmp_path: Path) -> None:
+    """Operator-configured booking ACL is bootstrap data the importer never owns.
+
+    The generic bootstrap format has no booking fields; existing matching
+    records are reused without writes, so a repeated apply must preserve
+    the operator's ``booking_restricted`` / allowed groups exactly.
+    """
+    from django.contrib.auth.models import Group
+
+    path = _write_document(tmp_path, _load_document())
+    first = StringIO()
+    call_command("import_bootstrap_assets", input=str(path), apply=True, stdout=first)
+    assert "created=14" in first.getvalue()
+
+    target = Asset.objects.get(slug="atlas-gpu")
+    group = Group.objects.create(name="bootstrap-booking-group")
+    target.booking_restricted = True
+    target.save(update_fields=["booking_restricted", "updated_at"])
+    target.allowed_booking_groups.add(group)
+
+    second = StringIO()
+    call_command("import_bootstrap_assets", input=str(path), apply=True, stdout=second)
+    assert "created=0" in second.getvalue()
+    assert "unchanged=14" in second.getvalue()
+
+    target.refresh_from_db()
+    assert target.booking_restricted is True
+    assert list(target.allowed_booking_groups.values_list("id", flat=True)) == [group.id]
+
+
+@pytest.mark.django_db
 def test_default_dry_run_writes_nothing() -> None:
     output = StringIO()
     call_command("import_bootstrap_assets", input=str(BOOTSTRAP_INPUT), stdout=output)
@@ -219,6 +251,11 @@ def test_demo_booking_uses_existing_default_policy_and_asset_rules(slug: str) ->
     call_command("import_bootstrap_assets", input=str(BOOTSTRAP_INPUT), apply=True)
     call_command("initialize_default_policy")
     member = User.objects.create_user(email="demo-check@example.test", password="not-a-secret")
+    # A16: the demo member books a demo reservation, so it carries the
+    # explicit baseline booking capability (real Permission row).
+    member.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
     asset = Asset.objects.get(slug=slug)
     kwargs = dict(
         asset=asset,

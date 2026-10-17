@@ -48,7 +48,7 @@
         <option value="true" {% if request.GET.reservable == "true" %}selected{% endif %}>{% trans "Reservable" %}</option>
         <option value="false" {% if request.GET.reservable == "false" %}selected{% endif %}>{% trans "Not reservable" %}</option>
       </select>
-      <p class="help" id="filter-reservable-help">{% trans "Only assets you can book, or only assets you cannot book." %}</p>
+      <p class="help" id="filter-reservable-help">{% trans "Filter by the asset reservable flag (a property of the asset, not of your personal booking access)." %}</p>
     </div>
     <button type="submit">{% trans "Filter" %}</button>
   </form>
@@ -60,20 +60,22 @@
         <th scope="col">{% trans "Kind" %}</th>
         <th scope="col">{% trans "Parent" %}</th>
         <th scope="col">{% trans "Reservable" %}</th>
+        <th scope="col">{% trans "You can book" %}</th>
         <th scope="col">{% trans "Verification" %}</th>
       </tr>
     </thead>
     <tbody>
-      {% for asset in context.assets %}
+      {% for asset, bookable in rows %}
         <tr>
           <td><a href="{% url 'web:asset-detail' asset.id %}">{{ asset.name }}</a></td>
           <td>{{ asset.get_kind_display }}</td>
           <td>{% if asset.parent %}{{ asset.parent.name }}{% endif %}</td>
           <td>{{ asset.reservable|yesno:"yes,no" }}</td>
+          <td>{{ bookable|yesno:"yes,no" }}</td>
           <td>{% if asset.verification_required %}{% trans "unverified" %}{% else %}{% trans "verified" %}{% endif %}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="5">{% trans "No assets match these filters." %}</td></tr>
+        <tr><td colspan="6">{% trans "No assets match these filters." %}</td></tr>
       {% endfor %}
     </tbody>
   </table></div>

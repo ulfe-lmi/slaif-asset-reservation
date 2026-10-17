@@ -1,8 +1,9 @@
 # Authorization — group-based access (available now vs planned)
 
-**Status: available now — foundation (permission records, opaque external
-identifier, explicit chosen-staff setup command); planned — enforcement
-(NOT yet active).** This page records the selected M-GROUP-AUTHORIZATION
+**Status: available now — foundation plus booking enforcement (the
+`reservations.book_assets` capability and exact-asset group eligibility gate
+new reservations); planned — management capabilities and cross-user read-all
+enforcement (NOT yet active).** This page records the selected M-GROUP-AUTHORIZATION
 contract (ARCHITECTURE.md A-16; stable rows SAR-048–SAR-053, all UNPROVEN
 until a fresh independent ICA at the exact merged revision).
 
@@ -30,8 +31,11 @@ The delivered foundation, and only this:
   `BOOKING_BASELINE_PERMISSION`, `has_reservation_permission`) that checks
   one explicit capability for an active authenticated non-service-account
   human through Django's permission machinery (groups combined additively
-  with individual permissions; superuser semantics retained). It wires no
-  endpoint or service enforcement yet and caches nothing across calls.
+  with individual permissions; superuser semantics retained). It is the
+  foundation of the active booking-eligibility enforcement (the
+  `assets/authorization.py` predicate and the `create_reservation` gate
+  build on it) and will carry the management and cross-user read-all
+  enforcement when those arrive. It caches nothing across calls.
 - **A one-time baseline booking grant** in the accounts migration: existing
   non-service-account users (including inactive rows, so a later normal
   reactivation preserves their former baseline) received the direct
@@ -39,11 +43,32 @@ The delivered foundation, and only this:
   created or changed; no other permission was granted.
 - **`manage.py grant_management_access`**, an explicit dry-run-first setup
   command (see the deliberate upgrade section below).
+- **Booking eligibility enforcement for NEW reservations**:
+  `Asset.booking_restricted` (default False) and
+  `Asset.allowed_booking_groups` (an M2M to the EXISTING `auth.Group`
+  model; one new forward assets migration) plus a small shared
+  `assets/authorization.py` predicate built on
+  `has_reservation_permission(user, "book_assets")` and actual group
+  membership. The predicate is enforced in the row-locked
+  `create_reservation` service (after the fresh principal and asset locks,
+  before any reservation/audit write), on the member browser reserve
+  GET/POST surface (direct requests are denied, not only hidden buttons),
+  as the bearer `POST /api/v1/reservations/` preflight BEFORE any cached
+  idempotent creation response is returned, and on future legacy-import
+  plans/apply (the documented completed-past historical exception is
+  preserved). Every existing asset migrates unrestricted with an empty
+  group list; staff, unrelated Administration permissions and
+  inactive/service identities never bypass the gate, trusted active
+  superusers keep global `has_perm` semantics but still need an allowed
+  group on restricted assets, and owners keep list/inspect/cancel/release
+  of existing bookings after losing the capability or a group.
 
 Everything else on this page is still target behavior: **no route, view,
-bearer scope, eligibility check or service gate enforces any of these
-permissions yet.** Commands and endpoints named as target behavior are
-targets, not published interfaces.
+bearer scope or service gate enforces the management capabilities or the
+cross-user read-all permissions yet** (the booking capability and
+exact-asset eligibility above are the only enforced application
+permissions). Commands and endpoints named as target behavior are targets,
+not published interfaces.
 
 ## Planned (enforcement NOT yet active)
 
@@ -52,12 +77,12 @@ targets, not published interfaces.
   owner-scoped as before).
 - The separate All reservations browser view and the cross-user bearer
   list/detail routes (including the `reservations:read_all` scope).
-- Exact-asset group-restriction eligibility on assets (all assets behave
-  as today; the field and migration arrive with their planned purpose).
 - Token-scope issuance refusal for `read_all`/`create` authority and the
   minimal cross-user representation.
-- Any change to existing tokens, policies, exclusivity, lifecycle, audit,
-  idempotency or booking behavior.
+- No change to existing tokens, policies, exclusivity, lifecycle, audit or
+  idempotency behavior; booking behavior already carries the active
+  eligibility gate documented above, and no further booking behavior change
+  is planned in this target.
 
 ## Current baseline (implemented today)
 
@@ -75,8 +100,11 @@ targets, not published interfaces.
   availability:read; asset list/detail remain staff-session-only. The API
   accepts only its bounded known fields; `external_identifier` is not an
   API input.
-- There is no asset-group booking eligibility, no cross-user read surface
-  and no enforcement of the new application permissions yet.
+- Booking eligibility is enforced for NEW reservations (global
+  `book_assets` capability plus exact-asset group eligibility; restricted
+  with no allowed groups fails closed; owners retain existing-booking
+  lifecycle). There is still no cross-user read surface and no
+  enforcement of the management capabilities yet.
 
 ## Permission matrix (selected target)
 
@@ -122,7 +150,7 @@ landing without unauthorized counts, data, links or actions.
   services that serve them; buttons and navigation only reflect the same
   checks.
 
-## Exact-asset booking eligibility (target semantics)
+## Exact-asset booking eligibility (implemented)
 
 - Each asset is explicitly **unrestricted** or **group-restricted**.
 - A restricted asset requires membership in **at least one** of its allowed
@@ -130,6 +158,9 @@ landing without unauthorized counts, data, links or actions.
 - Only the asset being booked is checked; there is **no implicit parent
   inheritance**.
 - **All existing assets migrate unrestricted** in the upgrade.
+- Allowed group names are free operator configuration (an operator might
+  name a group for its bookers, for instance); the application contains no
+  group-name constants and matches on the group objects themselves.
 - Browser and bearer creation share the same authoritative check around
   the existing reservation service; token creation additionally requires
   the token's action scope and the owner's current capability/membership.
@@ -201,8 +232,8 @@ landing without unauthorized counts, data, links or actions.
   automatic application grants or privileged-group membership. To let a
   new user book, grant `reservations.book_assets` (directly or via an
   operator group) deliberately; the required booking grant is explained in
-  this guide and will be stated in the relevant account help once booking
-  enforcement is active.
+  this guide and is stated in the account, group and asset Administration
+  help (booking enforcement is active).
 - **Explicit chosen-staff upgrade steps (dry-run first; supported Docker
   workflow):** follow [INSTALL.md](../INSTALL.md) — recover the
   installation's recorded Compose project name into
@@ -228,7 +259,12 @@ landing without unauthorized counts, data, links or actions.
   silently revoke the baseline booking grant or any operator-configured
   grant (removing grants is a deliberate operator action); Git rollback of
   the code does **not** restore identity data or revert an applied
-  database; a real upgrade requires an operator backup/restore plan.
+  database; a real upgrade requires an operator backup/restore plan. The
+  new asset booking configuration (`booking_restricted` and the
+  allowed-group list) is ordinary database state: normal database backups
+  include it and restoring from such a backup restores it; dropping or
+  reverting that migration after the fact would delete that configuration,
+  and a code rollback does not restore it.
 
 ## Deferrals unchanged by this target
 

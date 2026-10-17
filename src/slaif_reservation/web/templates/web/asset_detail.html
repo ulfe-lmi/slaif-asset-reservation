@@ -16,6 +16,9 @@
     <dt>{% trans "Description" %}</dt><dd>{{ asset.description|default:"None" }}</dd>
     <dt>{% trans "Asset timezone" %}</dt><dd>{{ asset.timezone }}</dd>
     <dt>{% trans "Reservable" %}</dt><dd>{{ asset.reservable|yesno:"yes,no" }}</dd>
+    {% if shows_access_line %}
+    <dt>{% trans "Booking access" %}</dt><dd>{{ booking_access }}</dd>
+    {% endif %}
     <dt>{% trans "Verification required" %}</dt><dd>{{ asset.verification_required|yesno:"yes,no" }}</dd>
     <dt>{% trans "Tags" %}</dt>
     <dd>
@@ -25,7 +28,11 @@
     <dd>{% if asset.capabilities %}<pre>{{ asset.capabilities }}</pre>{% else %}{% trans "No verified normalized capabilities." %}{% endif %}</dd>
   </dl>
   {% if asset.reservable and asset.booking_mode == "exclusive" %}
+    {% if bookable %}
     <p><a class="button" href="{% url 'web:reserve' asset.id %}">{% trans "Reserve this asset" %}</a></p>
+    {% else %}
+    <p class="status-warning">{{ booking_note }}</p>
+    {% endif %}
   {% endif %}
   {% include "web/_availability.html" %}
 {% endblock %}

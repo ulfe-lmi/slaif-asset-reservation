@@ -7,6 +7,7 @@ from io import StringIO
 from typing import Any
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.core.management import call_command, get_commands
 from django.db import IntegrityError
@@ -32,7 +33,13 @@ from slaif_reservation.reservations.models import Reservation, ReservationPolicy
 
 
 def user(email: str = "member@example.com", **overrides: object) -> User:
-    return User.objects.create_user(email=email, password="not-a-secret", **overrides)
+    created = User.objects.create_user(email=email, password="not-a-secret", **overrides)
+    # A16: positive booking fixtures explicitly carry the baseline
+    # reservations.book_assets capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 def staff(email: str = "staff@example.com") -> User:

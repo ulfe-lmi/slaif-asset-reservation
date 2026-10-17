@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 import yaml
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.utils import timezone
@@ -484,6 +485,14 @@ def test_apply_revalidates_user_state_inside_transaction(tmp_path: Path) -> None
 
 def test_apply_revalidates_missing_future_policy_inside_transaction(tmp_path: Path) -> None:
     start = timezone.localtime(timezone.now() + timedelta(days=2)).replace(tzinfo=None)
+    # The mapped future-appointment user legitimately books: give it the
+    # explicit real book_assets capability BEFORE plan creation, so the
+    # apply-time POLICY revalidation (not the booking gate) is what this
+    # test pins.
+    owner = user()
+    owner.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
     plan = parsed_plan(
         tmp_path,
         appointments=[

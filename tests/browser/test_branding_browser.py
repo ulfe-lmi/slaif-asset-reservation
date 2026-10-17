@@ -18,6 +18,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.test import override_settings
 from django.utils import timezone
 from playwright.sync_api import Page
@@ -74,11 +75,16 @@ def branding_off():
 
 @pytest.fixture
 def member_user() -> User:
-    return User.objects.create_user(
+    created = User.objects.create_user(
         email="brand-member@example.com",
         password="not-a-secret",
         timezone="Europe/Ljubljana",
     )
+    # A16: explicit baseline booking capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 @pytest.fixture

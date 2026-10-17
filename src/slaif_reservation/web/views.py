@@ -28,6 +28,12 @@ from slaif_reservation.accounts.exceptions import ApiTokenDomainError
 from slaif_reservation.accounts.services import issue_api_token, revoke_api_token
 from slaif_reservation.accounts.tokens import OneTimeBearerToken
 from slaif_reservation.accounts.validators import validate_timezone_name
+from slaif_reservation.assets.authorization import (
+    STATE_ELIGIBLE,
+    STATE_NO_ALLOWED_GROUP,
+    STATE_NO_BOOKING_PERMISSION,
+    batch_asset_booking_states,
+)
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.assets.selectors import AssetFilterError
 from slaif_reservation.reservations.exceptions import (
@@ -35,6 +41,7 @@ from slaif_reservation.reservations.exceptions import (
     ASSET_NOT_RESERVABLE,
     BLACKOUT_CONFLICT,
     BOOKING_HORIZON_VIOLATION,
+    BOOKING_NOT_AUTHORIZED,
     CANCELLATION_CUTOFF,
     DURATION_TOO_LONG,
     DURATION_TOO_SHORT,
@@ -90,6 +97,10 @@ from slaif_reservation.web.selectors import (
 
 DOMAIN_ERROR_MESSAGES = {
     POLICY_NOT_CONFIGURED: _("This asset is not currently bookable."),
+    BOOKING_NOT_AUTHORIZED: _(
+        "Your account cannot book this asset right now. If you believe this "
+        "is an error, contact an administrator."
+    ),
     POLICY_AMBIGUOUS: _("This asset is not currently bookable."),
     PRINCIPAL_INACTIVE: _("Your account cannot make reservations."),
     ASSET_INACTIVE: _("This asset is inactive."),
@@ -261,6 +272,56 @@ def revoke_own_token(request: HttpRequest, token_id: uuid.UUID) -> HttpResponse:
     return redirect("web:token-list")
 
 
+def _booking_note(state: str) -> str:
+    if state == STATE_NO_BOOKING_PERMISSION:
+        return _(
+            "Your account does not have the booking permission, so this asset cannot be reserved."
+        )
+    return _(
+        "This asset can only be booked by members of specific approved "
+        "groups; your account is not currently one of them."
+    )
+
+
+def _reserve_denial_reason(asset: Asset, state: str) -> str:
+    """Truthful denial reason for a DIRECT reserve request.
+
+    Mirrors the authoritative service order: the principal's current
+    booking state first, then the asset-side state that makes this page
+    unusable (non-reservable, or not exclusive mode).  A member who is
+    personally eligible is never told they lack a group (or capability)
+    when the asset itself cannot be reserved through this page.
+    """
+    if state == STATE_NO_BOOKING_PERMISSION:
+        return _(
+            "Your account does not have the booking permission, so this asset cannot be reserved."
+        )
+    if state == STATE_NO_ALLOWED_GROUP:
+        return _(
+            "This asset can only be booked by members of specific approved "
+            "groups; your account is not currently one of them."
+        )
+    if not asset.reservable:
+        return DOMAIN_ERROR_MESSAGES[ASSET_NOT_RESERVABLE]
+    return DOMAIN_ERROR_MESSAGES[UNSUPPORTED_BOOKING_MODE]
+
+
+def _booking_access(state: str) -> str:
+    if state == STATE_ELIGIBLE:
+        return _("You can book this asset.")
+    if state == STATE_NO_BOOKING_PERMISSION:
+        return _("Your account does not have the booking permission.")
+    return _("Restricted to specific approved groups (your account is not currently one of them).")
+
+
+def _is_bookable(asset: Asset, state: str) -> bool:
+    return (
+        state == STATE_ELIGIBLE
+        and asset.reservable
+        and asset.booking_mode == Asset.BOOKING_EXCLUSIVE
+    )
+
+
 @active_human_required
 def asset_list(request: HttpRequest) -> HttpResponse:
     timezone_name = _member_timezone_or_profile(request)
@@ -270,11 +331,16 @@ def asset_list(request: HttpRequest) -> HttpResponse:
         filters = parse_member_asset_filters(request.GET)
     except AssetFilterError as exc:
         return HttpResponseBadRequest(str(exc))
+    context = member_asset_context(filters)
+    assets = list(context.assets)
+    states = batch_asset_booking_states(request.user, assets)
+    rows = [(asset, _is_bookable(asset, states[asset.id])) for asset in assets]
     return render(
         request,
         "web/asset_list.html",
         {
-            "context": member_asset_context(filters),
+            "context": context,
+            "rows": rows,
             "kinds": Asset.KIND_CHOICES,
             "display_timezone": timezone_name,
         },
@@ -293,6 +359,9 @@ def asset_detail(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
     availability = _availability_from_request(request, asset, timezone_name=timezone_name)
     if isinstance(availability, HttpResponse):
         return availability
+    state = batch_asset_booking_states(request.user, [asset])[asset.id]
+    bookable = _is_bookable(asset, state)
+    shows_access_line = asset.reservable and asset.booking_mode == Asset.BOOKING_EXCLUSIVE
     return render(
         request,
         "web/asset_detail.html",
@@ -300,6 +369,10 @@ def asset_detail(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
             "asset": asset,
             "availability": availability,
             "display_timezone": timezone_name,
+            "bookable": bookable,
+            "shows_access_line": shows_access_line,
+            "booking_access": _booking_access(state) if shows_access_line else "",
+            "booking_note": _booking_note(state) if shows_access_line and not bookable else "",
         },
     )
 
@@ -314,6 +387,13 @@ def reserve_asset(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
     except ObjectDoesNotExist as exc:
         raise Http404 from exc
 
+    # The booking gate applies to DIRECT requests, not only to the hidden
+    # button: an active human without current capability/asset eligibility
+    # is denied here, and the authoritative row-locked service rechecks the
+    # same predicate for any write that still reaches it.
+    state = batch_asset_booking_states(request.user, [asset])[asset.id]
+    bookable = _is_bookable(asset, state)
+
     availability = _availability_from_request(request, asset, timezone_name=timezone_name)
     if isinstance(availability, HttpResponse):
         return availability
@@ -321,6 +401,22 @@ def reserve_asset(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
         policy = resolve_effective_policy(asset)
     except ReservationDomainError:
         policy = None
+    if not bookable:
+        if request.method != "POST":
+            messages.error(request, _reserve_denial_reason(asset, state))
+            return redirect("web:asset-detail", asset_id=asset.id)
+        form = ReservationForm(request.POST, timezone_name=timezone_name, policy=policy)
+        form.add_error(None, _reserve_denial_reason(asset, state))
+        return render(
+            request,
+            "web/reserve.html",
+            {
+                "asset": asset,
+                "form": form,
+                "timezone_name": timezone_name,
+                "availability": availability,
+            },
+        )
     if request.method == "POST":
         form = ReservationForm(request.POST, timezone_name=timezone_name, policy=policy)
         if form.is_valid():

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, timedelta
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.test import Client
 from django.urls import reverse
@@ -31,11 +32,16 @@ from slaif_reservation.web.availability import availability_for_asset
 
 @pytest.fixture
 def member_user() -> User:
-    return User.objects.create_user(
+    created = User.objects.create_user(
         email="member-management@example.com",
         password="not-a-secret",
         display_name="Member User",
     )
+    # A16: explicit baseline booking capability (real Permission row).
+    created.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    return created
 
 
 @pytest.fixture
@@ -405,6 +411,11 @@ def test_blackout_blocks_web_and_api_reservation_creation_and_half_open_boundary
     assert result.reservation.start_at == end
 
     api_owner = User.objects.create_user(email="api-blackout@example.com", password="not-a-secret")
+    # A16: the API owner books through the bearer endpoint, so it carries
+    # the explicit baseline booking capability (real Permission row).
+    api_owner.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
     token = bearer(api_owner, ["reservations:create"])
     response = client.post(
         "/api/v1/reservations/",

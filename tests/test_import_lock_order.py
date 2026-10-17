@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from django.contrib.auth.models import Permission
 from django.db import close_old_connections, connection, transaction
 from django.db.models.query import QuerySet
 from django.utils import timezone
@@ -320,6 +321,12 @@ def test_staff_joined_owner_does_not_invert_batch_principal_order(tmp_path, monk
     staff = User.objects.create_user(
         id=uuid.UUID(int=2), email="joined-staff@example.invalid", is_staff=True
     )
+    # A16: both are legitimate mapped human principals for FUTURE import
+    # bookings, so both carry the explicit booking capability.
+    for principal in (owner, staff):
+        principal.user_permissions.add(
+            Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+        )
     assets = [make_asset("joined-first"), make_asset("joined-second")]
     other_asset = make_asset("joined-existing")
     now = timezone.now()

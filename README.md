@@ -121,9 +121,14 @@ configurations are preserved on upgrades.
   [HTTPS/proxy installation contract](INSTALL.md). Application abuse budgets
   complement perimeter protection; they do not stop distributed or volumetric
   attacks, and this is not a claim of unrestricted production maturity.
-- **Broad member access:** project/group resource authorization is not implemented.
-  Every active human account can browse active assets and request any reservable
-  exclusive asset with an effective policy. Create accounts accordingly.
+- **Booking authorization:** creating a reservation requires the
+  `reservations.book_assets` capability (granted through permission groups or
+  individual permissions) and, for group-restricted assets, membership in at
+  least one of that asset's allowed groups. A restricted asset with no allowed
+  groups denies everyone. Project/group resource authorization beyond booking
+  (projects, organizational memberships, cross-user read access) is not
+  implemented yet; see [docs/authorization.md](docs/authorization.md). Create
+  accounts and grants accordingly.
 - No OIDC, self-registration, password reset, email or notifications. Accounts are
   administrator-created; service accounts cannot use the human login UI.
 - Reservations grant entitlements; the service does not execute workloads,

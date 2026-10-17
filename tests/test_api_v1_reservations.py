@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, timedelta
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.db import close_old_connections
 from django.test import Client
 from django.utils import timezone
@@ -19,7 +20,18 @@ from slaif_reservation.reservations.services import create_blackout, create_rese
 
 
 def user(email: str = "api-member@example.com", **overrides: object) -> User:
-    return User.objects.create_user(email=email, password="not-a-secret", **overrides)
+    created = User.objects.create_user(email=email, password="not-a-secret", **overrides)
+    grant_booking(created)
+    return created
+
+
+def grant_booking(target: User) -> None:
+    # A16: positive booking fixtures explicitly carry the baseline
+    # reservations.book_assets capability (real Permission row); the
+    # dedicated no-grant denial cases create their own users.
+    target.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
 
 
 def asset(slug: str = "api-gpu-a", **overrides: object) -> Asset:

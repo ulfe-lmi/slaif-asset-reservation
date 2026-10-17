@@ -26,20 +26,27 @@ from urllib.parse import quote
 
 import psycopg
 import pytest
+from django.contrib.auth.models import Group, Permission
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
-from django.test import TransactionTestCase
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from psycopg.sql import SQL, Identifier
 from rest_framework.test import APIClient
 
 from slaif_reservation.accounts.models import User
 from slaif_reservation.accounts.services import issue_api_token
-from slaif_reservation.api.management.commands.restore_drill import COUNT_MODELS
+from slaif_reservation.api.management.commands.restore_drill import (
+    COUNT_MODELS,
+)
+from slaif_reservation.api.management.commands.restore_drill import (
+    Command as RestoreDrillCommand,
+)
 from slaif_reservation.assets.models import Asset
+from slaif_reservation.audit.models import AuditEvent
 from slaif_reservation.reservations import services
-from slaif_reservation.reservations.models import Reservation
+from slaif_reservation.reservations.models import Reservation, ReservationPolicy
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP_ASSETS = REPO_ROOT / "data" / "bootstrap" / "assets.yaml"
@@ -112,6 +119,11 @@ def _seed_source() -> dict:
         email="drill-staff@example.com", password="not-a-secret", is_staff=True
     )
     member = User.objects.create_user(email="drill-member@example.com", password="not-a-secret")
+    # A16: the drill member books a seed reservation and therefore carries
+    # the explicit baseline booking capability (real Permission row).
+    member.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
     services.create_policy(
         actor_user=staff,
         name="drill-global",
@@ -402,3 +414,141 @@ class RestoreDrillNegatives(TransactionTestCase):
         text = output.getvalue() + str(excinfo.value)
         assert canary not in text
         assert bad_url not in text
+
+
+class RestoreDrillProbeSelection(TestCase):
+    """Deterministic direct tests of the drill's probe user/asset selection.
+
+    The drill must pick a CURRENTLY eligible (user, asset) pair with the
+    SAME shared booking-eligibility predicate as the product: the first
+    active human by id may lack the booking capability or the exact-asset
+    group membership even when an eligible pair exists.  These tests pin
+    that selection directly against real PostgreSQL without needing
+    pg_dump/pg_restore; the full real round trip (and destructive safety
+    guards) remains in the normal CI round-trip tests.
+    """
+
+    def setUp(self) -> None:
+        ReservationPolicy.objects.create(
+            name="probe-global",
+            asset=None,
+            min_duration_minutes=15,
+            max_duration_minutes=240,
+            booking_horizon_days=30,
+            min_lead_minutes=0,
+            cancellation_cutoff_minutes=0,
+            max_upcoming_per_principal=20,
+            max_concurrent_per_principal=10,
+            purpose_required=False,
+        )
+        self.command = RestoreDrillCommand()
+        self.command.stdout = StringIO()
+
+    @staticmethod
+    def _book_perm() -> Permission:
+        return Permission.objects.get(
+            codename="book_assets", content_type__app_label="reservations"
+        )
+
+    @staticmethod
+    def _user(uid_int: int, email: str) -> User:
+        # Explicit UUIDs make id-ordered selection deterministic.
+        return User.objects.create_user(
+            id=uuid.UUID(int=uid_int), email=email, password="not-a-secret"
+        )
+
+    @staticmethod
+    def _asset(uid_int: int, slug: str, **overrides: object) -> Asset:
+        values = {
+            "id": uuid.UUID(int=uid_int),
+            "slug": slug,
+            "name": slug,
+            "kind": Asset.KIND_GPU,
+            "active": True,
+            "reservable": True,
+        }
+        values.update(overrides)
+        return Asset.objects.create(**values)
+
+    def test_probe_skips_first_user_without_booking_grant(self) -> None:
+        first_id = uuid.UUID(int=1)
+        self._user(1, "probe-first@example.com")  # first by id, no grant at all
+        later = self._user(2, "probe-later@example.com")
+        later.user_permissions.add(self._book_perm())
+        asset = self._asset(3, "probe-open")
+
+        probe = self.command._create_probe_reservation()
+
+        # The first user by id (no booking grant) was skipped in favor of
+        # the later eligible user — and received nothing.
+        first = User.objects.get(id=first_id)
+        assert first.user_permissions.count() == 0
+        assert probe.requested_by_user_id == later.id
+        assert probe.asset_id == asset.id
+        assert probe.status == Reservation.STATUS_CONFIRMED
+        assert probe.purpose == "restore drill point-in-time probe"
+        assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 1
+
+    def test_probe_skips_incompatible_restricted_pair(self) -> None:
+        allowed = Group.objects.create(name="probe-allowed")
+        other = Group.objects.create(name="probe-other")
+        first = self._user(1, "probe-first@example.com")
+        first.user_permissions.add(self._book_perm())
+        first.groups.add(other)  # capability present, allowed group absent
+        later = self._user(2, "probe-later@example.com")
+        later.user_permissions.add(self._book_perm())
+        later.groups.add(allowed)
+        asset = self._asset(3, "probe-restricted", booking_restricted=True)
+        asset.allowed_booking_groups.add(allowed)
+
+        probe = self.command._create_probe_reservation()
+
+        # (first, asset) is incompatible; the drill picks the later user for
+        # the SAME asset and grants nothing.
+        assert probe.requested_by_user_id == later.id
+        assert probe.asset_id == asset.id
+        assert first.groups.filter(id=allowed.id).count() == 0
+        assert first.user_permissions.count() == 1
+
+    def test_probe_refuses_without_eligible_pair_no_writes_no_grants(self) -> None:
+        allowed = Group.objects.create(name="probe-allowed")
+        only = self._user(1, "probe-only@example.com")
+        only.user_permissions.add(self._book_perm())
+        asset = self._asset(3, "probe-restricted", booking_restricted=True)
+        asset.allowed_booking_groups.add(allowed)
+        before_reservations = Reservation.objects.count()
+        before_audit = AuditEvent.objects.count()
+
+        with pytest.raises(CommandError, match="no active human user is currently authorized"):
+            self.command._create_probe_reservation()
+
+        # Fail-safe: no probe write, no reservation, no audit, and no grant
+        # or ACL change was invented to make the drill pass.
+        assert Reservation.objects.count() == before_reservations
+        assert AuditEvent.objects.count() == before_audit
+        assert only.user_permissions.count() == 1
+        assert only.groups.count() == 0
+        asset.refresh_from_db()
+        assert asset.booking_restricted is True
+        assert asset.allowed_booking_groups.count() == 1
+
+    def test_probe_refuses_without_active_human(self) -> None:
+        User.objects.create_user(
+            email="probe-service@example.com",
+            password="not-a-secret",
+            is_service_account=True,
+        )
+        self._asset(3, "probe-open")
+
+        with pytest.raises(CommandError, match="no active human user"):
+            self.command._create_probe_reservation()
+        assert Reservation.objects.count() == 0
+
+    def test_probe_refuses_without_qualifying_asset(self) -> None:
+        booker = self._user(1, "probe-booker@example.com")
+        booker.user_permissions.add(self._book_perm())
+        self._asset(3, "probe-inactive", active=False, reservable=False)
+
+        with pytest.raises(CommandError, match="no active, reservable, exclusive asset"):
+            self.command._create_probe_reservation()
+        assert Reservation.objects.count() == 0

@@ -41,7 +41,7 @@ def member_asset_queryset(filters: AssetFilters | None = None) -> QuerySet[Asset
     queryset = (
         Asset.objects.filter(active=True)
         .select_related("parent")
-        .prefetch_related("tags")
+        .prefetch_related("tags", "allowed_booking_groups")
         .order_by("slug")
     )
     if filters is None:
