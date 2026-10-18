@@ -197,6 +197,125 @@ def availability_representation(result: Any) -> dict[str, Any]:
     }
 
 
+class _IsoUtcDateTimeField(serializers.DateTimeField):  # type: ignore[misc]
+    """Output-only aware ISO-8601 UTC instant.
+
+    The view layer hands over an already-formatted ``Z``-style string, so
+    the representation passes through unchanged while the OpenAPI schema
+    still advertises ``date-time``.
+    """
+
+    def to_representation(self, value: Any) -> Any:
+        return value
+
+
+class ReadAllAssetSerializer(serializers.Serializer):  # type: ignore[misc]
+    id = serializers.CharField(read_only=True)
+    slug = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    kind = serializers.CharField(read_only=True)
+
+
+class ReadAllOwnerSerializer(serializers.Serializer):  # type: ignore[misc]
+    id = serializers.UUIDField(read_only=True)
+    external_identifier = serializers.CharField(allow_null=True, read_only=True)
+
+
+class ReadAllBlockingIntervalSerializer(serializers.Serializer):  # type: ignore[misc]
+    start_at = _IsoUtcDateTimeField(read_only=True)
+    end_at = _IsoUtcDateTimeField(read_only=True)
+
+
+class ReadAllReservationSerializer(serializers.Serializer):  # type: ignore[misc]
+    """Minimal explicit cross-user read-only reservation row (order 051-a).
+
+    Strict allow-list: identity, safe asset identity, stable owner UUID
+    plus opaque external identifier (null when unset), status, derived
+    lifecycle, aware UTC original/effective timestamps, release/cancel
+    timestamps and the half-open blocking interval. Owner email/display/
+    profile/admin flags, credential material, private locators, purpose,
+    cancellation/blackout free text and every other field are excluded by
+    construction; serializing through this class is the render-time
+    allow-list, not a model serializer.
+    """
+
+    id = serializers.UUIDField(read_only=True)
+    asset = ReadAllAssetSerializer(read_only=True)
+    owner = ReadAllOwnerSerializer(read_only=True)
+    status = serializers.CharField(read_only=True)
+    lifecycle = serializers.CharField(read_only=True)
+    start_at = _IsoUtcDateTimeField(read_only=True)
+    end_at = _IsoUtcDateTimeField(read_only=True)
+    effective_end_at = _IsoUtcDateTimeField(read_only=True)
+    released_at = _IsoUtcDateTimeField(allow_null=True, read_only=True)
+    cancelled_at = _IsoUtcDateTimeField(allow_null=True, read_only=True)
+    blocking_interval = ReadAllBlockingIntervalSerializer(allow_null=True, read_only=True)
+
+
+class ReadAllReservationDetailSerializer(ReadAllReservationSerializer):
+    correlation_id = serializers.CharField(read_only=True)
+
+
+class ReadAllReservationListSerializer(serializers.Serializer):  # type: ignore[misc]
+    count = serializers.IntegerField(read_only=True)
+    next = serializers.CharField(allow_null=True, read_only=True)
+    previous = serializers.CharField(allow_null=True, read_only=True)
+    results = ReadAllReservationSerializer(many=True, read_only=True)
+    correlation_id = serializers.CharField(read_only=True)
+
+
+def _read_all_blocking_interval(reservation: Reservation) -> dict[str, str] | None:
+    """Half-open [start_at, effective_end_at) blocking interval.
+
+    Confirmed and released records keep the interval (a released record's
+    consumed prefix remains original-end evidence); cancelled records
+    never block, so the interval is null. This is historical/future
+    interval semantics, not a promise of currently active access.
+    """
+    if reservation.status == Reservation.STATUS_CANCELLED:
+        return None
+    start_iso = _iso_utc(reservation.start_at)
+    end_iso = _iso_utc(reservation.effective_end_at)
+    assert start_iso is not None
+    assert end_iso is not None
+    return {"start_at": start_iso, "end_at": end_iso}
+
+
+def read_all_reservation_representation(reservation: Reservation) -> dict[str, Any]:
+    """Build one minimal cross-user read-only row (order 051-a).
+
+    The owner is the stable account UUID plus the opaque external
+    identifier (null when unset); the owner's current identifier is
+    account-mapping metadata, not a snapshot and not a credential. The
+    row is rendered through :class:`ReadAllReservationSerializer`, whose
+    declared fields are the exact allow-list.
+    """
+    rendered = ReadAllReservationSerializer(
+        {
+            "id": reservation.id,
+            "asset": {
+                "id": reservation.asset.id,
+                "slug": reservation.asset.slug,
+                "name": reservation.asset.name,
+                "kind": reservation.asset.kind,
+            },
+            "owner": {
+                "id": reservation.requested_by_user.id,
+                "external_identifier": reservation.requested_by_user.external_identifier,
+            },
+            "status": reservation.status,
+            "lifecycle": derive_lifecycle(reservation, at=timezone.now()).value,
+            "start_at": _iso_utc(reservation.start_at),
+            "end_at": _iso_utc(reservation.end_at),
+            "effective_end_at": _iso_utc(reservation.effective_end_at),
+            "released_at": _iso_utc(reservation.released_at),
+            "cancelled_at": _iso_utc(reservation.cancelled_at),
+            "blocking_interval": _read_all_blocking_interval(reservation),
+        }
+    ).data
+    return dict(rendered)
+
+
 def _require_aware(value: datetime) -> datetime:
     if not timezone.is_aware(value):
         raise serializers.ValidationError("Timestamp must include an explicit UTC offset.")

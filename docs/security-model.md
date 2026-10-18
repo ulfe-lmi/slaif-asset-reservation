@@ -147,9 +147,17 @@ owner, name, verifier, scopes, expiry, and creation time are compared with the s
 write. Only revocation fields together or `last_used_at` may change through service update
 authorization.
 
-Bearer authentication is enabled only on `/api/v1/me/`, advisory availability, and
-owner-scoped reservation endpoints. The staff asset list/detail API remains staff-session-only.
-Every bearer endpoint checks explicit scopes; authentication alone is not authorization.
+Bearer authentication is enabled only on `/api/v1/me/`, advisory availability, the
+owner-scoped reservation endpoints, and the explicit read-only cross-user
+`/api/v1/all-reservations/` list/detail surface. That cross-user surface
+requires BOTH the `reservations:read_all` token scope and the owner's current
+`reservations.view_all_reservations` capability, rechecked per request before
+any row is read, and renders only the minimal explicit allow-list (stable
+owner UUID plus opaque external identifier, safe asset identity, aware times,
+lifecycle and the half-open blocking interval) — never owner email, display
+name, free text or credential material. The staff asset list/detail API
+remains staff-session-only. Every bearer endpoint checks explicit scopes;
+authentication alone is not authorization.
 
 The separate management UI is under `/manage/`. Management routes require an
 authenticated active non-service-account human holding the explicit
@@ -234,8 +242,12 @@ Django admin permission is not automatically equivalent to domain authorization 
 The current product uses broad authenticated-human access: every active non-service-account
 user may browse active assets and request any active, reservable, exclusive asset with an effective
 policy. Project/group and per-token asset restrictions are not implemented; token scopes
-grant actions, with reservation reads/mutations constrained to the owner. Site permission groups
-control administration model permissions, not reservation entitlements. Member reservation
+grant actions, with reservation reads/mutations constrained to the owner. The only
+authorized exception is the explicit read-only cross-user `all-reservations` bearer
+surface (its own `reservations:read_all` scope plus the owner's current
+view-all-reservations capability), whose response is the minimal explicit
+cross-user representation described above. Site permission groups control
+administration model permissions, not reservation entitlements. Member reservation
 selectors always filter by current owner before retrieval; staff users on member routes cannot view,
 cancel, or release another user's reservation.
 

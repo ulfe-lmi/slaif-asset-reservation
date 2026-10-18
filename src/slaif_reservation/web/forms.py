@@ -11,6 +11,10 @@ from django.core.validators import MaxValueValidator
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from slaif_reservation.accounts.authorization import (
+    SCOPE_ISSUANCE_CAPABILITIES,
+    issuable_token_scopes,
+)
 from slaif_reservation.accounts.models import User
 from slaif_reservation.accounts.tokens import ALLOWED_API_TOKEN_SCOPES
 from slaif_reservation.accounts.validators import TIMEZONE_NAME_MAX_LENGTH, validate_timezone_name
@@ -348,7 +352,7 @@ class ApiTokenCreationForm(forms.Form):
         help_text=_("Days until the token expires on its own."),
     )
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, owner: Any = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         maximum = int(settings.API_TOKEN_MAX_LIFETIME_DAYS)
         default_lifetime = min(30, maximum)
@@ -364,6 +368,24 @@ class ApiTokenCreationForm(forms.Form):
         _wire_field_help(self, ("name", "lifetime_days"))
         scopes_widget = cast(forms.CheckboxSelectMultiple, self.fields["scopes"].widget)
         scopes_widget.attrs["aria-describedby"] = "id_scopes-help"
+        # Issuance ceilings (order 051-a): offer only the scopes the
+        # SERVER-REQUEST owner can currently issue. Read-all requires the
+        # current view_all_reservations capability; create requires the
+        # current booking capability. A context without an owner is
+        # conservative and never defaults to the privileged choices. The
+        # service remains authoritative at issuance (fresh locked owner).
+        if owner is not None:
+            issuable = set(issuable_token_scopes(owner))
+        else:
+            issuable = {
+                scope
+                for scope in ALLOWED_API_TOKEN_SCOPES
+                if scope not in SCOPE_ISSUANCE_CAPABILITIES
+            }
+        scopes_field = cast(forms.MultipleChoiceField, self.fields["scopes"])
+        scopes_field.choices = [
+            (scope, _scope_label(scope)) for scope in ALLOWED_API_TOKEN_SCOPES if scope in issuable
+        ]
 
     def clean_name(self) -> str:
         value = str(self.cleaned_data["name"]).strip()

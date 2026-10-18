@@ -79,7 +79,7 @@ upgrades.
 | Client | Capabilities |
 | --- | --- |
 | **Humans (browser)** | Browse active assets, see privacy-safe advisory availability, create / cancel / release own reservations, manage own API tokens (one-time display), set display name and timezone. Accounts are administrator-created; there is no self-registration. |
-| **Agents (API)** | `/api/v1/me/`, per-asset advisory availability, and owner-scoped reservation list / detail / create / cancel / release with bounded `Idempotency-Key` mutations and machine-readable problem details. Contract: [docs/api-contract.md](docs/api-contract.md). Asset list/detail endpoints remain staff-session-only — a token alone grants no asset discovery. |
+| **Agents (API)** | `/api/v1/me/`, per-asset advisory availability, and owner-scoped reservation list / detail / create / cancel / release with bounded `Idempotency-Key` mutations and machine-readable problem details, plus an explicit read-only cross-user `all-reservations` list/detail surface (its own `reservations:read_all` scope and the token owner's current view-all-reservations capability). Contract: [docs/api-contract.md](docs/api-contract.md). Asset list/detail endpoints remain staff-session-only — a token alone grants no asset discovery. |
 | **Managers (explicit capabilities)** | `/manage/` — admission requires the documented reservations-namespace management capabilities (the staff flag alone no longer admits it; see [docs/authorization.md](docs/authorization.md#management-route-inventory-enforced)): reservation policies, coarse maintenance blackouts, cross-user reservation inspection and lifecycle, audit review and bounded export. Operational: `/health/live`, `/health/ready`, `operational_check`, `pilot_readiness_check`, backup/restore tooling. |
 
 ## Supported runtime
@@ -128,10 +128,13 @@ upgrades.
   `reservations.book_assets` capability (granted through permission groups or
   individual permissions) and, for group-restricted assets, membership in at
   least one of that asset's allowed groups. A restricted asset with no allowed
-  groups denies everyone. Project/group resource authorization beyond booking
-  (projects, organizational memberships, cross-user read access) is not
-  implemented yet; see [docs/authorization.md](docs/authorization.md). Create
-  accounts and grants accordingly.
+  groups denies everyone. Cross-user read is implemented as the explicit
+  read-only `all-reservations` bearer surface (`reservations:read_all` scope
+  plus the owner's current view-all-reservations capability); projects,
+  organizational memberships and delegated group authorization are not
+  implemented yet; see
+  [docs/authorization.md](docs/authorization.md). Create accounts and grants
+  accordingly.
 - No OIDC, self-registration, password reset, email or notifications. Accounts are
   administrator-created; service accounts cannot use the human login UI.
 - Reservations grant entitlements; the service does not execute workloads,

@@ -12,10 +12,12 @@ from django.db import DatabaseError, transaction
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 
+from slaif_reservation.accounts.authorization import can_issue_scope
 from slaif_reservation.accounts.exceptions import (
     TOKEN_LIFETIME_INVALID,
     TOKEN_NOT_OWNED,
     TOKEN_OWNER_INVALID,
+    TOKEN_SCOPE_INVALID,
     ApiTokenDomainError,
 )
 from slaif_reservation.accounts.models import (
@@ -131,6 +133,18 @@ def issue_api_token(
 
     with transaction.atomic():
         locked_owner = _lock_active_human(owner)
+        # Issuance ceilings (order 051-a): authority-exceeding scopes are
+        # rejected on the FRESH locked owner, before any token ID, secret,
+        # verifier, persistence or audit write occurs. Old tokens that keep
+        # a stored scope after a later capability removal are unaffected:
+        # this check applies to issuance only, never to authentication,
+        # other scopes or revocation.
+        for scope in canonical_scopes:
+            if not can_issue_scope(locked_owner, scope):
+                _raise(
+                    TOKEN_SCOPE_INVALID,
+                    "A requested token scope is not available to this account right now.",
+                )
         token_id = uuid.uuid4()
         secret = generate_api_token_secret()
         bearer_token = format_bearer_token(token_id=token_id, secret=secret)

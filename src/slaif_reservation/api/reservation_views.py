@@ -476,13 +476,20 @@ DOMAIN_STATUS = {
 }
 
 
-def _filtered_reservations(user: Any, filters: dict[str, Any]) -> QuerySet[Reservation]:
+def _apply_reservation_filters(
+    queryset: QuerySet[Reservation],
+    filters: dict[str, Any],
+) -> QuerySet[Reservation]:
+    """Apply the validated list filters to an already-chosen queryset.
+
+    The exact filter expressions are shared by the owner-scoped list and
+    the authorized cross-user read-all list (``from`` is the lower overlap
+    bound ``effective_end_at > from``, ``to`` the upper bound
+    ``start_at < to``, strict half-open). Ownership is deliberately NOT
+    applied here: each caller selects its own queryset, and the old owner
+    builder keeps its unconditional owner filter.
+    """
     now = timezone.now()
-    queryset = (
-        Reservation.objects.filter(requested_by_user=user)
-        .select_related("asset", "asset__parent", "cancelled_by")
-        .order_by("-start_at", "-created_at")
-    )
     if asset_id := filters.get("asset"):
         queryset = queryset.filter(asset_id=asset_id)
     if status_value := filters.get("status"):
@@ -510,6 +517,15 @@ def _filtered_reservations(user: Any, filters: dict[str, Any]) -> QuerySet[Reser
         elif lifecycle == "released":
             queryset = queryset.filter(status=Reservation.STATUS_RELEASED)
     return queryset
+
+
+def _filtered_reservations(user: Any, filters: dict[str, Any]) -> QuerySet[Reservation]:
+    queryset = (
+        Reservation.objects.filter(requested_by_user=user)
+        .select_related("asset", "asset__parent", "cancelled_by")
+        .order_by("-start_at", "-created_at")
+    )
+    return _apply_reservation_filters(queryset, filters)
 
 
 def _idempotency_header_problem(request: Request, correlation_id: uuid.UUID) -> Response | None:

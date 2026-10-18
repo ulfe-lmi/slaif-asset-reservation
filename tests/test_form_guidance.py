@@ -453,9 +453,16 @@ def test_token_create_guidance_wire_values_and_invalid_post(
     ]:
         assert f'value="{scope}"' in html, f"machine value missing for {scope}"
         assert label in html, f"human label missing for {scope}"
+    # 051-a: the new read-all scope is offered only while the account
+    # currently holds view_all_reservations; this member (booking only)
+    # never sees the privileged choice.
+    assert 'value="reservations:read_all"' not in html
+    assert "Read other people's reservations (read-only)" not in html
     assert "id_scopes-help" in html
     assert "Reserved for future use. It grants nothing today" in html
     assert "advisory availability" in html
+    # The create effect now names the current-capability requirement.
+    assert "while your account currently has the booking" in html
     _assert_guided(
         html,
         "id_lifetime_days-help",
@@ -472,6 +479,19 @@ def test_token_create_guidance_wire_values_and_invalid_post(
     assert response.status_code == 200
     assert "scopes" in html
     assert "id_scopes-help" in html
+    assert ApiToken.objects.count() == 0
+
+    # 051-a: a forged POST for a scope the owner cannot currently issue is
+    # rejected by the bounded form (and by the issuance service, which is
+    # the authoritative check).
+    response = client.post(
+        "/tokens/new/",
+        {"name": "Forged", "scopes": ["reservations:read_all"], "lifetime_days": "7"},
+    )
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "scopes" in response.context["form"].errors
+    assert "scopes" in html
     assert ApiToken.objects.count() == 0
 
     # A valid selection posts the machine values and renders human labels.

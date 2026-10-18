@@ -135,7 +135,10 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": (
         "Pre-alpha API. Asset inventory list/detail remain staff-session-only. "
         "Bearer-token endpoints provide /me, advisory availability, and owner-scoped "
-        "reservation operations with idempotent mutations."
+        "reservation operations with idempotent mutations. The cross-user "
+        "all-reservations list/detail surface is read-only and requires BOTH the "
+        "reservations:read_all token scope AND the owner's current "
+        "view_all_reservations application capability."
     ),
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,

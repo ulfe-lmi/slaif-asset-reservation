@@ -82,8 +82,15 @@ the service checks the policy and availability again when you submit.
 
 The creation form describes each scope in human language and explains token
 lifetime. Machine scope values remain part of the [API contract](api-contract.md).
-The reserved asset-inventory scope grants no asset discovery today: those
-endpoints remain staff-session-only.
+The form lists only the scopes your account can currently issue: the read-only
+`reservations:read_all` scope (lets a token list and inspect other people's
+reservations through the cross-user API) is offered only while your account
+holds the view-all-reservations capability, and `reservations:create` only
+while it holds the booking capability; the other scopes are always offered.
+If a capability is removed later, existing tokens keep their stored scopes,
+but the affected scope stops working on the token's next request while the
+other scopes keep working. The reserved asset-inventory scope grants no asset
+discovery today: those endpoints remain staff-session-only.
 
 Token plaintext appears once after creation. Store it in an approved local
 secret store; it cannot be recovered later. Token list and administration views

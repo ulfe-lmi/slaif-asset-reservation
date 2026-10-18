@@ -162,8 +162,16 @@ def test_pilot_readiness_json_schema_counts_and_redaction() -> None:
 
 @pytest.mark.django_db
 def test_pilot_readiness_reports_expired_idempotency_warning() -> None:
+    from django.contrib.auth.models import Permission
+
     minimal_ready_state()
     owner = User.objects.get(email="pilot-member@example.com")
+    # 051-a: creating a create-scope token now requires the owner's current
+    # booking capability; grant it explicitly for this fixture only (the
+    # readiness command logic itself is unchanged).
+    owner.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
     token = issue_api_token(
         owner=owner,
         name="Pilot readiness token",
