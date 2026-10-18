@@ -21,6 +21,11 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
+from slaif_reservation.accounts.authorization import (
+    MANAGEMENT_PERMISSIONS,
+    has_any_reservation_permission,
+    has_reservation_permission,
+)
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
 from slaif_reservation.management_ui.auth import management_required
@@ -54,28 +59,55 @@ from slaif_reservation.reservations.services import (
     create_policy,
     deactivate_blackout,
     deactivate_policy,
-    overlapping_blocking_reservations,
+    overlapping_blocking_reservations_queryset,
     release_reservation,
     update_policy,
 )
 
 EXPORT_LIMIT = 500
 
+#: Read capabilities whose modules include a manage counterpart (SAR-048:
+#: manage includes that module's read interface, never the reverse).
+POLICY_READ_CAPABILITIES = ("view_booking_policies", "manage_booking_policies")
+BLACKOUT_READ_CAPABILITIES = ("view_maintenance_blackouts", "manage_maintenance_blackouts")
 
-@management_required
+
+@management_required(*MANAGEMENT_PERMISSIONS)
 def dashboard(request: HttpRequest) -> HttpResponse:
-    return render(
-        request,
-        "management_ui/dashboard.html",
-        {
-            "policy_count": ReservationPolicy.objects.count(),
-            "active_blackout_count": MaintenanceBlackout.objects.filter(active=True).count(),
-            "reservation_count": Reservation.objects.count(),
-        },
-    )
+    user = request.user
+    can_view_policies = has_any_reservation_permission(user, POLICY_READ_CAPABILITIES)
+    can_manage_policies = has_reservation_permission(user, "manage_booking_policies")
+    can_view_blackouts = has_any_reservation_permission(user, BLACKOUT_READ_CAPABILITIES)
+    can_manage_blackouts = has_reservation_permission(user, "manage_maintenance_blackouts")
+    can_view_all_reservations = has_reservation_permission(user, "view_all_reservations")
+    can_view_audit = has_reservation_permission(user, "view_audit_history")
+    can_export_audit = has_reservation_permission(user, "export_audit_history")
+    context: dict[str, Any] = {
+        "can_view_policies": can_view_policies,
+        "can_manage_policies": can_manage_policies,
+        "can_view_blackouts": can_view_blackouts,
+        "can_manage_blackouts": can_manage_blackouts,
+        "can_view_all_reservations": can_view_all_reservations,
+        "can_view_audit": can_view_audit,
+        "can_export_audit": can_export_audit,
+        "has_any_read_module": (
+            can_view_policies or can_view_blackouts or can_view_all_reservations or can_view_audit
+        ),
+    }
+    # Only authorized modules are counted or passed: an unauthorized count,
+    # link or action must never reach the page.
+    if can_view_policies:
+        context["policy_count"] = ReservationPolicy.objects.count()
+    if can_view_blackouts:
+        context["active_blackout_count"] = MaintenanceBlackout.objects.filter(active=True).count()
+    if can_view_all_reservations:
+        context["reservation_count"] = Reservation.objects.count()
+    if can_export_audit and not can_view_audit:
+        context["export_filter_form"] = AuditFilterForm(request.GET)
+    return render(request, "management_ui/dashboard.html", context)
 
 
-@management_required
+@management_required(*POLICY_READ_CAPABILITIES)
 def policy_list(request: HttpRequest) -> HttpResponse:
     asset_context = None
     asset_id = request.GET.get("asset")
@@ -91,17 +123,29 @@ def policy_list(request: HttpRequest) -> HttpResponse:
             "page": _page(request, policy_queryset(), per_page=50),
             "assets": Asset.objects.order_by("slug"),
             "asset_context": asset_context,
+            "can_manage_policies": has_reservation_permission(
+                request.user, "manage_booking_policies"
+            ),
         },
     )
 
 
-@management_required
+@management_required(*POLICY_READ_CAPABILITIES)
 def policy_detail(request: HttpRequest, policy_id: uuid.UUID) -> HttpResponse:
     policy = _policy_or_404(policy_id)
-    return render(request, "management_ui/policy_detail.html", {"policy": policy})
+    return render(
+        request,
+        "management_ui/policy_detail.html",
+        {
+            "policy": policy,
+            "can_manage_policies": has_reservation_permission(
+                request.user, "manage_booking_policies"
+            ),
+        },
+    )
 
 
-@management_required
+@management_required("manage_booking_policies")
 def policy_create(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         form = ReservationPolicyForm(request.POST)
@@ -122,7 +166,7 @@ def policy_create(request: HttpRequest) -> HttpResponse:
     return render(request, "management_ui/policy_form.html", {"form": form, "verb": "Create"})
 
 
-@management_required
+@management_required("manage_booking_policies")
 def policy_update(request: HttpRequest, policy_id: uuid.UUID) -> HttpResponse:
     policy = _policy_or_404(policy_id)
     if request.method == "POST":
@@ -149,7 +193,7 @@ def policy_update(request: HttpRequest, policy_id: uuid.UUID) -> HttpResponse:
     )
 
 
-@management_required
+@management_required("manage_booking_policies")
 def policy_deactivate(request: HttpRequest, policy_id: uuid.UUID) -> HttpResponse:
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
@@ -163,42 +207,84 @@ def policy_deactivate(request: HttpRequest, policy_id: uuid.UUID) -> HttpRespons
     return redirect("management-ui:policy-detail", policy_id=policy.id)
 
 
-@management_required
+@management_required(*BLACKOUT_READ_CAPABILITIES)
 def blackout_list(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "management_ui/blackout_list.html",
-        {"page": _page(request, blackout_queryset(), per_page=50)},
+        {
+            "page": _page(request, blackout_queryset(), per_page=50),
+            "can_manage_blackouts": has_reservation_permission(
+                request.user, "manage_maintenance_blackouts"
+            ),
+        },
     )
 
 
-@management_required
+@management_required(*BLACKOUT_READ_CAPABILITIES)
 def blackout_detail(request: HttpRequest, blackout_id: uuid.UUID) -> HttpResponse:
     blackout = _blackout_or_404(blackout_id)
-    affected = overlapping_blocking_reservations(
+    return render(
+        request,
+        "management_ui/blackout_detail.html",
+        _blackout_detail_context(request.user, blackout),
+    )
+
+
+def _blackout_detail_context(user: Any, blackout: MaintenanceBlackout) -> dict[str, Any]:
+    """Affected-booking preview respecting the cross-user read boundary.
+
+    A viewer/manager holding view_all_reservations sees the existing full
+    affected list with links. Everyone else receives only the safe overlap
+    COUNT and confirmation-relevant wording: no row objects, UUIDs, names,
+    emails, purposes or free text leave the server.
+    """
+    queryset = overlapping_blocking_reservations_queryset(
         asset=blackout.asset,
         start_at=blackout.start_at,
         end_at=blackout.end_at,
     )
-    return render(
-        request,
-        "management_ui/blackout_detail.html",
-        {"blackout": blackout, "affected_reservations": affected},
-    )
+    if has_reservation_permission(user, "view_all_reservations"):
+        affected = list(queryset)
+        context: dict[str, Any] = {
+            "blackout": blackout,
+            "affected_reservations": affected,
+            "affected_count": len(affected),
+            "affected_hidden": False,
+            "can_manage_blackouts": has_reservation_permission(
+                user, "manage_maintenance_blackouts"
+            ),
+        }
+    else:
+        context = {
+            "blackout": blackout,
+            "affected_reservations": [],
+            "affected_count": queryset.count(),
+            "affected_hidden": True,
+            "can_manage_blackouts": has_reservation_permission(
+                user, "manage_maintenance_blackouts"
+            ),
+        }
+    return context
 
 
-@management_required
+@management_required("manage_maintenance_blackouts")
 def blackout_create(request: HttpRequest) -> HttpResponse:
+    can_view_all_reservations = has_reservation_permission(request.user, "view_all_reservations")
     affected: list[Reservation] = []
+    affected_count = 0
     if request.method == "POST":
         form = MaintenanceBlackoutForm(request.POST)
         if form.is_valid():
-            affected = overlapping_blocking_reservations(
+            queryset = overlapping_blocking_reservations_queryset(
                 asset=form.cleaned_data["asset"],
                 start_at=form.cleaned_data["start_instant"],
                 end_at=form.cleaned_data["end_instant"],
             )
-            if affected and not form.cleaned_data["confirm_overlaps"]:
+            affected_count = queryset.count()
+            if can_view_all_reservations:
+                affected = list(queryset)
+            if affected_count and not form.cleaned_data["confirm_overlaps"]:
                 form.add_error(
                     "confirm_overlaps",
                     _("Confirm creation because reservations overlap this blackout."),
@@ -228,11 +314,16 @@ def blackout_create(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "management_ui/blackout_form.html",
-        {"form": form, "affected_reservations": affected},
+        {
+            "form": form,
+            "affected_reservations": affected,
+            "affected_count": affected_count,
+            "affected_hidden": not can_view_all_reservations,
+        },
     )
 
 
-@management_required
+@management_required("manage_maintenance_blackouts")
 def blackout_deactivate(request: HttpRequest, blackout_id: uuid.UUID) -> HttpResponse:
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
@@ -246,20 +337,25 @@ def blackout_deactivate(request: HttpRequest, blackout_id: uuid.UUID) -> HttpRes
     return redirect("management-ui:blackout-detail", blackout_id=blackout.id)
 
 
-@management_required
+@management_required("view_all_reservations")
 def reservation_list(request: HttpRequest) -> HttpResponse:
     form = ReservationFilterForm(request.GET)
     queryset = (
         reservation_queryset(form.cleaned_data) if form.is_valid() else Reservation.objects.none()
     )
+    page = _page(request, queryset, per_page=50)
     return render(
         request,
         "management_ui/reservation_list.html",
-        {"filter_form": form, "page": _page(request, queryset, per_page=50)},
+        {
+            "filter_form": form,
+            "page": page,
+            "pagination": _pagination(request, page),
+        },
     )
 
 
-@management_required
+@management_required("view_all_reservations")
 def reservation_detail(request: HttpRequest, reservation_id: uuid.UUID) -> HttpResponse:
     reservation = _reservation_or_404(reservation_id)
     return render(
@@ -269,11 +365,25 @@ def reservation_detail(request: HttpRequest, reservation_id: uuid.UUID) -> HttpR
             "reservation": reservation,
             "lifecycle": derive_lifecycle(reservation, at=timezone.now()),
             "cancel_form": ManagementCancellationForm(),
+            "can_cancel_others": has_reservation_permission(
+                request.user, "cancel_others_reservations"
+            ),
+            "can_release_others": has_reservation_permission(
+                request.user, "release_others_reservations"
+            ),
         },
     )
 
 
-@management_required
+def _reservation_safe_redirect(request: HttpRequest, reservation_id: uuid.UUID) -> HttpResponse:
+    """Post-mutation redirect that never hands a mutation-only principal a
+    private detail page they could not open on a direct GET."""
+    if has_reservation_permission(request.user, "view_all_reservations"):
+        return redirect("management-ui:reservation-detail", reservation_id=reservation_id)
+    return redirect("management-ui:dashboard")
+
+
+@management_required("cancel_others_reservations")
 def reservation_cancel(request: HttpRequest, reservation_id: uuid.UUID) -> HttpResponse:
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
@@ -293,10 +403,10 @@ def reservation_cancel(request: HttpRequest, reservation_id: uuid.UUID) -> HttpR
             messages.success(request, _("Reservation cancelled."))
     else:
         messages.error(request, _("Check the cancellation reason."))
-    return redirect("management-ui:reservation-detail", reservation_id=reservation.id)
+    return _reservation_safe_redirect(request, reservation.id)
 
 
-@management_required
+@management_required("release_others_reservations")
 def reservation_release(request: HttpRequest, reservation_id: uuid.UUID) -> HttpResponse:
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
@@ -311,27 +421,31 @@ def reservation_release(request: HttpRequest, reservation_id: uuid.UUID) -> Http
         messages.error(request, _management_domain_message(exc))
     else:
         messages.success(request, _("Reservation released."))
-    return redirect("management-ui:reservation-detail", reservation_id=reservation.id)
+    return _reservation_safe_redirect(request, reservation.id)
 
 
-@management_required
+@management_required("view_audit_history")
 def audit_list(request: HttpRequest) -> HttpResponse:
     form = AuditFilterForm(request.GET)
     queryset = audit_queryset(form.cleaned_data) if form.is_valid() else AuditEvent.objects.none()
     return render(
         request,
         "management_ui/audit_list.html",
-        {"filter_form": form, "page": _page(request, queryset, per_page=50)},
+        {
+            "filter_form": form,
+            "page": _page(request, queryset, per_page=50),
+            "can_export_audit": has_reservation_permission(request.user, "export_audit_history"),
+        },
     )
 
 
-@management_required
+@management_required("view_audit_history")
 def audit_detail(request: HttpRequest, event_id: uuid.UUID) -> HttpResponse:
     event = _audit_or_404(event_id)
     return render(request, "management_ui/audit_detail.html", {"event": event})
 
 
-@management_required
+@management_required("export_audit_history")
 def audit_export(request: HttpRequest) -> StreamingHttpResponse:
     form = AuditFilterForm(request.GET)
     queryset = audit_queryset(form.cleaned_data) if form.is_valid() else AuditEvent.objects.none()
@@ -376,6 +490,26 @@ def _audit_or_404(event_id: uuid.UUID) -> AuditEvent:
 
 def _page(request: HttpRequest, queryset: Any, *, per_page: int) -> Any:
     return Paginator(queryset, per_page).get_page(request.GET.get("page"))
+
+
+def _pagination(request: HttpRequest, page_obj: Any) -> dict[str, Any]:
+    """Previous/next links that preserve every submitted filter parameter."""
+    params = request.GET.copy()
+
+    def _href(number: int | None) -> str:
+        if number is None or number < 1:
+            return ""
+        params["page"] = str(number)
+        return f"?{params.urlencode()}"
+
+    return {
+        "has_previous": page_obj.has_previous(),
+        "has_next": page_obj.has_next(),
+        "prev_url": _href(page_obj.previous_page_number()) if page_obj.has_previous() else "",
+        "next_url": _href(page_obj.next_page_number()) if page_obj.has_next() else "",
+        "number": page_obj.number,
+        "num_pages": page_obj.paginator.num_pages,
+    }
 
 
 def _audit_csv_rows(events: list[AuditEvent]) -> Any:

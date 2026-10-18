@@ -307,6 +307,12 @@ def test_availability_api_interval_semantics_and_privacy(client) -> None:
 def test_availability_api_includes_blackouts_without_reason_or_identity(client) -> None:
     owner = user()
     staff = user("availability-staff@example.com", is_staff=True)
+    staff.user_permissions.add(
+        Permission.objects.get(
+            codename="manage_maintenance_blackouts",
+            content_type__app_label="reservations",
+        )
+    )
     other = user("availability-blackout-other@example.com", display_name="Other Person")
     target = asset()
     policy(target, min_duration_minutes=30)

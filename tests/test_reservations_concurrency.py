@@ -203,6 +203,12 @@ def test_policy_update_waits_for_reservation_operation_policy_lock(
         password="not-a-secret",
         is_staff=True,
     )
+    admin.user_permissions.add(
+        Permission.objects.get(
+            codename="manage_booking_policies",
+            content_type__app_label="reservations",
+        )
+    )
     now = timezone.now()
     start = now + timedelta(minutes=10)
     policy_locked = threading.Event()
@@ -276,11 +282,20 @@ def test_policy_update_waits_for_reservation_operation_policy_lock(
 
 
 def make_staff(email: str) -> User:
-    return User.objects.create_user(
+    # 050-a: staff alone no longer authorizes management mutations; these
+    # blackout-creating management fixtures grant the explicit capability.
+    created = User.objects.create_user(
         email=email,
         password="not-a-secret",
         is_staff=True,
     )
+    created.user_permissions.add(
+        Permission.objects.get(
+            codename="manage_maintenance_blackouts",
+            content_type__app_label="reservations",
+        )
+    )
+    return created
 
 
 def _overlapping_reservations(asset: Asset, start: object, end: object) -> int:

@@ -87,12 +87,28 @@ def pilot_other() -> User:
 
 @pytest.fixture
 def pilot_staff() -> User:
-    return User.objects.create_user(
+    # 050-a: explicit capabilities for the pilot management journey
+    # (blackout create/deactivate + audit browse/export). The blackout
+    # confirmation flow also renders the full affected-reservation list,
+    # which the journey asserts, so read-all is part of this actor's grants.
+    created = User.objects.create_user(
         email="pilot-staff@example.com",
         password="not-a-secret",
         display_name="Pilot Staff",
         is_staff=True,
     )
+    created.user_permissions.add(
+        *Permission.objects.filter(
+            codename__in=[
+                "manage_maintenance_blackouts",
+                "view_all_reservations",
+                "view_audit_history",
+                "export_audit_history",
+            ],
+            content_type__app_label="reservations",
+        )
+    )
+    return created
 
 
 @pytest.fixture

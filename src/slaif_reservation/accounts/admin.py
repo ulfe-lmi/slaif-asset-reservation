@@ -37,12 +37,13 @@ _USER_FIELD_HELP: dict[str, Any] = {
     ),
     "is_active": _("Inactive accounts cannot sign in anywhere, member or staff."),
     "is_staff": _(
-        "Grants access to the management area and this administration. "
-        "Entry follows this flag with an active, non-service-account "
-        "session; it is not granted by individual permission selections. "
-        "The matching model permissions are additionally required for "
-        "per-model administration operations in this administration "
-        "only; management itself needs none of them."
+        "Grants admission to this administration (/admin/) only, with an "
+        "active, non-service-account session and the matching model "
+        "permissions for per-model administration operations. Staff status "
+        "alone confers NO management-area access: /manage/ pages and "
+        "management services require the documented reservations-namespace "
+        "application permissions (granted through groups or individual "
+        "permissions, e.g. via grant_management_access)."
     ),
     "is_superuser": _(
         "Full administrative rights, including managing users. Superuser "
@@ -54,11 +55,15 @@ _USER_FIELD_HELP: dict[str, Any] = {
         "members additively, together with their individual permissions. "
         "This includes the documented reservations-namespace application "
         "permissions: a group carrying reservations.book_assets lets its "
-        "members create new reservations, and membership in a group listed "
-        "on a restricted asset's allowed groups is what lets a member book "
-        "that asset. Groups are not project or membership authorization "
-        "and grant no machine or login access. They do not admit a session "
-        "by themselves; staff entry requires the active staff flag."
+        "members create new reservations, membership in a group listed on a "
+        "restricted asset's allowed groups is what lets a member book that "
+        "asset, and the nine management capabilities (for example "
+        "reservations.view_booking_policies or "
+        "reservations.view_all_reservations) admit the member to the "
+        "matching /manage/ pages and services. Groups are not project or "
+        "membership authorization and grant no machine or login access. "
+        "They do not admit a session by themselves; administration entry "
+        "requires the active staff flag."
     ),
     "user_permissions": _(
         "Individual permissions, combined additively with all group "
@@ -66,11 +71,14 @@ _USER_FIELD_HELP: dict[str, Any] = {
         "application permissions: selecting reservations.book_assets lets "
         "this account create new reservations (restricted assets "
         "additionally require membership in the asset's allowed groups). "
-        "The remaining management and cross-user capabilities are "
-        "documented for their planned purposes and take effect when their "
-        "enforcement is active. They do not grant management access, "
-        "which follows the active staff flag, and they do not admit a "
-        "session by themselves."
+        "The nine management capabilities are enforced now: the view or "
+        "manage capability for booking policies, maintenance blackouts, "
+        "all reservations, audit history and audit export admits this "
+        "account to the matching /manage/ pages and services, and "
+        "cancel/release-others allow cross-user lifecycle operations on "
+        "their own. They do not grant administration access, which "
+        "follows the active staff flag, and they do not admit a session "
+        "by themselves."
     ),
     "last_login": _(
         "When the user last signed in successfully (stored in UTC). Updated "
@@ -362,11 +370,15 @@ class GroupAdmin(DjangoGroupAdmin):
                 "additively to each of its members. Includes the "
                 "documented reservations-namespace application "
                 "permissions: a group with reservations.book_assets lets "
-                "its members create new reservations, and membership in "
-                "this group can also satisfy a restricted asset's "
-                "allowed-group requirement. They do not grant management "
-                "access (which follows the active staff flag) and are "
-                "not project or membership authorization."
+                "its members create new reservations, membership in this "
+                "group can also satisfy a restricted asset's "
+                "allowed-group requirement, and the nine management "
+                "capabilities (view/manage policies, view/manage blackouts, "
+                "view all reservations, cancel/release others, view/export "
+                "audit) admit members to the matching /manage/ pages and "
+                "services. They do not grant administration access "
+                "(which follows the active staff flag) and are not "
+                "project or membership authorization."
             )
         form_field = super().formfield_for_manytomany(db_field, request=request, **kwargs)
         if db_field.name == "permissions" and form_field is not None:

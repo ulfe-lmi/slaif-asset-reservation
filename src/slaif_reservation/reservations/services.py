@@ -7,9 +7,10 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.utils import timezone
 
+from slaif_reservation.accounts.authorization import has_reservation_permission
 from slaif_reservation.assets.authorization import user_can_book_asset
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
@@ -104,10 +105,22 @@ def _lock_principal(principal: Any) -> Any:
     return locked
 
 
-def _lock_staff_actor(actor_user: Any) -> Any:
+def _lock_capable_actor(actor_user: Any, codename: str) -> Any:
+    """Row-locked actor rechecked against the explicit capability.
+
+    The freshly row-locked principal is evaluated for the named
+    reservations-namespace permission, so revocation between request start
+    and this guard is observed. Inactivity is denied first by
+    ``_lock_principal``; staff status alone confers nothing and service
+    accounts never hold the capability even when a permission record is
+    attached. The existing denial code is preserved.
+    """
     actor = _lock_principal(actor_user)
-    if not actor.is_staff or getattr(actor, "is_service_account", False):
-        _raise(POLICY_MUTATION_NOT_AUTHORIZED, "Policy mutation requires an active staff user.")
+    if not has_reservation_permission(actor, codename):
+        _raise(
+            POLICY_MUTATION_NOT_AUTHORIZED,
+            "Mutation requires an active human holding the required capability.",
+        )
     return actor
 
 
@@ -317,8 +330,22 @@ def create_reservation(
         return ReservationMutationResult(reservation=reservation, correlation_id=correlation)
 
 
-def _authorized_for_existing_reservation(requester: Any, reservation: Reservation) -> bool:
-    return bool(requester.is_staff or requester.pk == reservation.requested_by_user_id)
+def _authorized_for_existing_reservation(
+    requester: Any, reservation: Reservation, *, capability: str
+) -> bool:
+    """Active human owner, or the explicit cross-user lifecycle capability.
+
+    The owner path keeps owner lifecycle completely independent of booking
+    capability or asset group membership (a service account can never use
+    it); the capability path evaluates the freshly row-locked requester, so
+    group/permission removal takes effect immediately. ``is_staff`` no
+    longer authorizes anything here.
+    """
+    if requester.pk == reservation.requested_by_user_id and not getattr(
+        requester, "is_service_account", False
+    ):
+        return True
+    return has_reservation_permission(requester, capability)
 
 
 def cancel_reservation(
@@ -341,7 +368,9 @@ def cancel_reservation(
             .select_related("requested_by_user")
             .get(pk=reservation.pk)
         )
-        if not _authorized_for_existing_reservation(requester, locked):
+        if not _authorized_for_existing_reservation(
+            requester, locked, capability="cancel_others_reservations"
+        ):
             _raise(RESERVATION_NOT_OWNED, "Requester cannot cancel this reservation.")
         locked_asset = _lock_asset_by_id(locked.asset_id)
         start_utc = _instant(locked.start_at, field_name="start_at")
@@ -390,7 +419,9 @@ def release_reservation(
             .select_related("requested_by_user")
             .get(pk=reservation.pk)
         )
-        if not _authorized_for_existing_reservation(requester, locked):
+        if not _authorized_for_existing_reservation(
+            requester, locked, capability="release_others_reservations"
+        ):
             _raise(RESERVATION_NOT_OWNED, "Requester cannot release this reservation.")
         _lock_asset_by_id(locked.asset_id)
         start_utc = _instant(locked.start_at, field_name="start_at")
@@ -449,7 +480,7 @@ def create_policy(
 ) -> PolicyMutationResult:
     correlation = _correlation(correlation_id)
     with transaction.atomic():
-        actor = _lock_staff_actor(actor_user)
+        actor = _lock_capable_actor(actor_user, "manage_booking_policies")
         policy = ReservationPolicy(**values)
         policy.full_clean()
         policy.save()
@@ -475,7 +506,7 @@ def update_policy(
 ) -> PolicyMutationResult:
     correlation = _correlation(correlation_id)
     with transaction.atomic():
-        actor = _lock_staff_actor(actor_user)
+        actor = _lock_capable_actor(actor_user, "manage_booking_policies")
         _validate_policy_update_fields(values)
         locked = ReservationPolicy.objects.select_for_update().get(pk=policy.pk)
         for field, value in values.items():
@@ -503,7 +534,7 @@ def deactivate_policy(
 ) -> PolicyMutationResult:
     correlation = _correlation(correlation_id)
     with transaction.atomic():
-        actor = _lock_staff_actor(actor_user)
+        actor = _lock_capable_actor(actor_user, "manage_booking_policies")
         locked = ReservationPolicy.objects.select_for_update().get(pk=policy.pk)
         locked.active = False
         locked.full_clean()
@@ -520,15 +551,15 @@ def deactivate_policy(
         return PolicyMutationResult(policy=locked, correlation_id=correlation)
 
 
-def overlapping_blocking_reservations(
+def overlapping_blocking_reservations_queryset(
     *,
     asset: Asset,
     start_at: datetime,
     end_at: datetime,
-) -> list[Reservation]:
+) -> QuerySet[Reservation]:
     start_utc = _instant(start_at, field_name="start_at")
     end_utc = _instant(end_at, field_name="end_at")
-    return list(
+    return (
         Reservation.objects.filter(
             asset=asset,
             status__in=[Reservation.STATUS_CONFIRMED, Reservation.STATUS_RELEASED],
@@ -537,6 +568,17 @@ def overlapping_blocking_reservations(
         )
         .select_related("requested_by_user", "asset")
         .order_by("start_at", "id")
+    )
+
+
+def overlapping_blocking_reservations(
+    *,
+    asset: Asset,
+    start_at: datetime,
+    end_at: datetime,
+) -> list[Reservation]:
+    return list(
+        overlapping_blocking_reservations_queryset(asset=asset, start_at=start_at, end_at=end_at)
     )
 
 
@@ -558,7 +600,7 @@ def create_blackout(
         _raise(INVALID_TIME_RANGE, "Blackout end must be after start.")
 
     with transaction.atomic():
-        actor = _lock_staff_actor(actor_user)
+        actor = _lock_capable_actor(actor_user, "manage_maintenance_blackouts")
         locked_asset = _lock_asset(asset)
         overlaps = overlapping_blocking_reservations(
             asset=locked_asset,
@@ -604,7 +646,7 @@ def deactivate_blackout(
 ) -> BlackoutMutationResult:
     correlation = _correlation(correlation_id)
     with transaction.atomic():
-        actor = _lock_staff_actor(actor_user)
+        actor = _lock_capable_actor(actor_user, "manage_maintenance_blackouts")
         locked = MaintenanceBlackout.objects.select_for_update().get(pk=blackout.pk)
         locked.asset = Asset.objects.get(pk=locked.asset_id)
         if locked.active:

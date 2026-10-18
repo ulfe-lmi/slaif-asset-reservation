@@ -9,6 +9,7 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
+from slaif_reservation.accounts.authorization import MANAGEMENT_PERMISSIONS
 from slaif_reservation.accounts.models import User
 from slaif_reservation.accounts.services import issue_api_token
 from slaif_reservation.assets.models import Asset
@@ -55,12 +56,22 @@ def other_user() -> User:
 
 @pytest.fixture
 def staff_user() -> User:
-    return User.objects.create_user(
+    # 050-a: staff alone no longer admits management; this dedicated
+    # full-manager fixture carries all nine explicit application
+    # capabilities (real Permission rows).
+    user = User.objects.create_user(
         email="staff-management@example.com",
         password="not-a-secret",
         display_name="Staff User",
         is_staff=True,
     )
+    user.user_permissions.add(
+        *Permission.objects.filter(
+            codename__in=list(MANAGEMENT_PERMISSIONS),
+            content_type__app_label="reservations",
+        )
+    )
+    return user
 
 
 @pytest.fixture

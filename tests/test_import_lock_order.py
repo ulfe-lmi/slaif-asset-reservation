@@ -230,6 +230,17 @@ def test_staff_lifecycle_and_import_do_not_invert_reservation_asset_locks(
     owner = make_user("import-owner@example.invalid")
     other = make_user("existing-owner@example.invalid")
     staff = make_staff("lifecycle-staff@example.invalid")
+    # 050-a: cross-user lifecycle now requires the explicit capability.
+    staff.user_permissions.add(
+        Permission.objects.get(
+            codename=(
+                "cancel_others_reservations"
+                if action == "cancel"
+                else "release_others_reservations"
+            ),
+            content_type__app_label="reservations",
+        )
+    )
     now = timezone.now()
     start = now + timedelta(minutes=10) if action == "cancel" else now - timedelta(minutes=10)
     end = now + timedelta(hours=1)
@@ -327,6 +338,13 @@ def test_staff_joined_owner_does_not_invert_batch_principal_order(tmp_path, monk
         principal.user_permissions.add(
             Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
         )
+    # 050-a: staff cancels the owner's reservation, so the explicit
+    # cross-user cancellation capability is required.
+    staff.user_permissions.add(
+        Permission.objects.get(
+            codename="cancel_others_reservations", content_type__app_label="reservations"
+        )
+    )
     assets = [make_asset("joined-first"), make_asset("joined-second")]
     other_asset = make_asset("joined-existing")
     now = timezone.now()
@@ -439,6 +457,12 @@ def test_policy_target_fk_does_not_deadlock_booking(
     )
     owner = make_user("policy-owner@example.invalid")
     staff = make_staff("policy-staff@example.invalid")
+    # 050-a: policy updates require the explicit policy-management capability.
+    staff.user_permissions.add(
+        Permission.objects.get(
+            codename="manage_booking_policies", content_type__app_label="reservations"
+        )
+    )
     now = timezone.now()
     start = now + timedelta(minutes=10)
     end = start + timedelta(hours=1)

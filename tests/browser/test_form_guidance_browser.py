@@ -12,6 +12,7 @@ import pytest
 from django.contrib.auth.models import Permission
 from playwright.sync_api import Page
 
+from slaif_reservation.accounts.authorization import MANAGEMENT_PERMISSIONS
 from slaif_reservation.accounts.models import User
 from slaif_reservation.assets.models import Asset, AssetTag
 from slaif_reservation.reservations.models import (
@@ -40,12 +41,21 @@ def member_user() -> User:
 
 @pytest.fixture
 def staff_user() -> User:
-    return User.objects.create_user(
+    # 050-a: dedicated full-manager fixture (all nine explicit application
+    # capabilities) for the management browser tour.
+    created = User.objects.create_user(
         email="guidance-staff@example.com",
         password="not-a-secret",
         display_name="Guidance Staff",
         is_staff=True,
     )
+    created.user_permissions.add(
+        *Permission.objects.filter(
+            codename__in=list(MANAGEMENT_PERMISSIONS),
+            content_type__app_label="reservations",
+        )
+    )
+    return created
 
 
 @pytest.fixture
@@ -514,7 +524,7 @@ def test_browser_admin_user_forms_guidance(
         in page.locator("#id_password1_helptext").inner_text()
     )
     assert (
-        "not granted by individual permission selections"
+        "Staff status alone confers NO management-area access"
         in page.locator("#id_is_staff_helptext").inner_text()
     )
     _assert_no_horizontal_overflow(page)
@@ -554,11 +564,11 @@ def test_browser_admin_user_forms_guidance(
         in page.locator("#id_is_superuser_helptext").inner_text()
     )
     assert (
-        "per-model administration operations in this administration only"
+        "the matching model permissions for per-model administration operations"
         in page.locator("#id_is_staff_helptext").inner_text()
     )
     assert (
-        "do not grant management access, which follows the active staff flag"
+        "do not grant administration access, which follows the active staff flag"
         in page.locator("#id_user_permissions_helptext").inner_text()
     )
     assert (
@@ -640,7 +650,7 @@ def test_browser_admin_group_and_asset_forms_guidance(
         in page.locator("#id_permissions_helptext").inner_text()
     )
     assert (
-        "do not grant management access (which follows the active staff flag)"
+        "do not grant administration access (which follows the active staff flag)"
         in page.locator("#id_permissions_helptext").inner_text()
     )
     assert "not project or membership authorization" in page.content()

@@ -1,9 +1,9 @@
 {% extends "web/base.html" %}
 {% load i18n form_guidance %}
-{% block title %}{% trans "Managed reservation" %} — SLAIF Asset Reservation{% endblock %}
+{% block title %}{% trans "Reservation details" %} — SLAIF Asset Reservation{% endblock %}
 {% block content %}
   {% include "management_ui/_nav.html" %}
-  <h1>{% trans "Managed reservation" %}</h1>
+  <h1>{% trans "Reservation details" %}</h1>
   <dl>
     <dt>{% trans "Reservation" %}</dt><dd>{{ reservation.id }}</dd>
     <dt>{% trans "Owner" %}</dt><dd>{{ reservation.requested_by_user.display_name }} ({{ reservation.requested_by_user.email }})</dd>
@@ -15,19 +15,27 @@
     <dt>{% trans "Effective end" %}</dt><dd>{{ reservation.effective_end_at }}</dd>
     <dt>{% trans "Purpose" %}</dt><dd>{{ reservation.purpose }}</dd>
   </dl>
-  <p class="status-warning">{% trans "Staff actions here affect other users' reservations and are recorded in the audit log." %}</p>
-  <form method="post" action="{% url 'management-ui:reservation-cancel' reservation.id %}">
-    {% csrf_token %}
-    <div class="field">
-      {{ cancel_form.reason.label_tag }}
-    {{ cancel_form.reason }}
-    <p class="help" id="id_reason-help">{% trans "Optional. Recorded with the cancellation and visible to staff. Cancelling frees the reserved time and cannot be undone." %}</p>
-    </div>
-    <button class="button-danger" type="submit">{% trans "Cancel reservation" %}</button>
-  </form>
-  <form method="post" action="{% url 'management-ui:reservation-release' reservation.id %}">
-    {% csrf_token %}
-    <button class="button-danger" type="submit">{% trans "Release reservation" %}</button>
-    <p class="help">{% trans "Releasing ends the reservation now; the original end stays in the history." %}</p>
-  </form>
+  {% if can_cancel_others or can_release_others %}
+    <p class="status-warning">{% trans "Management actions here affect other users' reservations and are recorded in the audit log." %}</p>
+    {% if can_cancel_others %}
+      <form method="post" action="{% url 'management-ui:reservation-cancel' reservation.id %}">
+        {% csrf_token %}
+        <div class="field">
+          {{ cancel_form.reason.label_tag }}
+        {{ cancel_form.reason }}
+        <p class="help" id="id_reason-help">{% trans "Optional. Recorded with the cancellation and visible to staff. Cancelling frees the reserved time and cannot be undone." %}</p>
+        </div>
+        <button class="button-danger" type="submit">{% trans "Cancel reservation" %}</button>
+      </form>
+    {% endif %}
+    {% if can_release_others %}
+      <form method="post" action="{% url 'management-ui:reservation-release' reservation.id %}">
+        {% csrf_token %}
+        <button class="button-danger" type="submit">{% trans "Release reservation" %}</button>
+        <p class="help">{% trans "Releasing ends the reservation now; the original end stays in the history." %}</p>
+      </form>
+    {% endif %}
+  {% else %}
+    <p class="help">{% trans "You can view this reservation but you do not have the management capability to cancel or release it." %}</p>
+  {% endif %}
 {% endblock %}

@@ -14,12 +14,14 @@
     <dt>{% trans "Limits" %}</dt><dd>{{ policy.max_upcoming_per_principal }} {% trans "upcoming" %} / {{ policy.max_concurrent_per_principal }} {% trans "overlapping per principal" %}</dd>
     <dt>{% trans "Purpose required" %}</dt><dd>{{ policy.purpose_required }}</dd>
   </dl>
-  <p><a href="{% url 'management-ui:policy-update' policy.id %}">{% trans "Edit policy" %}</a></p>
-  {% if policy.active %}
-    <p class="status-warning">{% trans "Deactivating stops this policy applying to new bookings immediately. Existing bookings are not changed; if it was the only matching policy, new bookings fail closed." %}</p>
-    <form method="post" action="{% url 'management-ui:policy-deactivate' policy.id %}">
-      {% csrf_token %}
-      <button class="button-danger" type="submit">{% trans "Deactivate policy" %}</button>
-    </form>
+  {% if can_manage_policies %}
+    <p><a href="{% url 'management-ui:policy-update' policy.id %}">{% trans "Edit policy" %}</a></p>
+    {% if policy.active %}
+      <p class="status-warning">{% trans "Deactivating stops this policy applying to new bookings immediately. Existing bookings are not changed; if it was the only matching policy, new bookings fail closed." %}</p>
+      <form method="post" action="{% url 'management-ui:policy-deactivate' policy.id %}">
+        {% csrf_token %}
+        <button class="button-danger" type="submit">{% trans "Deactivate policy" %}</button>
+      </form>
+    {% endif %}
   {% endif %}
 {% endblock %}

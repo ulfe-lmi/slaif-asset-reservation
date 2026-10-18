@@ -16,10 +16,12 @@
     {% endfor %}
     <button type="submit">{% trans "Filter" %}</button>
   </form>
-  <p class="export-line">
-    <a href="{% url 'management-ui:audit-export' %}?{{ request.GET.urlencode }}">{% trans "Export CSV" %}</a>
-    <span class="help">{% trans "Downloads the current filtered view as CSV. Without filters this is the last 7 days, bounded row count." %}</span>
-  </p>
+  {% if can_export_audit %}
+    <p class="export-line">
+      <a href="{% url 'management-ui:audit-export' %}?{{ request.GET.urlencode }}">{% trans "Export CSV" %}</a>
+      <span class="help">{% trans "Downloads the current filtered view as CSV. Without filters this is the last 7 days, bounded row count." %}</span>
+    </p>
+  {% endif %}
   <div class="table-scroll" role="region" aria-label="Scrollable table" tabindex="0"><table>
     <thead><tr><th>{% trans "Occurred" %}</th><th>{% trans "Action" %}</th><th>{% trans "Target" %}</th><th>{% trans "Actor" %}</th></tr></thead>
     <tbody>

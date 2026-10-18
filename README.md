@@ -30,8 +30,9 @@ The bundled demo is entirely fictitious. A reservation accepted by the system is
   API token);
 - **auditable** — every lifecycle transition is recorded atomically with its
   domain mutation;
-- **cancellable or releasable** — the owner or permitted staff can cancel
-  or release it through explicit, audited transitions.
+- **cancellable or releasable** — the owner, or a manager with the
+  corresponding cross-user capability, can cancel or release it through
+  explicit, audited transitions.
 
 ## Get started
 
@@ -48,7 +49,7 @@ The bundled demo is entirely fictitious. A reservation accepted by the system is
 flowchart TD
     human["Humans — browser session"]
     agent["Software agents — scoped bearer tokens"]
-    staff["Staff — /manage/ session"]
+    staff["Managers — explicit-capability /manage/ session"]
     app["SLAIF Asset Reservation (Django monolith)\npolicy, reservations, blackouts, audit"]
     db["PostgreSQL 17\nper-asset exclusive time ranges (btree_gist)"]
     human --> app
@@ -60,16 +61,18 @@ flowchart TD
 One application owns the scheduling records and the authoritative domain
 operations. Humans reserve through the server-rendered web UI; agents use a
 versioned REST API with scoped, expiring tokens and idempotent mutations;
-staff configure policies, maintenance blackouts and cross-user lifecycle
-through a separate management area. Reservations are **entitlements**: the
+managers with the matching reservations-namespace capabilities configure
+policies, maintenance blackouts and cross-user lifecycle through a separate
+management area. Reservations are **entitlements**: the
 system deliberately does not run jobs, allocate hardware, or enforce usage —
 that is the boundary of a future, separate execution gateway.
 
 A fresh installation initializes the global `default` policy: reservations may
 start within the next **7 days** and last **1 minute to 48 hours**, with no extra
 lead time, advance cancellation cutoff, operating-hour window or required purpose.
-Staff can inspect and adjust policies in management. Existing policy
-configurations are preserved on upgrades.
+Managers with the booking-policy capability can inspect and adjust
+policies in management. Existing policy configurations are preserved on
+upgrades.
 
 ## What you can do
 
@@ -77,7 +80,7 @@ configurations are preserved on upgrades.
 | --- | --- |
 | **Humans (browser)** | Browse active assets, see privacy-safe advisory availability, create / cancel / release own reservations, manage own API tokens (one-time display), set display name and timezone. Accounts are administrator-created; there is no self-registration. |
 | **Agents (API)** | `/api/v1/me/`, per-asset advisory availability, and owner-scoped reservation list / detail / create / cancel / release with bounded `Idempotency-Key` mutations and machine-readable problem details. Contract: [docs/api-contract.md](docs/api-contract.md). Asset list/detail endpoints remain staff-session-only — a token alone grants no asset discovery. |
-| **Staff (management)** | `/manage/`: reservation policies, coarse maintenance blackouts, cross-user reservation inspection and lifecycle, audit review and bounded export. Operational: `/health/live`, `/health/ready`, `operational_check`, `pilot_readiness_check`, backup/restore tooling. |
+| **Managers (explicit capabilities)** | `/manage/` — admission requires the documented reservations-namespace management capabilities (the staff flag alone no longer admits it; see [docs/authorization.md](docs/authorization.md#management-route-inventory-enforced)): reservation policies, coarse maintenance blackouts, cross-user reservation inspection and lifecycle, audit review and bounded export. Operational: `/health/live`, `/health/ready`, `operational_check`, `pilot_readiness_check`, backup/restore tooling. |
 
 ## Supported runtime
 

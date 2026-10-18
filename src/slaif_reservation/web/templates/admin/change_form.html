@@ -1,5 +1,5 @@
 {% extends "admin/change_form.html" %}
-{% load i18n admin_urls %}
+{% load i18n admin_urls application_access %}
 
 {# Product breadcrumb identity; all other structure is inherited. #}
 {% if not is_popup %}
@@ -19,24 +19,44 @@
 {{ block.super }}
 {% if not add and not is_popup %}
   {% if opts.model_name == "reservationpolicy" %}
+    {% has_any_permission request.user "view_booking_policies" "manage_booking_policies" as can_open_policies %}
     <div class="readonly-guidance">
       <p>{% translate "This policy is read-only here. Policies are created, updated and deactivated in the management area, which keeps the audit trail consistent." %}</p>
-      <p><a href="{% url 'management-ui:policy-list' %}">{% translate "Open policies in the management area" %}</a></p>
+      {% if can_open_policies %}
+        <p><a href="{% url 'management-ui:policy-list' %}">{% translate "Open policies in the management area" %}</a></p>
+      {% else %}
+        <p>{% translate "Opening them requires the view or manage booking policies capability; staff status alone is not enough." %}</p>
+      {% endif %}
     </div>
   {% elif opts.model_name == "reservation" %}
+    {% has_permission request.user "view_all_reservations" as can_open_reservations %}
     <div class="readonly-guidance">
       <p>{% translate "This reservation is read-only here. Cancellation and release happen in the management area, or by the owner in the member area." %}</p>
-      <p><a href="{% url 'management-ui:reservation-list' %}">{% translate "Open reservations in the management area" %}</a></p>
+      {% if can_open_reservations %}
+        <p><a href="{% url 'management-ui:reservation-list' %}">{% translate "Open reservations in the management area" %}</a></p>
+      {% else %}
+        <p>{% translate "Opening them requires the reservations.view_all_reservations capability; staff status alone is not enough." %}</p>
+      {% endif %}
     </div>
   {% elif opts.model_name == "maintenanceblackout" %}
+    {% has_any_permission request.user "view_maintenance_blackouts" "manage_maintenance_blackouts" as can_open_blackouts %}
     <div class="readonly-guidance">
       <p>{% translate "This blackout is read-only here. Blackouts are created and deactivated in the management area, which keeps the audit trail consistent." %}</p>
-      <p><a href="{% url 'management-ui:blackout-list' %}">{% translate "Open blackouts in the management area" %}</a></p>
+      {% if can_open_blackouts %}
+        <p><a href="{% url 'management-ui:blackout-list' %}">{% translate "Open blackouts in the management area" %}</a></p>
+      {% else %}
+        <p>{% translate "Opening them requires the view or manage maintenance blackouts capability; staff status alone is not enough." %}</p>
+      {% endif %}
     </div>
   {% elif opts.model_name == "auditevent" %}
+    {% has_permission request.user "view_audit_history" as can_open_audit %}
     <div class="readonly-guidance">
       <p>{% translate "Audit records are append-only: they can never be edited or deleted here or anywhere else in the product." %}</p>
-      <p><a href="{% url 'management-ui:audit-list' %}">{% translate "Browse the audit log in the management area" %}</a></p>
+      {% if can_open_audit %}
+        <p><a href="{% url 'management-ui:audit-list' %}">{% translate "Browse the audit log in the management area" %}</a></p>
+      {% else %}
+        <p>{% translate "Browsing the audit log requires the reservations.view_audit_history capability; staff status alone is not enough." %}</p>
+      {% endif %}
     </div>
   {% elif opts.model_name == "apitoken" %}
     <div class="readonly-guidance">

@@ -33,9 +33,17 @@ def member():
 
 @pytest.fixture
 def staff():
-    return User.objects.create_user(
+    # 050-a: explicit policy-management capability for this fixture.
+    created = User.objects.create_user(
         email="uat-staff@example.test", password="not-a-secret", is_staff=True
     )
+    created.user_permissions.add(
+        Permission.objects.get(
+            codename="manage_booking_policies",
+            content_type__app_label="reservations",
+        )
+    )
+    return created
 
 
 @pytest.fixture

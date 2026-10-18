@@ -118,6 +118,15 @@ def _seed_source() -> dict:
     staff = User.objects.create_user(
         email="drill-staff@example.com", password="not-a-secret", is_staff=True
     )
+    staff.user_permissions.add(
+        *Permission.objects.filter(
+            codename__in=[
+                "manage_booking_policies",
+                "manage_maintenance_blackouts",
+            ],
+            content_type__app_label="reservations",
+        )
+    )
     member = User.objects.create_user(email="drill-member@example.com", password="not-a-secret")
     # A16: the drill member books a seed reservation and therefore carries
     # the explicit baseline booking capability (real Permission row).

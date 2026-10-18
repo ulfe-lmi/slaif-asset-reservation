@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from django.contrib import admin
 from django.contrib.auth import SESSION_KEY
+from django.contrib.auth.models import Permission
 from django.test import Client, RequestFactory, override_settings
 from django.utils import timezone
 
@@ -45,11 +46,20 @@ def member_user() -> User:
 
 @pytest.fixture
 def staff_user() -> User:
-    return User.objects.create_user(
+    # 050-a: staff admission alone no longer shows the Management nav or
+    # admits /manage/; this fixture holds an explicit management capability.
+    created = User.objects.create_user(
         email="staff@example.com",
         password="not-a-secret",
         is_staff=True,
     )
+    created.user_permissions.add(
+        Permission.objects.get(
+            codename="view_booking_policies",
+            content_type__app_label="reservations",
+        )
+    )
+    return created
 
 
 @pytest.fixture
