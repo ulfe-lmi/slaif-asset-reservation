@@ -24,7 +24,6 @@ def test_api_v1_namespace_exists(client) -> None:
             "availability": "/api/v1/assets/{asset_id}/availability/",
             "me": "/api/v1/me/",
             "reservations": "/api/v1/reservations/",
-            "all_reservations": "/api/v1/all-reservations/",
         },
     }
 

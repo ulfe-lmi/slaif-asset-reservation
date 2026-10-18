@@ -176,10 +176,11 @@ lookup details, or secret material.
 
 ### `GET /api/v1/`
 
-Anonymous root describing implemented endpoint families (including the
-static `all_reservations` link — links only, no data). In a browser this
-endpoint is served by the product-branded Browsable API titled "SLAIF Asset
-Reservation API"; the JSON contract is unchanged.
+Anonymous root describing the implemented endpoint families (links only,
+no data). The cross-user `all-reservations` routes are bearer endpoints
+documented below; they are not part of this static link list. In a browser
+this endpoint is served by the product-branded Browsable API titled "SLAIF
+Asset Reservation API"; the JSON contract is unchanged.
 
 ### `GET /api/v1/me/`
 

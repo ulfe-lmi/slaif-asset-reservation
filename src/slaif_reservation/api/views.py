@@ -31,7 +31,6 @@ class ApiRootView(APIView):  # type: ignore[misc]
                     "availability": "/api/v1/assets/{asset_id}/availability/",
                     "me": "/api/v1/me/",
                     "reservations": "/api/v1/reservations/",
-                    "all_reservations": "/api/v1/all-reservations/",
                 },
             }
         )
