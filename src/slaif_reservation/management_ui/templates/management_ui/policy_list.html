@@ -4,7 +4,9 @@
 {% block content %}
   {% include "management_ui/_nav.html" %}
   <h1>{% trans "Reservation policies" %}</h1>
-  <p><a href="{% url 'management-ui:policy-create' %}">{% trans "Create policy" %}</a></p>
+  {% if can_manage_policies %}
+    <p><a href="{% url 'management-ui:policy-create' %}">{% trans "Create policy" %}</a></p>
+  {% endif %}
   <form method="get">
     <label for="asset">{% trans "Show effective policy for asset" %}</label>
     <select id="asset" name="asset" aria-describedby="resolver-asset-help">

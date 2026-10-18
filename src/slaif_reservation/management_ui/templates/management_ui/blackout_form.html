@@ -22,7 +22,12 @@
     {% endfor %}
     <button type="submit">{% trans "Create blackout" %}</button>
   </form>
-  {% if affected_reservations %}
+  {% if affected_hidden %}
+    {% if affected_count %}
+      <h2>{% trans "Overlapping reservations" %}</h2>
+      <p>{% blocktrans count counter=affected_count %}{{ counter }} confirmed or released reservation overlaps this period. You cannot see who owns them because you do not have cross-user reservation viewing.{% plural %}{{ counter }} confirmed or released reservations overlap this period. You cannot see who owns them because you do not have cross-user reservation viewing.{% endblocktrans %}</p>
+    {% endif %}
+  {% elif affected_reservations %}
     <h2>{% trans "Overlapping reservations" %}</h2>
     <ul>
       {% for reservation in affected_reservations %}

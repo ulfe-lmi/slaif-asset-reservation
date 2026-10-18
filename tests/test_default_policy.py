@@ -13,6 +13,7 @@ from django.core.management import call_command, get_commands
 from django.db import IntegrityError
 from django.utils import timezone
 
+from slaif_reservation.accounts.authorization import MANAGEMENT_PERMISSIONS
 from slaif_reservation.accounts.models import User
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
@@ -43,7 +44,16 @@ def user(email: str = "member@example.com", **overrides: object) -> User:
 
 
 def staff(email: str = "staff@example.com") -> User:
-    return user(email, is_staff=True)
+    # 050-a: staff alone no longer authorizes management mutations; this
+    # dedicated full-manager fixture grants the nine explicit capabilities.
+    created = user(email, is_staff=True)
+    created.user_permissions.add(
+        *Permission.objects.filter(
+            codename__in=list(MANAGEMENT_PERMISSIONS),
+            content_type__app_label="reservations",
+        )
+    )
+    return created
 
 
 def asset(slug: str = "gpu-a") -> Asset:

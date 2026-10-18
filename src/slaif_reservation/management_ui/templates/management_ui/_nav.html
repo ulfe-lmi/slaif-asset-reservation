@@ -1,8 +1,20 @@
-{% load i18n %}
+{% load i18n application_access %}
 <nav class="management-nav subnav" aria-label="{% trans 'Management navigation' %}">
   <a href="{% url 'management-ui:dashboard' %}">{% trans "Management" %}</a>
-  <a href="{% url 'management-ui:policy-list' %}">{% trans "Policies" %}</a>
-  <a href="{% url 'management-ui:blackout-list' %}">{% trans "Blackouts" %}</a>
-  <a href="{% url 'management-ui:reservation-list' %}">{% trans "Reservations" %}</a>
-  <a href="{% url 'management-ui:audit-list' %}">{% trans "Audit" %}</a>
+  {% has_any_permission request.user "view_booking_policies" "manage_booking_policies" as can_view_policies %}
+  {% if can_view_policies %}
+    <a href="{% url 'management-ui:policy-list' %}">{% trans "Policies" %}</a>
+  {% endif %}
+  {% has_any_permission request.user "view_maintenance_blackouts" "manage_maintenance_blackouts" as can_view_blackouts %}
+  {% if can_view_blackouts %}
+    <a href="{% url 'management-ui:blackout-list' %}">{% trans "Blackouts" %}</a>
+  {% endif %}
+  {% has_permission request.user "view_all_reservations" as can_view_all_reservations %}
+  {% if can_view_all_reservations %}
+    <a href="{% url 'management-ui:reservation-list' %}">{% trans "All reservations" %}</a>
+  {% endif %}
+  {% has_permission request.user "view_audit_history" as can_view_audit %}
+  {% if can_view_audit %}
+    <a href="{% url 'management-ui:audit-list' %}">{% trans "Audit" %}</a>
+  {% endif %}
 </nav>

@@ -69,11 +69,19 @@ def make_user(email: str) -> User:
 
 
 def make_staff(email: str) -> User:
-    return User.objects.create_user(
+    # 050-a: explicit blackout-management capability for this fixture.
+    created = User.objects.create_user(
         email=email,
         password="not-a-secret",
         is_staff=True,
     )
+    created.user_permissions.add(
+        Permission.objects.get(
+            codename="manage_maintenance_blackouts",
+            content_type__app_label="reservations",
+        )
+    )
+    return created
 
 
 def make_asset(slug: str) -> Asset:

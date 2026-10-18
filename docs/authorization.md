@@ -1,15 +1,18 @@
 # Authorization — group-based access (available now vs planned)
 
-**Status: available now — foundation plus booking enforcement (the
+**Status: available now — the foundation, booking enforcement (the
 `reservations.book_assets` capability and exact-asset group eligibility gate
-new reservations); planned — management capabilities and cross-user read-all
-enforcement (NOT yet active).** This page records the selected M-GROUP-AUTHORIZATION
+new reservations) and management capability enforcement (the nine management
+capabilities gate every /manage/ route and the shared mutation services, and
+the separate All reservations browser is live); planned — the bearer
+`reservations:read_all` cross-user list/detail API surface and its issuance
+rules (NOT yet active).** This page records the selected M-GROUP-AUTHORIZATION
 contract (ARCHITECTURE.md A-16; stable rows SAR-048–SAR-053, all UNPROVEN
 until a fresh independent ICA at the exact merged revision).
 
 ## Available now
 
-The delivered foundation, and only this:
+The delivered foundation and enforcement, and only this:
 
 - **The ten documented application permissions** on the existing
   `Reservation` content type, in the `reservations` namespace
@@ -28,14 +31,17 @@ The delivered foundation, and only this:
   surfaces).
 - **A small `accounts/authorization.py` constants/helper module**
   (`RESERVATIONS_PERMISSIONS`, `MANAGEMENT_PERMISSIONS`,
-  `BOOKING_BASELINE_PERMISSION`, `has_reservation_permission`) that checks
-  one explicit capability for an active authenticated non-service-account
+  `BOOKING_BASELINE_PERMISSION`, `has_reservation_permission`,
+  `has_any_reservation_permission`, `is_management_user`) that checks
+  explicit capabilities for an active authenticated non-service-account
   human through Django's permission machinery (groups combined additively
-  with individual permissions; superuser semantics retained). It is the
-  foundation of the active booking-eligibility enforcement (the
-  `assets/authorization.py` predicate and the `create_reservation` gate
-  build on it) and will carry the management and cross-user read-all
-  enforcement when those arrive. It caches nothing across calls.
+  with individual permissions; superuser semantics retained). It carries
+  the active booking-eligibility enforcement (the `assets/authorization.py`
+  predicate and the `create_reservation` gate build on it) and the active
+  management capability enforcement (the `/manage/` route gates and the
+  shared service guards). The planned bearer `reservations:read_all`
+  surface will reuse the same current-permission checks. It caches nothing
+  across calls.
 - **A one-time baseline booking grant** in the accounts migration: existing
   non-service-account users (including inactive rows, so a later normal
   reactivation preserves their former baseline) received the direct
@@ -43,6 +49,42 @@ The delivered foundation, and only this:
   created or changed; no other permission was granted.
 - **`manage.py grant_management_access`**, an explicit dry-run-first setup
   command (see the deliberate upgrade section below).
+- **Management capability enforcement**: the ten codenames above are
+  enforced. `is_staff` alone admits `/admin/` only and confers **no**
+  management-area access. Every `/manage/` route requires the documented
+  reservations-namespace application permissions listed in the
+  [route inventory](#management-route-inventory-enforced) for a current
+  active non-service-account human session (anonymous sessions are redirected
+  to login; authenticated sessions without the capability get a 403 before
+  any protected record is fetched). The shared audited services recheck the
+  relevant capability on the fresh row-locked principal
+  (`manage_booking_policies` for policy create/update/deactivate,
+  `manage_maintenance_blackouts` for blackout create/deactivate, and
+  owner-or-capability for cross-user cancel/release), preserving the
+  existing lock order, transaction and audit coupling and the existing
+  denial codes. A mutation capability never implies read-all: a
+  cancel/release-only principal that acts on a known UUID is redirected to
+  the permitted management landing, never to a private detail page, and
+  blackout previews without `view_all_reservations` show only the safe
+  overlap count, never affected rows, UUIDs, names or free text.
+  `book_assets` alone gives no management access, and Administration model
+  View permissions are not sufficient (the All reservations browser needs
+  `view_all_reservations` specifically). Partial-capability users receive a
+  useful management landing showing only their authorized modules, counts,
+  links and actions.
+- **The separate All reservations browser** at the existing
+  `/manage/reservations/` and detail routes, labelled "All reservations" /
+  "Reservation details" (URLs and names unchanged; separate from the
+  owner-scoped member pages). It requires `view_all_reservations`,
+  including for staff, and reuses the existing validated asset/status/
+  lifecycle/search/aware-from-to filters and the 50-per-page paginator,
+  now with visible previous/next navigation that preserves all filters.
+  Authorized readers see owner identity, asset, original and effective
+  times, status and lifecycle with the existing half-open release/cancel
+  history meaning; mutation controls appear only for the corresponding
+  capability, and read-only viewers are denied even valid forged
+  POSTs. The member bearer API is unchanged (owner-only) until the
+  planned `reservations:read_all` surface.
 - **Booking eligibility enforcement for NEW reservations**:
   `Asset.booking_restricted` (default False) and
   `Asset.allowed_booking_groups` (an M2M to the EXISTING `auth.Group`
@@ -63,36 +105,39 @@ The delivered foundation, and only this:
   group on restricted assets, and owners keep list/inspect/cancel/release
   of existing bookings after losing the capability or a group.
 
-Everything else on this page is still target behavior: **no route, view,
-bearer scope or service gate enforces the management capabilities or the
-cross-user read-all permissions yet** (the booking capability and
-exact-asset eligibility above are the only enforced application
-permissions). Commands and endpoints named as target behavior are targets,
-not published interfaces.
+Everything else on this page that is marked planned is still target
+behavior: **the cross-user bearer list/detail routes, the
+`reservations:read_all` token scope and its issuance rules are NOT
+implemented yet** (the enforced application permissions are the booking
+capability, exact-asset eligibility and the management capabilities
+above). Endpoints and scopes named as target behavior are targets, not
+published interfaces.
 
 ## Planned (enforcement NOT yet active)
 
-- Management/member route gating by explicit capabilities (today
-  `is_staff` still admits `/manage/` and the member routes are still
-  owner-scoped as before).
-- The separate All reservations browser view and the cross-user bearer
-  list/detail routes (including the `reservations:read_all` scope).
-- Token-scope issuance refusal for `read_all`/`create` authority and the
-  minimal cross-user representation.
+- The cross-user bearer list/detail routes (the
+  `reservations:read_all` scope), including token-scope issuance refusal
+  for authority-exceeding read-all/create scopes and the minimal
+  cross-user representation. The All reservations **browser** documented
+  above is a separate web surface and is already live; this planned item
+  is only the bearer API surface.
 - No change to existing tokens, policies, exclusivity, lifecycle, audit or
   idempotency behavior; booking behavior already carries the active
-  eligibility gate documented above, and no further booking behavior change
-  is planned in this target.
+  eligibility gate and management behavior already carries the capability
+  gates documented above, and no further booking behavior change is
+  planned in this target.
 
 ## Current baseline (implemented today)
 
 - Member routes: active non-service-account human sessions; reservations
   are owner-scoped (list/detail/cancel/release of one's own records).
-- Management routes (/manage/): blanket admission for active,
-  non-service-account **staff** sessions; cross-user lifecycle, policy and
-  blackout operations run through existing audited services. (Replacing
-  this blanket admission with explicit management capabilities is a later
-  planned purpose; until then `is_staff` alone remains the admission rule.)
+- Management routes (/manage/): explicit capability admission — each
+  route requires the documented reservations-namespace application
+  permissions (see the [route inventory](#management-route-inventory-enforced))
+  for an active non-service-account human; cross-user lifecycle, policy and
+  blackout operations run through the existing audited services, which
+  recheck the same capability on the fresh row-locked principal.
+  `is_staff` alone no longer admits /manage/.
 - Administration (/admin/): staff admission with existing model
   permissions; protected records are read-only or service-backed. The user
   change page now exposes the optional external identifier.
@@ -103,17 +148,17 @@ not published interfaces.
 - Booking eligibility is enforced for NEW reservations (global
   `book_assets` capability plus exact-asset group eligibility; restricted
   with no allowed groups fails closed; owners retain existing-booking
-  lifecycle). There is still no cross-user read surface and no
-  enforcement of the management capabilities yet.
+  lifecycle). The cross-user **bearer** read surface is still planned; the
+  live cross-user web read surface is the All reservations browser.
 
-## Permission matrix (selected target)
+## Permission matrix (enforced)
 
 Grants combine by union across all of a user's groups and individual
 permissions; there is no parallel membership, no hardcoded operator group
 names and no explicit deny. Every application access still requires an
 active non-service-account human.
 
-| Application permission (reservations namespace) | Target meaning |
+| Application permission (reservations namespace) | Meaning (enforced) |
 |---|---|
 | reservations.book_assets | Create new reservations; additionally subject to exact-asset eligibility and existing policy/domain checks. |
 | reservations.view_all_reservations | Cross-user reservation listing/detail in the separate All reservations browser/read-only API surfaces. |
@@ -133,7 +178,39 @@ disclose another owner's record through redirects, overlap previews,
 errors or audit. Partial-capability users receive a useful management
 landing without unauthorized counts, data, links or actions.
 
-## Admin vs staff (target distinction)
+## Management route inventory (enforced)
+
+All 17 current `/manage/` routes and their required application
+permissions (reservations namespace). Every route additionally requires a
+current active non-service-account human session; anonymous requests are
+redirected to login and authenticated requests without the capability
+receive a 403 before any protected record is fetched. `manage` capabilities
+include their module's read interface; no other rights are implied.
+
+| Existing /manage/ route | Required application permission(s) |
+|---|---|
+| `/` (management dashboard) | Any of the nine management permissions, active human |
+| `policies/` and `policies/<uuid>/` | `view_booking_policies` OR `manage_booking_policies` |
+| `policies/new/`, `policies/<uuid>/edit/` (GET+POST), `policies/<uuid>/deactivate/` (POST) | `manage_booking_policies` |
+| `blackouts/` and `blackouts/<uuid>/` | `view_maintenance_blackouts` OR `manage_maintenance_blackouts` |
+| `blackouts/new/` (GET+POST), `blackouts/<uuid>/deactivate/` (POST) | `manage_maintenance_blackouts` |
+| `reservations/` and `reservations/<uuid>/` | `view_all_reservations` ONLY (the model View permission is not sufficient) |
+| `reservations/<uuid>/cancel/` (POST) | `cancel_others_reservations`; no implicit requirement or grant of read-all or release |
+| `reservations/<uuid>/release/` (POST) | `release_others_reservations`; no implicit requirement or grant of read-all or cancel |
+| `audit/` and `audit/<uuid>/` | `view_audit_history` ONLY |
+| `audit/export.csv` | `export_audit_history` ONLY; existing filtered/bounded CSV behavior retained |
+
+Notes: the shared services enforce the same capabilities server-side
+(policy/blackout mutations and cross-user cancel/release), so hiding a
+button or navigation entry never authorizes anything; a principal with a
+mutation capability but without `view_all_reservations` may perform the
+authorized action on a known UUID and is then redirected to the permitted
+management landing, not to a private detail page; and blackout create/detail
+previews for principals without `view_all_reservations` show only the safe
+overlap count and the explicit confirmation requirement, never affected
+rows, UUIDs, names, emails or free text.
+
+## Admin vs staff
 
 - **Staff** is admission to /admin/ only, with existing model permissions.
   Staff or unrelated Administration permissions confer **no** application
@@ -149,6 +226,79 @@ landing without unauthorized counts, data, links or actions.
 - Enforcement is server-side at direct GET/POST endpoints and the shared
   services that serve them; buttons and navigation only reflect the same
   checks.
+
+## Setting up grants: groups and individual permissions (operator procedure)
+
+Application permissions are granted deliberately through the existing
+Administration: the existing `auth.Group` model (Administration → Groups,
+with its standard "Permissions" fieldset) and the user change page
+(Administration → Users, with its "Groups" and "Permissions" fields).
+Nothing in the application matches group names, infers flags or model
+permissions from names, or enrolls users automatically: a group name
+itself grants nothing, and every grant below is an explicit operator
+choice.
+
+**Group setup (reusable for many users):**
+
+1. Administration → Groups → "Add group": choose any operator name (free
+   text; an illustrative name like "Lab members" carries no application
+   meaning).
+2. On the group change page, tick the needed **application** permissions
+   in the "Permissions" fieldset — the ten documented `reservations`
+   namespace codenames (for example `reservations.book_assets`,
+   `reservations.view_all_reservations`,
+   `reservations.view_maintenance_blackouts`). They are listed separately
+   from the per-model Add/Change/Delete/View permissions (such as
+   `reservations.view_reservation` in Administration): a model View
+   permission is not an application capability and never implies
+   `reservations.view_all_reservations` or any other application
+   permission.
+3. Save the group, then assign it: Administration → Users → user change
+   page → tick the group under "Groups" and save.
+
+**Individual assignments (supported and unchanged):** the same ten
+application permissions can be ticked directly under "Permissions" on a
+user change page, without any group. Grants combine by union across all
+of a user's groups and individual permissions: removing one group only
+removes the grants that no other group or individual assignment still
+provides, and a removed grant takes effect on the user's next request.
+Non-staff users may receive any selected application permission,
+including the nine management/read-all capabilities and the matching
+/manage/ pages; the staff flag is required only for /admin/ admission
+plus existing model permissions. Accounts created after the upgrade
+receive no automatic application grants or group membership (the one-time
+baseline grant applies only to existing humans).
+
+**Illustrative roles (names are operator examples, never application
+constants):**
+
+| Illustrative role | Application permissions granted | Effect |
+|---|---|---|
+| Administrators | All ten `reservations` application permissions; staff flag plus the needed model permissions only if Administration access is intentionally configured | Full member and management capability: books (subject to exact-asset eligibility) and uses every /manage/ module; /admin/ only when deliberately staffed with model permissions. Still meets exact-asset group eligibility on restricted assets — no staff/superuser bypass. |
+| Lab members | `reservations.book_assets`, `reservations.view_all_reservations` | Books (subject to exact-asset eligibility) and reads the All reservations browser; no cancel/release of other owners' reservations, no policy/blackout/audit rights unless separately granted. |
+| Students | `reservations.book_assets` | Books (subject to exact-asset eligibility); the ordinary member surface already provides list/inspect/cancel/release of their own reservations. |
+| Reservation readers | `reservations.view_all_reservations` | Read-only All reservations browser; no booking, no cancel/release of other owners' reservations, no policy/blackout/audit rights. |
+
+These names are examples of what an operator might create; the
+application contains no group-name constants, creates no groups, and
+grants nothing by name. They exclude the three easy misreadings: no
+automatic privileged membership (nothing is pre-populated for any named
+group), no model View permission granting read-all (it does not), and no
+administrator bypassing asset groups (it cannot — a restricted asset
+still requires membership in at least one of its allowed groups in
+addition to `reservations.book_assets`).
+
+**Asset allowed-group membership** is configured separately on each
+restricted asset (asset change page → "Allowed booking groups"): booking
+a restricted asset additionally requires membership in at least one of
+its listed existing groups, on top of `reservations.book_assets`;
+unrestricted assets require only `reservations.book_assets`; there is no
+implicit parent inheritance. Owners keep list/inspect/cancel/release of
+already-accepted reservations after losing booking capability or group
+membership. Existing tokens stay owner-only: the cross-user bearer
+`reservations:read_all` scope and its issuance rules remain planned, not
+implemented. This target promises no projects, deny policies, directory
+or machine access.
 
 ## Exact-asset booking eligibility (implemented)
 
@@ -238,23 +388,45 @@ landing without unauthorized counts, data, links or actions.
   workflow):** follow [INSTALL.md](../INSTALL.md) — recover the
   installation's recorded Compose project name into
   `SAR_COMPOSE_PROJECT` and keep the same project name and database volume
-  identity (never rename or adopt another project's volume). Run the
-  commands inside the running application service:
+  identity (never rename or adopt another project's volume).
+  The one-off container form (`run --rm app`) uses the current application
+  image and does NOT require the long-running app service to be up, so the
+  steps can run before the public service restart:
   1. Take an operator backup of the deployed database first (INSTALL.md
      section 8; real deployments remain operator-owned; these migrations
      are tested only on owned synthetic databases).
   2. `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py migrate --noinput`
      (applies the permission records, the `external_identifier` column and
      the one-time baseline grant).
-  3. `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py grant_management_access --user <STAFF_UUID> [--user ...]`
-     to review (dry-run writes nothing).
-  4. `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py grant_management_access --user <STAFF_UUID> [--user ...] --apply`
-     to grant the nine management/read-all capabilities
-     (all ten except `book_assets`) as direct permissions to exactly the
-     selected accounts. The command validates every selection before any
-     write, applies atomically and idempotently, never creates users,
+  3. Choose the current active human staff accounts whose management
+     authority you deliberately retain; there is no mass staff grant and
+     no automatic enrolment. Each account's UUID is the `<STAFF_UUID>` in
+     its existing Administration user change URL
+     (`/admin/accounts/user/<STAFF_UUID>/change/`).
+  4. Review with the DEFAULT dry-run (pass no `--apply`; the command has
+     no `--dry-run` flag), repeating `--user` for every selected account:
+     `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py grant_management_access --user <STAFF_UUID> [--user <STAFF_UUID> ...]`
+     The dry-run validates every selection (existing, active,
+     non-service-account staff) before reporting what would be granted,
+     and writes nothing.
+  5. Grant with the explicit `--apply`: the same command plus `--apply`
+     grants the nine management/read-all capabilities (all ten except
+     `book_assets`, which stays separate) as direct permissions to exactly
+     the selected accounts. The command validates every selection before
+     any write, applies atomically and idempotently, never creates users,
      changes staff/superuser flags or groups, and never grants read-all
-     from old Administration View permissions.
+     from old Administration View permissions. Use this command only when
+     the operator chooses to preserve the full legacy staff management
+     authority; partial or non-staff grants use the existing
+     Administration groups/individual permissions (see [Setting up
+     grants](#setting-up-grants-groups-and-individual-permissions-operator-procedure))
+     — no new flags and no expanded command.
+  6. Verify the selected grants: re-run the default dry-run, which now
+     reports each selected account at `9/9 direct grant(s) present` with
+     `nothing (idempotent)`.
+  7. Restart the application on the new image (INSTALL.md step 6) and
+     access-check: a selected account sees its expected /manage/ modules;
+     an unselected staff account no longer enters /manage/.
 - **Backup and reverse limits (honest):** downgrading does **not**
   silently revoke the baseline booking grant or any operator-configured
   grant (removing grants is a deliberate operator action); Git rollback of

@@ -106,8 +106,14 @@ class Ba26ZeroIdle(unittest.TestCase):
                 deadline = time.monotonic() + 10
                 while time.monotonic() < deadline:
                     j = fx.home / "workorders" / "state.json"
-                    if j.exists() and "control_consumed" in j.read_text():
-                        break
+                    if j.exists():
+                        # One atomic snapshot: the runtime journals
+                        # control_consumed before invoked, so require both
+                        # event kinds in the same read before proceeding.
+                        snap = json.loads(j.read_text())
+                        kinds = [e["kind"] for e in snap["events"]]
+                        if "control_consumed" in kinds and "invoked" in kinds:
+                            break
                     time.sleep(0.1)
                 j = json.loads((fx.home / "workorders" / "state.json").read_text())
                 kinds = [e["kind"] for e in j["events"]]

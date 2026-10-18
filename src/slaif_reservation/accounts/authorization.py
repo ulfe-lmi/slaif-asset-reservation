@@ -1,16 +1,19 @@
 """Application capability constants and checks for the selected A16 target.
 
-This module is the additive grant foundation (order 048-a): it names the ten
-documented application permissions in the ``reservations`` namespace and
-provides a single check that an active, authenticated, non-service-account
-human explicitly holds one of them, evaluated through Django's normal
-permission machinery (groups combined additively with individual
-``user_permissions``).
+This module is the additive grant foundation (orders 048-a through 050-a):
+it names the ten documented application permissions in the ``reservations``
+namespace and provides the shared checks that an active, authenticated,
+non-service-account human explicitly holds one (or any) of them, evaluated
+through Django's normal permission machinery (groups combined additively
+with individual ``user_permissions``; trusted active superusers keep Django
+permission semantics).
 
-It deliberately wires no endpoint, service or token-scope enforcement yet;
-later ordered purposes use this foundation with fresh per-request principals.
-There is no process-global permission cache here: every call evaluates the
-given user instance, so a fresh principal observes current grants.
+``has_reservation_permission`` gates a single capability;
+``has_any_reservation_permission`` gates a route or landing against several;
+``is_management_user`` names management-dashboard admission (any of the nine
+management capabilities). There is no process-global permission cache here:
+every call evaluates the given user instance, so a fresh principal observes
+current grants.
 """
 
 from __future__ import annotations
@@ -74,3 +77,38 @@ def has_reservation_permission(user: Any, codename: str) -> bool:
     if getattr(user, "is_service_account", False):
         return False
     return bool(user.has_perm(permission_label(codename)))
+
+
+def has_any_reservation_permission(user: Any, codenames: tuple[str, ...] | list[str]) -> bool:
+    """Whether an active non-service-account human holds at least one named capability.
+
+    Same human-eligibility gate as :func:`has_reservation_permission`, then a
+    union across every named codename through Django's permission machinery.
+    Every codename must be one of the ten documented capabilities; an empty
+    or unknown codename list never admits (fail closed). Nothing is cached
+    across calls.
+    """
+    if not codenames:
+        return False
+    for codename in codenames:
+        if codename not in RESERVATIONS_PERMISSIONS:
+            raise ValueError(f"Unknown reservations permission: {codename!r}")
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if not getattr(user, "is_active", False):
+        return False
+    if getattr(user, "is_service_account", False):
+        return False
+    return any(bool(user.has_perm(permission_label(codename))) for codename in codenames)
+
+
+def is_management_user(user: Any) -> bool:
+    """Management-dashboard admission: any of the nine management capabilities.
+
+    Staff status alone confers nothing; an active non-service-account human
+    holding at least one of ``MANAGEMENT_PERMISSIONS`` (through groups or
+    individual grants, or superuser semantics) is admitted to the management
+    dashboard. Individual routes still check their own narrower capability
+    set.
+    """
+    return has_any_reservation_permission(user, MANAGEMENT_PERMISSIONS)

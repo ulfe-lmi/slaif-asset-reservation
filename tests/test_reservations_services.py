@@ -8,6 +8,7 @@ from django.contrib.auth.models import Permission
 from django.db import IntegrityError
 from django.utils import timezone
 
+from slaif_reservation.accounts.authorization import MANAGEMENT_PERMISSIONS
 from slaif_reservation.accounts.models import User
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
@@ -58,6 +59,21 @@ def grant_booking(target: User) -> None:
     )
 
 
+def grant_management(target: User) -> None:
+    """Explicit 050-a management capabilities (real Permission rows).
+
+    Staff status alone no longer authorizes management mutations; these
+    positive management fixtures grant the nine documented capabilities
+    deliberately instead of relying on ``is_staff``.
+    """
+    target.user_permissions.add(
+        *Permission.objects.filter(
+            codename__in=list(MANAGEMENT_PERMISSIONS),
+            content_type__app_label="reservations",
+        )
+    )
+
+
 def asset(slug: str = "asset-a", **overrides: object) -> Asset:
     values = {
         "slug": slug,
@@ -93,6 +109,7 @@ def assert_domain_error(code: str):
 @pytest.mark.django_db
 def test_policy_resolution_order_asset_parent_global() -> None:
     admin = user("staff@example.com", is_staff=True)
+    grant_management(admin)
     machine = asset("machine-a", kind=Asset.KIND_MACHINE, reservable=False)
     child = asset("machine-a-gpu-0", parent=machine)
     global_policy = policy(name="global")
@@ -579,6 +596,7 @@ def test_cancellation_authorization_cutoff_transition_and_audit() -> None:
     owner = user()
     other = user("other@example.com")
     staff = user("staff@example.com", is_staff=True)
+    grant_management(staff)
     gpu = asset()
     policy(cancellation_cutoff_minutes=30, max_upcoming_per_principal=5)
     now = timezone.now()
@@ -704,6 +722,7 @@ def test_cancel_and_release_reject_naive_injected_clock() -> None:
 def test_staff_can_release_another_users_reservation_after_asset_deactivation() -> None:
     owner = user()
     staff = user("staff@example.com", is_staff=True)
+    grant_management(staff)
     gpu = asset()
     policy()
     now = timezone.now()
@@ -733,6 +752,7 @@ def test_staff_can_release_another_users_reservation_after_asset_deactivation() 
 def test_release_succeeds_after_policy_deactivation() -> None:
     owner = user()
     staff = user("staff@example.com", is_staff=True)
+    grant_management(staff)
     gpu = asset()
     reservation_policy = policy()
     now = timezone.now()
@@ -815,6 +835,7 @@ def test_audit_failure_rolls_back_reservation(monkeypatch: pytest.MonkeyPatch) -
 @pytest.mark.django_db
 def test_policy_services_write_audit() -> None:
     admin = user(is_staff=True)
+    grant_management(admin)
     result = services.create_policy(
         actor_user=admin,
         name="Global",
@@ -839,6 +860,7 @@ def test_policy_mutation_requires_active_staff_and_writes_no_audit_on_denial() -
     ordinary = user()
     inactive_staff = user("inactive-staff@example.com", is_staff=True, is_active=False)
     admin = user("staff@example.com", is_staff=True)
+    grant_management(admin)
     reservation_policy = policy()
 
     with assert_domain_error(POLICY_MUTATION_NOT_AUTHORIZED):
@@ -866,6 +888,7 @@ def test_policy_mutation_requires_active_staff_and_writes_no_audit_on_denial() -
 @pytest.mark.parametrize("field", ["id", "pk", "created_at", "updated_at", "active", "unknown"])
 def test_policy_update_rejects_immutable_or_unknown_fields(field: str) -> None:
     admin = user(is_staff=True)
+    grant_management(admin)
     reservation_policy = policy()
     before = reservation_policy.name
 
@@ -949,6 +972,7 @@ def test_audit_failure_rolls_back_policy_create_update_and_deactivation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     admin = user(is_staff=True)
+    grant_management(admin)
     reservation_policy = policy()
 
     def fail_audit(*args: object, **kwargs: object) -> None:

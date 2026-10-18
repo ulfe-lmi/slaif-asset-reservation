@@ -1,7 +1,8 @@
 # Browser guide
 
 SLAIF Asset Reservation provides a public entry page, an authenticated member
-workspace, staff management and a branded administration interface.
+workspace, a capability-gated management area and a branded administration
+interface.
 
 ## Sign in
 
@@ -90,24 +91,38 @@ show only a prefix. Revocation takes effect immediately. The one-time page
 uses private/no-store caching and clears its displayed secret on browser history
 transitions; do not share or capture it.
 
-## Staff management
+## Management
 
-Active human staff use `/manage/`; per-model administration permissions do not
-by themselves grant management access.
+Active humans with the documented reservations-namespace management
+capabilities use `/manage/`
+([authorization](authorization.md#management-route-inventory-enforced)); the
+staff flag alone admits `/admin/` only, and per-model administration
+permissions do not by themselves grant management access either. Each page
+requires its matching capability, the management landing shows only the
+modules the session is authorized for, and mutation controls appear only for
+the corresponding capability.
 
 - **Policies:** inspect effective rules, create/update policies and deactivate
-  them. Global targets are fallback rules; duration units, start horizon,
-  lead/cancellation effects and account limits have nearby explanations.
-  Deactivation changes new booking eligibility, not existing reservations.
+  them (creation/update/deactivation require the management capability;
+  inspection requires the view capability). Global targets are fallback
+  rules; duration units, start horizon, lead/cancellation effects and account
+  limits have nearby explanations. Deactivation changes new booking
+  eligibility, not existing reservations.
 - **Blackouts:** stop new overlapping reservations on one selected asset.
-  Existing affected bookings are shown for staff follow-up; a blackout does
-  not automatically cancel them or block every child/sibling asset.
-- **Reservations:** filter and inspect cross-user bookings and perform audited
-  cancellation/release actions with contextual warnings.
-- **Audit:** filter events and inspect correlation/source information. CSV
-  export uses the current filters, with a bounded row count; without filters
-  it covers the last seven days. Treat exported account/reservation data as
-  private operator material.
+  The affected-reservation preview shows the full affected list only to
+  sessions with cross-user reservation viewing; otherwise it shows just the
+  safe overlap count. A blackout does not automatically cancel them or block
+  every child/sibling asset.
+- **Reservations:** the "All reservations" browser (requires the cross-user
+  read capability) filters and inspects other owners' bookings; audited
+  cancellation/release actions appear with contextual warnings only for the
+  matching capability.
+- **Audit:** the bounded filtered audit browser requires the audit view
+  capability; CSV export requires the export capability (an export-only
+  session gets a filtered export form on the management landing and no audit
+  list). Export uses the current filters, with a bounded row count; without
+  filters it covers the last seven days. Treat exported data as private
+  operator material.
 
 ## Administration
 

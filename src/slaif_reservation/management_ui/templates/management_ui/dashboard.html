@@ -1,12 +1,38 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n form_guidance application_access %}
 {% block title %}{% trans "Management" %} — SLAIF Asset Reservation{% endblock %}
 {% block content %}
   {% include "management_ui/_nav.html" %}
   <h1>{% trans "Management" %}</h1>
-  <dl>
-    <dt>{% trans "Policies" %}</dt><dd>{{ policy_count }}</dd>
-    <dt>{% trans "Active blackouts" %}</dt><dd>{{ active_blackout_count }}</dd>
-    <dt>{% trans "Reservations" %}</dt><dd>{{ reservation_count }}</dd>
-  </dl>
+  {% if not has_any_read_module %}
+    <p class="help">{% trans "You have limited management access: you may perform your permitted recorded operations on a known record, but lists, details and counts are not visible to you." %}</p>
+  {% else %}
+    <dl>
+      {% if can_view_policies %}
+        <dt><a href="{% url 'management-ui:policy-list' %}">{% trans "Policies" %}</a></dt><dd>{{ policy_count }}</dd>
+      {% endif %}
+      {% if can_view_blackouts %}
+        <dt><a href="{% url 'management-ui:blackout-list' %}">{% trans "Active blackouts" %}</a></dt><dd>{{ active_blackout_count }}</dd>
+      {% endif %}
+      {% if can_view_all_reservations %}
+        <dt><a href="{% url 'management-ui:reservation-list' %}">{% trans "All reservations" %}</a></dt><dd>{{ reservation_count }}</dd>
+      {% endif %}
+    </dl>
+  {% endif %}
+  {% if can_export_audit and not can_view_audit %}
+    <h2>{% trans "Export audit history" %}</h2>
+    <p class="help">{% trans "Set the filters you need and download the matching CSV. Without filters this is the last 7 days, bounded row count. The audit list itself is not visible to you." %}</p>
+    <form method="get" action="{% url 'management-ui:audit-export' %}" class="filters">
+      {{ export_filter_form.non_field_errors }}
+      {% for field in export_filter_form %}
+        <div class="filter">
+          {{ field.label_tag }}
+          {{ field }}
+          {% field_guidance field %}
+          {{ field.errors }}
+        </div>
+      {% endfor %}
+      <button type="submit">{% trans "Export CSV" %}</button>
+    </form>
+  {% endif %}
 {% endblock %}

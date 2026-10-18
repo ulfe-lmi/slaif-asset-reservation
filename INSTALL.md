@@ -286,8 +286,9 @@ the proposed interval (8 or more existing intersecting records rejects
 it; the new record would be the 8th). This is a count of records
 intersecting the proposed interval, not a maximum simultaneous-occupancy
 sweep. Manual policy creation is no longer a
-prerequisite for a fresh install. Staff manage all policies through the
-existing audited services in the staff management UI at `/manage/`.
+prerequisite for a fresh install. Managers with the booking-policy
+management capability manage policies through the existing audited services
+in the management UI at `/manage/`.
 Reservations resolve an active policy for the exact asset, its parent
 machine, or global; a missing or ambiguous policy fails closed.
 
@@ -605,6 +606,15 @@ the new alias. Changing the image alias does not change project or volume identi
    deliberately run the same explicit initializer
    (`python manage.py initialize_default_policy`); any existing policy
    configuration makes it a no-op.
+
+   Authorization compatibility: `is_staff` alone no longer admits the
+   `/manage/` management area. If current staff accounts exercised
+   management before the upgrade, deliberately choose their retained
+   management grants before returning service to users — dry-run-first
+   `grant_management_access` for the selected staff, or groups/individual
+   permissions for partial or non-staff grants (see the deliberate
+   upgrade steps in
+   [docs/authorization.md](docs/authorization.md#deliberate-upgrade-implemented-foundation-operator-steps)).
 
 6. Restart the application on the new image:
 

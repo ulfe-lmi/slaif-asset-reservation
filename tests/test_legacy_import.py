@@ -397,6 +397,12 @@ def test_apply_revalidates_new_blackout_inside_transaction(tmp_path: Path) -> No
         password="not-a-secret",
         is_staff=True,
     )
+    staff.user_permissions.add(
+        Permission.objects.get(
+            codename="manage_maintenance_blackouts",
+            content_type__app_label="reservations",
+        )
+    )
     asset_obj = Asset.objects.get(pk=item.asset_id)
     create_blackout(
         asset=asset_obj,
@@ -580,6 +586,12 @@ def test_blackout_conflict_deactivated_blackout_and_reservation_conflict(tmp_pat
         email="legacy-staff@example.com",
         password="not-a-secret",
         is_staff=True,
+    )
+    staff.user_permissions.add(
+        Permission.objects.get(
+            codename="manage_maintenance_blackouts",
+            content_type__app_label="reservations",
+        )
     )
     policy()
     export = parse_synthetic_export(

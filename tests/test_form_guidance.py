@@ -21,6 +21,7 @@ from django.test import Client
 from django.urls import resolve, reverse
 from django.utils import timezone
 
+from slaif_reservation.accounts.authorization import MANAGEMENT_PERMISSIONS
 from slaif_reservation.accounts.exceptions import TOKEN_OWNER_INVALID, ApiTokenDomainError
 from slaif_reservation.accounts.models import ApiToken, User
 from slaif_reservation.accounts.services import issue_api_token
@@ -50,12 +51,21 @@ def member_user() -> User:
 
 @pytest.fixture
 def staff_user() -> User:
-    return User.objects.create_user(
+    # 050-a: dedicated full-manager fixture (all nine explicit application
+    # capabilities) for the management form-guidance tour.
+    created = User.objects.create_user(
         email="guidance-staff@example.com",
         password="not-a-secret",
         display_name="Guidance Staff",
         is_staff=True,
     )
+    created.user_permissions.add(
+        *Permission.objects.filter(
+            codename__in=list(MANAGEMENT_PERMISSIONS),
+            content_type__app_label="reservations",
+        )
+    )
+    return created
 
 
 @pytest.fixture
@@ -909,8 +919,8 @@ def test_staff_reservation_detail_guidance(
     client.force_login(staff_user)
     html = client.get(f"/manage/reservations/{reservation.id}/").content.decode()
     assert (
-        "Staff actions here affect other users' reservations and are recorded in the audit log."
-        in unescape(html)
+        "Management actions here affect other users' reservations "
+        "and are recorded in the audit log." in unescape(html)
     )
     assert 'id="id_reason-help"' in html
     assert "Cancelling frees the reserved time and cannot be undone." in html
@@ -967,7 +977,7 @@ def test_admin_user_add_guidance(client: Client, admin_user: User) -> None:
     _assert_guided(
         html,
         "id_is_staff_helptext",
-        "not granted by individual permission selections",
+        "Staff status alone confers NO management-area access",
         control_id="id_is_staff",
     )
     _assert_guided(
@@ -1003,7 +1013,10 @@ def test_admin_user_change_safe_password_status_and_help(
         ("timezone", "IANA time zone name"),
         ("is_service_account", "Service-account API access is not supported"),
         ("is_active", "Inactive accounts cannot sign in anywhere"),
-        ("is_staff", "per-model administration operations in this administration only"),
+        (
+            "is_staff",
+            "the matching model permissions for per-model administration operations",
+        ),
         ("is_superuser", "does not bypass the active-human/staff admission gate"),
         (
             "groups",
@@ -1205,7 +1218,9 @@ def test_admin_group_permissions_help(client: Client, admin_user: User) -> None:
         "a group with reservations.book_assets lets its members create new reservations"
         in unescape(html)
     )
-    assert "do not grant management access (which follows the active staff flag)" in unescape(html)
+    assert "do not grant administration access (which follows the active staff flag)" in unescape(
+        html
+    )
     assert "not project or membership authorization" in html
     # The select-filter association helper ships on the group pages too.
     assert "web/admin-form-guidance.js" in html
@@ -1215,9 +1230,10 @@ def test_admin_group_permissions_help(client: Client, admin_user: User) -> None:
 def test_admin_permission_help_matches_authorization(client: Client, admin_user: User) -> None:
     """The rendered permission help states the real authorization rules.
 
-    Management access follows the active human staff status alone
-    (management_ui/auth.py); no model permission is consulted there.
-    Model permissions govern per-model administration operations in the
+    050-a: management access follows the explicit reservations-namespace
+    application capabilities alone (management_ui/auth.py); the staff flag
+    admits to /admin/ only and confers no management-area access. Model
+    permissions govern per-model administration operations in the
     administration only, and protected models stay protected.
     """
     bare_staff = User.objects.create_user(
@@ -1226,8 +1242,18 @@ def test_admin_permission_help_matches_authorization(client: Client, admin_user:
         display_name="Bare Staff",
         is_staff=True,
     )
-    # Real staff WITHOUT individual/group permissions can access management.
+    # Staff WITHOUT individual/group capabilities gets NO management access:
+    # the staff flag alone admits to /admin/ only.
     client.force_login(bare_staff)
+    assert client.get("/manage/").status_code == 403
+    assert client.get("/manage/reservations/").status_code == 403
+    # Granting one explicit capability opens exactly that management surface.
+    bare_staff.user_permissions.add(
+        Permission.objects.get(
+            codename="view_all_reservations",
+            content_type__app_label="reservations",
+        )
+    )
     assert client.get("/manage/").status_code == 200
     assert client.get("/manage/reservations/").status_code == 200
     # The same user cannot perform administration model operations:
@@ -1239,8 +1265,11 @@ def test_admin_permission_help_matches_authorization(client: Client, admin_user:
     # Rendered wording pins the same rules on the user change page.
     html = client.get(f"/admin/accounts/user/{bare_staff.pk}/change/").content.decode()
     for name, fragment in [
-        ("is_staff", "management itself needs none of them"),
-        ("user_permissions", "do not grant management access, which follows the active staff flag"),
+        ("is_staff", "Staff status alone confers NO management-area access"),
+        (
+            "user_permissions",
+            "do not grant administration access, which follows the active staff flag",
+        ),
     ]:
         _assert_guided(html, f"id_{name}_helptext", fragment, control_id=f"id_{name}")
 

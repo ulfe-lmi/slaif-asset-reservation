@@ -1,4 +1,4 @@
-{% load static i18n branding %}
+{% load static i18n branding application_access %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -27,8 +27,11 @@
             <a href="{% url 'web:asset-list' %}">{% trans "Assets" %}</a>
             <a href="{% url 'web:reservation-list' %}">{% trans "My reservations" %}</a>
             <a href="{% url 'web:token-list' %}">{% trans "API tokens" %}</a>
-            {% if request.user.is_staff %}
+            {% has_any_permission request.user "view_all_reservations" "cancel_others_reservations" "release_others_reservations" "view_booking_policies" "manage_booking_policies" "view_maintenance_blackouts" "manage_maintenance_blackouts" "view_audit_history" "export_audit_history" as has_management_access %}
+            {% if has_management_access %}
               <a href="{% url 'management-ui:dashboard' %}">{% trans "Management" %}</a>
+            {% endif %}
+            {% if request.user.is_staff %}
               <a href="{% url 'admin:index' %}">{% trans "Administration" %}</a>
             {% endif %}
             <a href="{% url 'web:profile' %}">{% trans "Profile" %}</a>
@@ -41,6 +44,12 @@
             <a class="nav-cta" href="{% url 'admin:index' %}">{% trans "Administration" %}</a>
           {% endif %}
         </nav>
+        {% has_permission request.user "view_all_reservations" as can_view_all_reservations %}
+        {% if can_view_all_reservations %}
+          <nav id="cross-user-navigation" aria-label="{% trans 'Cross-user navigation' %}">
+            <a href="{% url 'management-ui:reservation-list' %}">{% trans "All reservations" %}</a>
+          </nav>
+        {% endif %}
       </div>
       {% if request.user.is_authenticated and display_timezone %}
         <p class="timezone-banner">

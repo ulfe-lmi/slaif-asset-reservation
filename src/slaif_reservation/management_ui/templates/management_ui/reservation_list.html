@@ -1,9 +1,9 @@
 {% extends "web/base.html" %}
 {% load i18n form_guidance %}
-{% block title %}{% trans "Managed reservations" %} — SLAIF Asset Reservation{% endblock %}
+{% block title %}{% trans "All reservations" %} — SLAIF Asset Reservation{% endblock %}
 {% block content %}
   {% include "management_ui/_nav.html" %}
-  <h1>{% trans "Managed reservations" %}</h1>
+  <h1>{% trans "All reservations" %}</h1>
   <form method="get" class="filters">
     {{ filter_form.non_field_errors }}
     {% for field in filter_form %}
@@ -32,4 +32,19 @@
       {% endfor %}
     </tbody>
   </table></div>
+  {% if pagination.has_previous or pagination.has_next %}
+    <nav class="pagination" aria-label="{% trans 'All reservations pages' %}">
+      {% if pagination.has_previous %}
+        <a href="{{ pagination.prev_url }}">&larr; {% trans "Previous" %}</a>
+      {% else %}
+        <span aria-disabled="true">&larr; {% trans "Previous" %}</span>
+      {% endif %}
+      <span>{% blocktrans with number=pagination.number pages=pagination.num_pages %}Page {{ number }} of {{ pages }}{% endblocktrans %}</span>
+      {% if pagination.has_next %}
+        <a href="{{ pagination.next_url }}">{% trans "Next" %} &rarr;</a>
+      {% else %}
+        <span aria-disabled="true">{% trans "Next" %} &rarr;</span>
+      {% endif %}
+    </nav>
+  {% endif %}
 {% endblock %}
