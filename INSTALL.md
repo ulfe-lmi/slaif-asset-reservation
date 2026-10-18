@@ -607,6 +607,15 @@ the new alias. Changing the image alias does not change project or volume identi
    (`python manage.py initialize_default_policy`); any existing policy
    configuration makes it a no-op.
 
+   Authorization compatibility: `is_staff` alone no longer admits the
+   `/manage/` management area. If current staff accounts exercised
+   management before the upgrade, deliberately choose their retained
+   management grants before returning service to users — dry-run-first
+   `grant_management_access` for the selected staff, or groups/individual
+   permissions for partial or non-staff grants (see the deliberate
+   upgrade steps in
+   [docs/authorization.md](docs/authorization.md#deliberate-upgrade-implemented-foundation-operator-steps)).
+
 6. Restart the application on the new image:
 
    ```bash

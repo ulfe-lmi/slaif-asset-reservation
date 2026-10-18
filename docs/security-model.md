@@ -161,10 +161,16 @@ not grant any hidden bypass on ordinary member routes; member selectors remain
 owner-scoped. Management mutations use POST plus CSRF and call audited/domain
 services rather than direct model mutation.
 
-Maintenance-blackout reasons are staff-visible operational text. Ordinary member pages and API
-availability show blackout time only as unavailable, without the reason, creator, affected user
-identity, purpose, cancellation reason, or audit internals. Active blackouts block new overlapping
-reservations through the authoritative creation service.
+Maintenance-blackout reasons are operational text shown in the management
+blackout detail view only to an active non-service-account human holding
+`reservations.view_maintenance_blackouts` or
+`reservations.manage_maintenance_blackouts` (which can include non-staff
+users granted that application capability); the protected Administration
+model remains staff-admission read-only and service-backed. Ordinary
+member pages and API availability show blackout time only as unavailable,
+without the reason, creator, affected user identity, purpose,
+cancellation reason, or audit internals. Active blackouts block new
+overlapping reservations through the authoritative creation service.
 
 Audit browsing requires the audit view capability and CSV export requires the
 audit export capability; both are read-only, bounded, and privacy-minimized.

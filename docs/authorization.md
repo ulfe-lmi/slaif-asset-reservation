@@ -227,6 +227,79 @@ rows, UUIDs, names, emails or free text.
   services that serve them; buttons and navigation only reflect the same
   checks.
 
+## Setting up grants: groups and individual permissions (operator procedure)
+
+Application permissions are granted deliberately through the existing
+Administration: the existing `auth.Group` model (Administration → Groups,
+with its standard "Permissions" fieldset) and the user change page
+(Administration → Users, with its "Groups" and "Permissions" fields).
+Nothing in the application matches group names, infers flags or model
+permissions from names, or enrolls users automatically: a group name
+itself grants nothing, and every grant below is an explicit operator
+choice.
+
+**Group setup (reusable for many users):**
+
+1. Administration → Groups → "Add group": choose any operator name (free
+   text; an illustrative name like "Lab members" carries no application
+   meaning).
+2. On the group change page, tick the needed **application** permissions
+   in the "Permissions" fieldset — the ten documented `reservations`
+   namespace codenames (for example `reservations.book_assets`,
+   `reservations.view_all_reservations`,
+   `reservations.view_maintenance_blackouts`). They are listed separately
+   from the per-model Add/Change/Delete/View permissions (such as
+   `reservations.view_reservation` in Administration): a model View
+   permission is not an application capability and never implies
+   `reservations.view_all_reservations` or any other application
+   permission.
+3. Save the group, then assign it: Administration → Users → user change
+   page → tick the group under "Groups" and save.
+
+**Individual assignments (supported and unchanged):** the same ten
+application permissions can be ticked directly under "Permissions" on a
+user change page, without any group. Grants combine by union across all
+of a user's groups and individual permissions: removing one group only
+removes the grants that no other group or individual assignment still
+provides, and a removed grant takes effect on the user's next request.
+Non-staff users may receive any selected application permission,
+including the nine management/read-all capabilities and the matching
+/manage/ pages; the staff flag is required only for /admin/ admission
+plus existing model permissions. Accounts created after the upgrade
+receive no automatic application grants or group membership (the one-time
+baseline grant applies only to existing humans).
+
+**Illustrative roles (names are operator examples, never application
+constants):**
+
+| Illustrative role | Application permissions granted | Effect |
+|---|---|---|
+| Administrators | All ten `reservations` application permissions; staff flag plus the needed model permissions only if Administration access is intentionally configured | Full member and management capability: books (subject to exact-asset eligibility) and uses every /manage/ module; /admin/ only when deliberately staffed with model permissions. Still meets exact-asset group eligibility on restricted assets — no staff/superuser bypass. |
+| Lab members | `reservations.book_assets`, `reservations.view_all_reservations` | Books (subject to exact-asset eligibility) and reads the All reservations browser; no cancel/release of other owners' reservations, no policy/blackout/audit rights unless separately granted. |
+| Students | `reservations.book_assets` | Books (subject to exact-asset eligibility); the ordinary member surface already provides list/inspect/cancel/release of their own reservations. |
+| Reservation readers | `reservations.view_all_reservations` | Read-only All reservations browser; no booking, no cancel/release of other owners' reservations, no policy/blackout/audit rights. |
+
+These names are examples of what an operator might create; the
+application contains no group-name constants, creates no groups, and
+grants nothing by name. They exclude the three easy misreadings: no
+automatic privileged membership (nothing is pre-populated for any named
+group), no model View permission granting read-all (it does not), and no
+administrator bypassing asset groups (it cannot — a restricted asset
+still requires membership in at least one of its allowed groups in
+addition to `reservations.book_assets`).
+
+**Asset allowed-group membership** is configured separately on each
+restricted asset (asset change page → "Allowed booking groups"): booking
+a restricted asset additionally requires membership in at least one of
+its listed existing groups, on top of `reservations.book_assets`;
+unrestricted assets require only `reservations.book_assets`; there is no
+implicit parent inheritance. Owners keep list/inspect/cancel/release of
+already-accepted reservations after losing booking capability or group
+membership. Existing tokens stay owner-only: the cross-user bearer
+`reservations:read_all` scope and its issuance rules remain planned, not
+implemented. This target promises no projects, deny policies, directory
+or machine access.
+
 ## Exact-asset booking eligibility (implemented)
 
 - Each asset is explicitly **unrestricted** or **group-restricted**.
@@ -315,23 +388,45 @@ rows, UUIDs, names, emails or free text.
   workflow):** follow [INSTALL.md](../INSTALL.md) — recover the
   installation's recorded Compose project name into
   `SAR_COMPOSE_PROJECT` and keep the same project name and database volume
-  identity (never rename or adopt another project's volume). Run the
-  commands inside the running application service:
+  identity (never rename or adopt another project's volume).
+  The one-off container form (`run --rm app`) uses the current application
+  image and does NOT require the long-running app service to be up, so the
+  steps can run before the public service restart:
   1. Take an operator backup of the deployed database first (INSTALL.md
      section 8; real deployments remain operator-owned; these migrations
      are tested only on owned synthetic databases).
   2. `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py migrate --noinput`
      (applies the permission records, the `external_identifier` column and
      the one-time baseline grant).
-  3. `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py grant_management_access --user <STAFF_UUID> [--user ...]`
-     to review (dry-run writes nothing).
-  4. `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py grant_management_access --user <STAFF_UUID> [--user ...] --apply`
-     to grant the nine management/read-all capabilities
-     (all ten except `book_assets`) as direct permissions to exactly the
-     selected accounts. The command validates every selection before any
-     write, applies atomically and idempotently, never creates users,
+  3. Choose the current active human staff accounts whose management
+     authority you deliberately retain; there is no mass staff grant and
+     no automatic enrolment. Each account's UUID is the `<STAFF_UUID>` in
+     its existing Administration user change URL
+     (`/admin/accounts/user/<STAFF_UUID>/change/`).
+  4. Review with the DEFAULT dry-run (pass no `--apply`; the command has
+     no `--dry-run` flag), repeating `--user` for every selected account:
+     `docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run --rm app python manage.py grant_management_access --user <STAFF_UUID> [--user <STAFF_UUID> ...]`
+     The dry-run validates every selection (existing, active,
+     non-service-account staff) before reporting what would be granted,
+     and writes nothing.
+  5. Grant with the explicit `--apply`: the same command plus `--apply`
+     grants the nine management/read-all capabilities (all ten except
+     `book_assets`, which stays separate) as direct permissions to exactly
+     the selected accounts. The command validates every selection before
+     any write, applies atomically and idempotently, never creates users,
      changes staff/superuser flags or groups, and never grants read-all
-     from old Administration View permissions.
+     from old Administration View permissions. Use this command only when
+     the operator chooses to preserve the full legacy staff management
+     authority; partial or non-staff grants use the existing
+     Administration groups/individual permissions (see [Setting up
+     grants](#setting-up-grants-groups-and-individual-permissions-operator-procedure))
+     — no new flags and no expanded command.
+  6. Verify the selected grants: re-run the default dry-run, which now
+     reports each selected account at `9/9 direct grant(s) present` with
+     `nothing (idempotent)`.
+  7. Restart the application on the new image (INSTALL.md step 6) and
+     access-check: a selected account sees its expected /manage/ modules;
+     an unselected staff account no longer enters /manage/.
 - **Backup and reverse limits (honest):** downgrading does **not**
   silently revoke the baseline booking grant or any operator-configured
   grant (removing grants is a deliberate operator action); Git rollback of
