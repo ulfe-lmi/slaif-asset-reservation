@@ -239,17 +239,34 @@ Depending on the action, reservation commands evaluate:
 
 Django admin permission is not automatically equivalent to domain authorization for custom APIs.
 
-The current product uses broad authenticated-human access: every active non-service-account
-user may browse active assets and request any active, reservable, exclusive asset with an effective
-policy. Project/group and per-token asset restrictions are not implemented; token scopes
-grant actions, with reservation reads/mutations constrained to the owner. The only
-authorized exception is the explicit read-only cross-user `all-reservations` bearer
-surface (its own `reservations:read_all` scope plus the owner's current
-view-all-reservations capability), whose response is the minimal explicit
-cross-user representation described above. Site permission groups control
-administration model permissions, not reservation entitlements. Member reservation
-selectors always filter by current owner before retrieval; staff users on member routes cannot view,
-cancel, or release another user's reservation.
+The current product uses explicit reservations-namespace application
+permissions on an active non-service-account human basis: creating a
+reservation requires the `reservations.book_assets` capability AND
+exact-asset group eligibility (every asset is explicitly unrestricted or
+group-restricted; a restricted asset requires membership in at least one
+of its allowed existing groups, and a restricted asset with no allowed
+groups fails closed - only the booked asset is ever checked). Owners keep
+listing, inspecting, cancelling and releasing their already-accepted
+reservations after losing booking capability or group membership, subject
+to the existing lifecycle and cutoff rules; access changes never rewrite
+existing bookings. Cross-user management actions (others' reservation
+lifecycle, policies, blackouts, audit browsing and export) require the
+explicit management capabilities documented in
+[docs/authorization.md](authorization.md#management-route-inventory-enforced);
+the staff flag alone no longer admits management routes. The only
+authorized cross-user read exception is the explicit read-only
+`all-reservations` bearer surface, which requires BOTH the
+`reservations:read_all` token scope and the owner's current
+`view_all_reservations` capability (dual gate, rechecked per request) and
+renders the minimal explicit cross-user representation described above.
+Projects, organizational memberships and per-token asset scopes remain
+deferred. Permission groups may carry Administration model permissions,
+reservations-namespace application capabilities, or both; grants combine
+additively across all groups and individual assignments, and neither
+staff status nor unrelated Administration permissions confers an
+application booking or management bypass. Member reservation selectors
+always filter by current owner before retrieval; staff users on member
+routes cannot view, cancel, or release another user's reservation.
 
 Shared availability reveals only busy intervals. Other users' identity, email, display name,
 purpose, cancellation reason, and reservation UUID are not rendered. The current user's own busy

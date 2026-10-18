@@ -1,10 +1,10 @@
 # API v1 Design Contract
 
 **Status:** internal-alpha implementation contract. Staff asset list/detail endpoints, bearer `/me`,
-bearer advisory availability, bearer owner reservation endpoints, and the explicit read-only
-cross-user `all-reservations` list/detail surface are implemented. Token lifecycle APIs,
-administrative APIs, projects, memberships, resource restrictions, and API throttling remain
-deferred.
+bearer advisory availability, bearer owner reservation endpoints, the explicit read-only
+cross-user `all-reservations` list/detail surface, shared API abuse budgets, and exact-asset
+group booking eligibility are implemented. Token lifecycle APIs, administrative APIs, projects,
+and memberships remain deferred.
 
 **Base path:** `/api/v1/`
 
@@ -309,9 +309,10 @@ The list envelope is `count`/`next`/`previous`/`results` plus
 reservation owners: booking-eligibility or account-status changes never
 delete or rewrite accepted records, and the active-human restriction
 applies to the token owner, not to reservation history owners. Missing or
-invalid filter values return the existing `400 validation_error`. Any
-other HTTP verb is refused with `405`; no nested cancel/release routes
-exist under this prefix.
+invalid filter values return the existing `400 validation_error`.
+`POST`/`PUT`/`PATCH`/`DELETE` are refused with `405` and no nested
+cancel/release routes exist under this prefix; the standard safe
+`HEAD`/`OPTIONS` methods may exist.
 
 ### `GET /api/v1/all-reservations/{reservation_id}/`
 
@@ -346,7 +347,10 @@ rendered, for any caller, including superusers:
   opaque external identifier string, `null` when unset. Numeric strings
   and leading zeroes are preserved verbatim (max 128 characters,
   case-sensitive). The owner's current identifier is account-mapping
-  metadata, not a snapshot and not a credential.
+  metadata, not a snapshot and not a credential. When the identifier is
+  `null` the consumer cannot infer any machine identity from the row;
+  `owner.id` is only an explicit external mapping key you may choose to
+  store - it is never an automatic Linux UID or host-identity fallback.
 - `lifecycle` is the derived lifecycle (`active`, `upcoming`, `completed`,
   `cancelled`, `released`).
 - `start_at`/`end_at` are the original (immutable) times;
@@ -366,8 +370,9 @@ compatible and unchanged, and the staff asset inventory/docs boundaries
 are unchanged (no bearer asset discovery).
 
 **Enforcer guidance (external integrations):** map
-`owner.external_identifier` opaquely (`null` means no inference is
-possible; `owner.id` is the stable fallback); evaluate
+`owner.external_identifier` opaquely (a `null` identifier means no machine
+identity can be inferred; `owner.id` is only an explicit external mapping
+key, not an automatic Linux UID fallback); evaluate
 `blocking_interval` as an aware `[start, end)` half-open range at your
 chosen instant (cancelled `null` never blocks; a released prefix is
 history, not current availability); and remember the mapping may change
@@ -383,12 +388,11 @@ entitlement or this identifier is never a login right.
 - `/api/v1/me` without trailing slash;
 - administrative reservation APIs;
 - cross-user bearer mutation APIs (the read-all surface is read-only);
-- projects, memberships, and resource authorization beyond the explicit
-  read-all gate above;
+- projects, memberships, and resource authorization beyond exact-asset
+  group booking eligibility and the explicit read-all gate above;
 - availability rules, blackouts, maintenance calendar API;
 - management APIs;
 - service-account/admin token issuance;
-- API throttling;
 - execution gateway integration.
 
 ## Abuse limits and retry
@@ -396,7 +400,10 @@ entitlement or this identifier is never a login right.
 API traffic has shared source, authenticated-account and token budgets.
 Defaults are1,200/600/300 requests per minute respectively; the account budget
 covers all its tokens. A blocked request returns429 `rate_limited`, `Retry-After`,
-`Cache-Control: no-store` and the normal correlation fields. Wait before retrying
+`Cache-Control: no-store` and the normal correlation
+fields; on the `all-reservations` route family the early denials carry
+`private, no-store` plus a `Vary` header including `Authorization`,
+matching the in-view responses. Wait before retrying
 and retain the same idempotency key for a mutation retry. Security-counter
 failure returns503 `service_unavailable`; it does not accept the mutation.
 These controls also bound invalid or missing bearer attempts. See

@@ -151,8 +151,11 @@ def test_browser_token_scope_choices_follow_current_capabilities(
     assert page.locator("fieldset.scope-group").get_attribute("aria-describedby")
     _assert_no_framework_branding(page)
     _assert_no_horizontal_overflow(page)
-    # Screenshot 1 (of max 2): the safe both-capabilities form, default branding.
-    page.screenshot(path=f"{output_path}/token-scope-choices-both-1440.png")
+    # Screenshot 1 (of max 2): the safe both-capabilities form, default
+    # branding. full_page=True so the capture reaches the actual read_all
+    # choice (the last scope option) with its human label and effect line,
+    # not only the upper part of the form.
+    page.screenshot(path=f"{output_path}/token-scope-choices-both-1440.png", full_page=True)
 
     page.set_viewport_size(MOBILE)
     _assert_no_horizontal_overflow(page)
@@ -176,8 +179,12 @@ def test_browser_token_scope_choices_custom_branding_mobile(
         assert page.get_by_label(READ_ALL_LABEL).is_visible()
         assert page.get_by_label(CREATE_LABEL).count() == 0
         _assert_no_horizontal_overflow(page)
-        # Screenshot 2 (of max 2): the safe reader form at 390, custom branding.
-        page.screenshot(path=f"{output_path}/token-scope-choices-reader-390-custom.png")
+        # Screenshot 2 (of max 2): the safe reader form at 390, custom
+        # branding. full_page=True so the capture reaches the actual read_all
+        # choice offered to this reader with its effect line.
+        page.screenshot(
+            path=f"{output_path}/token-scope-choices-reader-390-custom.png", full_page=True
+        )
 
 
 @pytest.mark.django_db(transaction=True)

@@ -8,6 +8,7 @@ and the unchanged owner-only compatibility of the old bearer surface.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, timedelta
 
@@ -19,7 +20,9 @@ from django.utils import timezone
 from slaif_reservation.accounts.models import ApiToken, User
 from slaif_reservation.accounts.services import issue_api_token
 from slaif_reservation.assets.models import Asset
-from slaif_reservation.reservations.models import Reservation
+from slaif_reservation.reservations import services
+from slaif_reservation.reservations.exceptions import ReservationDomainError
+from slaif_reservation.reservations.models import Reservation, ReservationPolicy
 
 READ_ALL = "reservations:read_all"
 LIST_URL = "/api/v1/all-reservations/"
@@ -319,6 +322,85 @@ def test_shared_abuse_budgets_still_apply(client: Client) -> None:
         assert "Retry-After" in second
 
 
+@pytest.mark.django_db
+def test_early_ip_budget_denials_match_read_all_response_contract(client: Client) -> None:
+    """Early IP 429 on the read-all family carries the in-view header contract.
+
+    The middleware answers BEFORE the new view can add its headers, so the
+    published contract (``Cache-Control: private, no-store`` plus a ``Vary``
+    containing ``Authorization``) must hold for early denials too, while
+    every old route keeps its established ``no-store`` behavior.
+    """
+    from django.conf import settings as dj_settings
+
+    owner = viewer()
+    other = user("readall-early429@example.com")
+    other_reservation = reservation(owner=other)
+    token = bearer(owner, [READ_ALL])
+
+    with override_settings(ABUSE_RATES={**dj_settings.ABUSE_RATES, "api_ip": (1, 3600)}):
+        first = client.get(LIST_URL, **auth(token))
+        assert first.status_code == 200
+        denied = client.get(LIST_URL, **auth(token))
+        assert denied.status_code == 429
+        assert denied.json()["code"] == "rate_limited"
+        assert denied.json()["correlation_id"] == denied["X-Request-ID"]
+        assert int(denied["Retry-After"]) >= 1
+        assert denied["Cache-Control"] == "private, no-store"
+        assert "Authorization" in denied.get("Vary", "")
+
+        detail = client.get(f"{LIST_URL}{other_reservation.id}/", **auth(token))
+        assert detail.status_code == 429
+        assert detail["Cache-Control"] == "private, no-store"
+        assert "Authorization" in detail.get("Vary", "")
+
+        # Old owner API denial: unchanged status/header behavior.
+        old = client.get("/api/v1/reservations/", **auth(token))
+        assert old.status_code == 429
+        assert old["Cache-Control"] == "no-store"
+        assert "Authorization" not in old.get("Vary", "")
+
+
+@pytest.mark.django_db
+def test_early_budget_unavailable_503_matches_read_all_response_contract(
+    client: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Early 503 (security budget unavailable) follows the same contract."""
+    from slaif_reservation.config import abuse
+
+    def unavailable(*args: object, **kwargs: object) -> None:
+        raise abuse.BudgetUnavailable("Security budget unavailable.")
+
+    monkeypatch.setattr(abuse, "consume", unavailable)
+
+    owner = viewer()
+    other = user("readall-early503@example.com")
+    other_reservation = reservation(owner=other)
+    token = bearer(owner, [READ_ALL])
+
+    denied = client.get(LIST_URL, **auth(token))
+    assert denied.status_code == 503
+    assert denied.json()["code"] == "service_unavailable"
+    assert "Retry-After" not in denied
+    assert denied["Cache-Control"] == "private, no-store"
+    assert "Authorization" in denied.get("Vary", "")
+
+    detail = client.get(f"{LIST_URL}{other_reservation.id}/", **auth(token))
+    assert detail.status_code == 503
+    assert detail["Cache-Control"] == "private, no-store"
+    assert "Authorization" in detail.get("Vary", "")
+
+    # Old owner API and login denials keep their established headers.
+    old = client.get("/api/v1/reservations/", **auth(token))
+    assert old.status_code == 503
+    assert old["Cache-Control"] == "no-store"
+    assert "Authorization" not in old.get("Vary", "")
+    login = client.post("/login/", {"username": "unknown@example.test"})
+    assert login.status_code == 503
+    assert login["Cache-Control"] == "no-store"
+    assert "Authorization" not in login.get("Vary", "")
+
+
 # --- representation and privacy -------------------------------------------------
 
 
@@ -408,54 +490,361 @@ def test_max_length_and_case_sensitive_external_identifier(client: Client) -> No
     assert row["owner"]["external_identifier"] == "A" * 64 + "b" * 64
 
 
-@pytest.mark.django_db
-def test_blocking_interval_semantics_per_status(client: Client) -> None:
-    owner = viewer()
-    other = user("readall-interval@example.com")
-    now = timezone.now()
+def _policy(**overrides: object) -> ReservationPolicy:
+    """One valid global policy so the real domain services can complete."""
+    values = {
+        "name": "readall lifecycle policy",
+        "min_duration_minutes": 15,
+        "max_duration_minutes": 2880,
+        "booking_horizon_days": 30,
+        "min_lead_minutes": 0,
+        "cancellation_cutoff_minutes": 0,
+        "max_upcoming_per_principal": 20,
+        "max_concurrent_per_principal": 10,
+        "purpose_required": False,
+    }
+    values.update(overrides)
+    return ReservationPolicy.objects.create(**values)
 
-    confirmed_upcoming = reservation(
-        owner=other, start=now + timedelta(days=1), end=now + timedelta(days=1, hours=2)
-    )
-    confirmed_past = reservation(
-        owner=other, start=now - timedelta(days=2), end=now - timedelta(days=1, hours=23)
-    )
-    released = reservation(
-        owner=other,
-        status=Reservation.STATUS_RELEASED,
-        start=now - timedelta(days=1),
-        end=now + timedelta(days=1),
-        released_at=now - timedelta(hours=12),
-    )
-    cancelled = reservation(
-        owner=other, status=Reservation.STATUS_CANCELLED, start=now + timedelta(days=3)
-    )
+
+def _book(
+    target: Asset,
+    booker: User,
+    start: timezone.datetime,
+    end: timezone.datetime,
+    now: timezone.datetime,
+    purpose: str = "private purpose canary",
+) -> Reservation:
+    return services.create_reservation(
+        asset=target,
+        requested_by_user=booker,
+        start_at=start,
+        end_at=end,
+        purpose=purpose,
+        now=now,
+    ).reservation
+
+
+# --- real-service lifecycle evidence (order 051-b, criterion 2) ---------------
+#
+# Supersession note: 051-a criterion 6 and the 051-a report claimed "real
+# service-produced confirmed/released/cancelled bookings" for the blocking
+# interval evidence; that claim was inaccurate - the 051-a test constructed
+# every row directly through the ORM. The immutable 051-a report is never
+# edited. The tests below supersede that claim with actual
+# create_reservation / release_reservation / cancel_reservation evidence:
+# a valid global policy, explicit grants and controlled aware instants.
+
+
+@pytest.mark.django_db
+def test_real_service_lifecycle_blocking_intervals(client: Client) -> None:
+    """Real create/release/cancel services drive the published interval facts."""
+    _policy()
+    owner = viewer()
+    booker = user("readall-lc-booker@example.com")
+    grant(booker, "book_assets")
+
+    now = timezone.now().replace(microsecond=0)
+    upcoming_asset = asset("readall-lc-upcoming")
+    released_asset = asset("readall-lc-released")
+    cancelled_asset = asset("readall-lc-cancelled")
+    past_asset = asset("readall-lc-past")
+
+    up_start = now + timedelta(hours=1)
+    upcoming = _book(upcoming_asset, booker, up_start, up_start + timedelta(hours=2), now)
+    active = _book(released_asset, booker, now, now + timedelta(hours=4), now)
+    ca_start = now + timedelta(hours=5)
+    cancelled = _book(cancelled_asset, booker, ca_start, ca_start + timedelta(hours=2), now)
+    past_now = now - timedelta(days=3)
+    past_start = past_now + timedelta(hours=1)
+    past = _book(past_asset, booker, past_start, past_start + timedelta(hours=24), past_now)
 
     token = bearer(owner, [READ_ALL])
-    for reservation_row, expected in [
-        (confirmed_upcoming, ("upcoming", True)),
-        (confirmed_past, ("completed", True)),
-        (released, ("released", True)),
-        (cancelled, ("cancelled", False)),
-    ]:
-        detail = client.get(f"{LIST_URL}{reservation_row.id}/", **auth(token))
-        assert detail.status_code == 200
-        row = detail.json()
-        assert row["lifecycle"] == expected[0]
-        if expected[1]:
-            assert row["blocking_interval"] == {
-                "start_at": iso(reservation_row.start_at),
-                "end_at": iso(reservation_row.effective_end_at),
-            }
-        else:
-            assert row["blocking_interval"] is None
 
-    # A released record keeps the consumed prefix as original-end evidence.
-    released_detail = client.get(f"{LIST_URL}{released.id}/", **auth(token))
-    row = released_detail.json()
+    # Upcoming confirmed row: the full original interval blocks.
+    row = client.get(f"{LIST_URL}{upcoming.id}/", **auth(token)).json()
+    assert row["lifecycle"] == "upcoming"
+    assert row["blocking_interval"] == {
+        "start_at": iso(upcoming.start_at),
+        "end_at": iso(upcoming.effective_end_at),
+    }
+
+    # Real release mid-interval: the original end survives, the consumed
+    # prefix becomes the effective (blocking) interval.
+    release_at = now + timedelta(hours=1)
+    released = services.release_reservation(
+        reservation=active,
+        requested_by_user=booker,
+        now=release_at,
+    ).reservation
+    assert released.status == Reservation.STATUS_RELEASED
+    assert released.released_at == release_at
+    assert released.effective_end_at == release_at
+    assert released.end_at == now + timedelta(hours=4)
+    row = client.get(f"{LIST_URL}{released.id}/", **auth(token)).json()
+    assert row["lifecycle"] == "released"
     assert row["released_at"] == iso(released.released_at)
     assert row["end_at"] == iso(released.end_at)
-    assert row["blocking_interval"]["end_at"] == iso(released.effective_end_at)
+    assert row["effective_end_at"] == iso(released.effective_end_at)
+    assert row["blocking_interval"] == {
+        "start_at": iso(released.start_at),
+        "end_at": iso(released.effective_end_at),
+    }
+
+    # Half-open boundary: the consumed prefix still blocks overlaps ...
+    overlap_start = now + timedelta(minutes=30)
+    with pytest.raises(ReservationDomainError) as overlap:
+        _book(released_asset, booker, overlap_start, release_at + timedelta(minutes=30), now)
+    assert overlap.value.code == "reservation_conflict"
+    # ... but a booking starting exactly at the effective end is allowed.
+    boundary = _book(released_asset, booker, release_at, release_at + timedelta(hours=2), now)
+    assert boundary.status == Reservation.STATUS_CONFIRMED
+
+    # Real cancellation: cancelled rows carry no blocking interval at all.
+    services.cancel_reservation(
+        reservation=cancelled,
+        requested_by_user=booker,
+        reason="private cancellation canary",
+        now=now,
+    )
+    cancelled.refresh_from_db()
+    assert cancelled.status == Reservation.STATUS_CANCELLED
+    assert cancelled.cancelled_at == now
+    assert cancelled.cancellation_reason == "private cancellation canary"
+    row = client.get(f"{LIST_URL}{cancelled.id}/", **auth(token)).json()
+    assert row["lifecycle"] == "cancelled"
+    assert row["blocking_interval"] is None
+    assert row["cancelled_at"] == iso(cancelled.cancelled_at)
+    # Cancelled rows never block: the exact same window books again.
+    rebooked = _book(cancelled_asset, booker, ca_start, ca_start + timedelta(hours=2), now)
+    assert rebooked.status == Reservation.STATUS_CONFIRMED
+
+    # Completed past row: the historical interval is still reported.
+    row = client.get(f"{LIST_URL}{past.id}/", **auth(token)).json()
+    assert row["lifecycle"] == "completed"
+    assert row["blocking_interval"] == {
+        "start_at": iso(past.start_at),
+        "end_at": iso(past.effective_end_at),
+    }
+
+
+@pytest.mark.django_db
+def test_history_predating_query_still_overlapping(client: Client) -> None:
+    """`from` includes records predating the bound while they still overlap."""
+    _policy()
+    owner = viewer()
+    booker = user("readall-history-booker@example.com")
+    grant(booker, "book_assets")
+    now = timezone.now().replace(microsecond=0)
+
+    past_asset = asset("readall-history-past")
+    past_now = now - timedelta(days=3)
+    past_start = past_now + timedelta(hours=1)
+    past = _book(past_asset, booker, past_start, past_start + timedelta(hours=24), past_now)
+
+    released_asset = asset("readall-history-released")
+    active = _book(released_asset, booker, now, now + timedelta(hours=4), now)
+    release_at = now + timedelta(hours=1)
+    services.release_reservation(reservation=active, requested_by_user=booker, now=release_at)
+
+    token = bearer(owner, [READ_ALL])
+
+    # Past record fully ends before this bound: excluded.
+    body = client.get(LIST_URL, {"from": iso(now - timedelta(hours=12))}, **auth(token)).json()
+    rows = {r["id"] for r in body["results"]}
+    assert str(past.id) not in rows
+    assert str(active.id) in rows
+
+    # Past record starts before the bound but still overlaps it: included.
+    body = client.get(LIST_URL, {"from": iso(now - timedelta(days=2))}, **auth(token)).json()
+    rows = {r["id"] for r in body["results"]}
+    assert str(past.id) in rows
+    assert str(active.id) in rows
+
+    # Released record: only the consumed prefix overlaps this bound, yet the
+    # record is included because the prefix still overlaps it.
+    body = client.get(LIST_URL, {"from": iso(now + timedelta(minutes=30))}, **auth(token)).json()
+    rows = {r["id"] for r in body["results"]}
+    assert str(active.id) in rows
+    assert str(past.id) not in rows
+
+
+@pytest.mark.django_db
+def test_history_stays_visible_after_asset_and_account_inactivation(client: Client) -> None:
+    """Access changes never delete or hide accepted reservation history."""
+    _policy()
+    owner = viewer()
+    booker = user("readall-history-owner@example.com")
+    grant(booker, "book_assets")
+    now = timezone.now().replace(microsecond=0)
+
+    past_asset = asset("readall-history-inactive")
+    past_now = now - timedelta(days=3)
+    past_start = past_now + timedelta(hours=1)
+    past = _book(past_asset, booker, past_start, past_start + timedelta(hours=24), past_now)
+    up_asset = asset("readall-history-up")
+    up_start = now + timedelta(hours=1)
+    upcoming = _book(up_asset, booker, up_start, up_start + timedelta(hours=2), now)
+
+    token = bearer(owner, [READ_ALL])
+    assert client.get(f"{LIST_URL}{past.id}/", **auth(token)).status_code == 200
+
+    # Asset deactivation: history stays visible (the asset invariant also
+    # forces reservable=False on deactivation).
+    past_asset.active = False
+    past_asset.reservable = False
+    past_asset.save()
+    assert client.get(f"{LIST_URL}{past.id}/", **auth(token)).status_code == 200
+
+    # Owner account inactivation: history stays visible (the active-human
+    # restriction applies to the token owner, not to history owners).
+    User.objects.filter(pk=booker.pk).update(is_active=False)
+    listing = client.get(LIST_URL, **auth(token)).json()
+    rows = {r["id"] for r in listing["results"]}
+    assert str(past.id) in rows and str(upcoming.id) in rows
+    detail = client.get(f"{LIST_URL}{past.id}/", **auth(token))
+    assert detail.status_code == 200
+    assert detail.json()["owner"]["id"] == str(booker.id)
+
+
+@pytest.mark.django_db
+def test_real_service_payload_canaries_list_detail_and_safe_denials(client: Client) -> None:
+    """Real-service rows keep the exact allow-list; denials leak no canary."""
+    _policy()
+    owner = viewer()
+    booker = user("readall-canary-booker@example.com", display_name="Canary Owner Name")
+    grant(booker, "book_assets")
+    booker.external_identifier = "ext-001001"
+    booker.save(update_fields=["external_identifier"])
+    booker.groups.add(Group.objects.create(name="readall-canary-group"))
+    canary_asset = Asset.objects.create(
+        slug="readall-canary-asset",
+        name="Readall Canary Asset",
+        kind=Asset.KIND_GPU,
+        active=True,
+        reservable=True,
+        location="private location canary",
+        physical_locator="private physical locator canary",
+    )
+    now = timezone.now().replace(microsecond=0)
+    up_start = now + timedelta(hours=1)
+    confirmed = _book(canary_asset, booker, up_start, up_start + timedelta(hours=2), now)
+    other_asset = asset("readall-canary-asset-2")
+    ca_start = now + timedelta(hours=5)
+    cancelled = _book(other_asset, booker, ca_start, ca_start + timedelta(hours=2), now)
+    services.cancel_reservation(
+        reservation=cancelled,
+        requested_by_user=booker,
+        reason="private cancellation canary",
+        now=now,
+    )
+    cancelled.refresh_from_db()
+
+    token = bearer(owner, [READ_ALL])
+    forbidden = (
+        booker.email,
+        "Canary Owner Name",
+        "private purpose canary",
+        "private cancellation canary",
+        "private location canary",
+        "private physical locator canary",
+        "readall-canary-group",
+        "is_staff",
+        "is_superuser",
+        "password",
+        "verifier",
+        "created_at",
+        "source",
+    )
+
+    # List: exact allow-list per row, populated canaries nowhere in the body.
+    listing = client.get(LIST_URL, **auth(token))
+    assert listing.status_code == 200
+    body = listing.json()
+    rows = {r["id"]: r for r in body["results"]}
+    assert set(rows) == {str(confirmed.id), str(cancelled.id)}
+    for row in rows.values():
+        assert set(row) == ALLOWED_ROW_KEYS
+        assert set(row["asset"]) == {"id", "slug", "name", "kind"}
+        assert set(row["owner"]) == {"id", "external_identifier"}
+        assert row["owner"]["id"] == str(booker.id)
+        assert row["owner"]["external_identifier"] == "ext-001001"
+    rendered = listing.content.decode()
+    for value in forbidden:
+        assert value not in rendered, value
+
+    # Detail: exact allow-list plus correlation, no canary value.
+    detail = client.get(f"{LIST_URL}{confirmed.id}/", **auth(token))
+    assert detail.status_code == 200
+    assert set(detail.json()) == ALLOWED_ROW_KEYS | {"correlation_id"}
+    for value in forbidden:
+        assert value not in detail.content.decode(), value
+
+    # Safe denial (403) and safe error (404) responses leak no canary value.
+    stripped = user("readall-canary-403@example.com")
+    grant(stripped, "view_all_reservations")
+    stripped_token = bearer(stripped, [READ_ALL])
+    stripped.user_permissions.clear()
+    denied = client.get(LIST_URL, **auth(stripped_token))
+    assert denied.status_code == 403
+    for value in forbidden:
+        assert value not in denied.content.decode(), value
+    missing = client.get(f"{LIST_URL}{uuid.uuid4()}/", **auth(token))
+    assert missing.status_code == 404
+    for value in forbidden:
+        assert value not in missing.content.decode(), value
+
+
+@pytest.mark.django_db
+def test_group_removal_same_token_additive_grant_retained(client: Client) -> None:
+    """Group removal hits the SAME valid token; additive grants survive it."""
+    _policy()
+    owner = user("readall-groups@example.com")
+    view_group = Group.objects.create(name="readall-groups-view")
+    view_group.permissions.add(permission("view_all_reservations"))
+    book_group = Group.objects.create(name="readall-groups-book")
+    book_group.permissions.add(permission("book_assets"))
+    owner.groups.add(view_group, book_group)
+
+    token = bearer(owner, [READ_ALL, "reservations:create"])
+    assert client.get(LIST_URL, **auth(token)).status_code == 200
+
+    # The view_all group is removed: the SAME valid token is denied by the
+    # existing unchanged active-human helper.
+    owner.groups.remove(view_group)
+    denied = client.get(LIST_URL, **auth(token))
+    assert denied.status_code == 403
+    assert denied.json()["code"] == "permission_denied"
+
+    # The retained additive grant (booking via the other group) still works
+    # through the real service...
+    now = timezone.now().replace(microsecond=0)
+    target = asset("readall-groups-asset")
+    up_start = now + timedelta(hours=1)
+    created = _book(target, owner, up_start, up_start + timedelta(hours=2), now)
+    assert created.status == Reservation.STATUS_CONFIRMED
+    # ...and through the bearer creation endpoint with the same token.
+    api_start = now + timedelta(hours=5)
+    payload = json.dumps(
+        {
+            "asset_id": str(target.id),
+            "start_at": iso(api_start),
+            "end_at": iso(api_start + timedelta(hours=1)),
+            "purpose": "additive grant retained",
+        }
+    )
+    posted = client.post(
+        "/api/v1/reservations/",
+        payload,
+        content_type="application/json",
+        HTTP_IDEMPOTENCY_KEY="readall-groups-create-1",
+        **auth(token),
+    )
+    assert posted.status_code == 201
+
+    # An individual re-grant of view_all restores the SAME token again.
+    owner.user_permissions.add(permission("view_all_reservations"))
+    assert client.get(LIST_URL, **auth(token)).status_code == 200
 
 
 # --- filters, pagination and read-only verbs ------------------------------------
