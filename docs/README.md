@@ -92,9 +92,14 @@ Specialist and historical material, not installation instructions:
   protection settings.
 - [audit/](audit/) — independent closure-audit protocol, request and report
   templates, and audit reports (immutable evidence records).
-- [Current Internet/UX software audit](audit/reports/M-INTERNET-UX-PILOT-cd5a436.md)
-  and [publication freshness](audit/qualification/M-INTERNET-UX-PILOT-FRESHNESS.md)
-  — exact-revision evidence for human judgment; real exposure remains separate.
+- [Current group-authorization software audit](audit/reports/M-GROUP-AUTHORIZATION-bddda89.md)
+  and [publication freshness](audit/qualification/M-GROUP-AUTHORIZATION-FRESHNESS.md)
+  — exact-revision full-53 closure evidence for human milestone judgment;
+  acceptance, release and real exposure remain separate.
+- The [Internet/UX software audit](audit/reports/M-INTERNET-UX-PILOT-cd5a436.md)
+  with its [publication freshness](audit/qualification/M-INTERNET-UX-PILOT-FRESHNESS.md),
+  and the [failed group-authorization closure](audit/reports/M-GROUP-AUTHORIZATION-1adf776.md),
+  remain immutable historical/specialist records.
 - [oap/README.md](../oap/README.md) — the local OAP control plane layout
   (orders, reports, pointer).
 - [migration-from-smartscheduling.md](migration-from-smartscheduling.md) —

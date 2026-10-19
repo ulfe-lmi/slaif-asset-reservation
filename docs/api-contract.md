@@ -15,7 +15,8 @@ intended semantics that must stay aligned with implementation.
 
 - Human UI and API clients use the same reservation domain services.
 - Bearer-token authentication is enabled only on the implemented token-authenticated endpoints.
-- Existing staff-session asset list/detail endpoints remain staff-session-only.
+- The legacy staff-session asset list/detail endpoints require a current
+  active human staff session.
 - IDs are opaque UUIDs.
 - API timestamps are aware ISO-8601 instants and are serialized as UTC.
 - Mutation endpoints require idempotency.
@@ -44,7 +45,7 @@ reservations:release
 reservations:read_all
 ```
 
-Work Order 0006 uses:
+Current scope usage:
 
 - `availability:read` for asset availability;
 - `reservations:read` for reservation list/detail (owner-only);
@@ -53,8 +54,9 @@ Work Order 0006 uses:
 - `reservations:release` for early release;
 - `reservations:read_all` for the explicit cross-user list/detail surface.
 
-The existing `/api/v1/assets/` and `/api/v1/assets/{asset_id}/` endpoints still require a staff
-session. Bearer `assets:read` does not grant those endpoints in this slice.
+The existing `/api/v1/assets/` and `/api/v1/assets/{asset_id}/` endpoints still require a current
+active human staff session. Bearer `assets:read` does not grant those
+endpoints in this slice.
 
 `reservations:read` remains **owner-only**: even a token that also carries
 `reservations:read_all` (or a staff/superuser owner with every application

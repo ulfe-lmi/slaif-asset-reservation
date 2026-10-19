@@ -6,11 +6,15 @@ new reservations), management capability enforcement (the nine management
 capabilities gate every /manage/ route and the shared mutation services, and
 the separate All reservations browser is live) and the explicit read-only
 bearer `reservations:read_all` cross-user list/detail API surface with its
-issuance ceilings (active; still UNPROVEN pending the fresh independent ICA
-at the exact merged revision).** This page records the selected
-M-GROUP-AUTHORIZATION contract (ARCHITECTURE.md A-16; stable rows
-SAR-048–SAR-053, all UNPROVEN until a fresh independent ICA at the exact
-merged revision).
+issuance ceilings (implemented; the fresh independent full-53 ICA at exact
+merged revision `bddda89a5ddb428c64a36c7c2bd1f35cab2acbba` classifies all
+53 canonical rows IMPLEMENTED within its stated software/synthetic scope).**
+This page records the selected M-GROUP-AUTHORIZATION contract
+(ARCHITECTURE.md A-16; stable rows SAR-048–SAR-053). That closure is
+published at [docs/audit/reports/M-GROUP-AUTHORIZATION-bddda89.md](audit/reports/M-GROUP-AUTHORIZATION-bddda89.md)
+with its [publication freshness record](audit/qualification/M-GROUP-AUTHORIZATION-FRESHNESS.md);
+it supports presentation to HUMAN milestone judgment only — no human
+acceptance, release or deployment is inferred.
 
 ## Available now
 
@@ -168,7 +172,8 @@ read-all dual gate documented above; the deferrals below remain deferred.
   availability:read; the explicit read-only cross-user
   `/api/v1/all-reservations/` list/detail (dual gate:
   `reservations:read_all` scope + current `view_all_reservations`
-  capability); asset list/detail remain staff-session-only. The API
+  capability); asset list/detail remain current active human
+  staff-session-only. The API
   accepts only its bounded known fields; `external_identifier` is not an
   API input.
 - Booking eligibility is enforced for NEW reservations (global
@@ -239,12 +244,18 @@ rows, UUIDs, names, emails or free text.
 
 ## Admin vs staff
 
-- **Staff** is admission to /admin/ only, with existing model permissions.
-  Staff or unrelated Administration permissions confer **no** application
-  management or booking bypass. The explicit capability grants from
+- **Staff** admits /admin/ with existing per-model permissions, and the
+  legacy staff-session read surfaces additionally require a current active
+  human staff session: the asset list/detail API
+  (`/api/v1/assets/`, `/api/v1/assets/{asset_id}/`) and, when enabled, the
+  private OpenAPI schema/docs endpoints. Staff status or unrelated
+  Administration permissions alone confer **no** /manage/ access, no
+  booking (`book_assets`), no cross-user read-all, and no bypass of
+  protected or domain records. The explicit capability grants from
   `grant_management_access` are direct application permissions, not
   implicit `is_staff` authority; per-model Administration access remains
-  governed by the framework's model permissions.
+  governed by the framework's model permissions and stays separate from
+  application capability grants.
 - **Trusted active human superusers** retain Django's
   application-permission semantics and all protected-record/domain
   restrictions; they still meet exact-asset group eligibility when
