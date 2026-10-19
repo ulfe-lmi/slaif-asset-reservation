@@ -8,7 +8,9 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from rest_framework.permissions import BasePermission, IsAdminUser
+from rest_framework.permissions import BasePermission
+
+from slaif_reservation.api.permissions import IsActiveStaffHuman
 
 # The handler* imports are intentionally unused at runtime: Django resolves
 # the branded browser error handlers from the ROOT_URLCONF namespace.
@@ -29,7 +31,7 @@ class ApiDocumentationPermission(BasePermission):  # type: ignore[misc]
     def has_permission(self, request: Any, view: Any) -> bool:
         if settings.API_DOCS_PUBLIC:
             return True
-        return bool(IsAdminUser().has_permission(request, view))
+        return IsActiveStaffHuman().has_permission(request, view)
 
 
 api_documentation_permission_classes = [ApiDocumentationPermission]

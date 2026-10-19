@@ -196,8 +196,9 @@ not that all future human risk decisions have been made.
 read bearer and external identifier; workflow clarification: concentrated OAP, coding agent).
 The selected target is recorded in ARCHITECTURE.md A-16 with stable rows SAR-048–SAR-053,
 each initially UNPROVEN until a fresh independent closure at the exact merged revision.
-Selection is not completion: no capability, route, scope, field, command or migration in
-A-16 exists yet.
+The original 2026-10-17 selection is historical provenance: at selection time no
+capability, route, scope, field, command or migration in A-16 existed yet, and the
+principle that selection is not completion remains binding.
 
 **Selected target, no infrastructure authorization.** Extend existing Django groups and
 individual permissions across member, management and Administration surfaces; explicit
@@ -208,11 +209,14 @@ exposure, DNS/TLS/firewall, identity or secret administration, execution or phys
 allocation; the external enforcer owns account mapping and enforcement outside this
 application.
 
-**Prerequisite and development purposes (scoped future work, not completed).** The
-selected-target contract recorded by order 047-a (ARCHITECTURE.md A-16, SAR-048–SAR-053,
-compact projection, docs/authorization.md) is the binding prerequisite for every purpose
-below. Each purpose requires its own strategy-issued order with live authority, exact
-scope, base and PR; the numbering is a private orientation, not an active backlog:
+**Development purposes — original scope map, retained as history.** The selected-target
+contract recorded by order 047-a (ARCHITECTURE.md A-16, SAR-048–SAR-053, compact
+projection, docs/authorization.md) was the binding prerequisite for every purpose below.
+Each purpose required its own strategy-issued order with live authority, exact scope,
+base and PR; the numbering is a private orientation, not an active backlog. The table is
+retained as the original selection/scope map — a labelled history, not nonexistent
+future implementation or a new replay queue; per-purpose delivered status is recorded
+under Current state below:
 
 | # | Purpose (derived from A-16) | Stable rows |
 |---|---|---|
@@ -221,6 +225,44 @@ scope, base and PR; the numbering is a private orientation, not an active backlo
 | 050 | Explicit cross-user management visibility: All reservations browser with validated filters/pagination and granular mutation controls | SAR-050 |
 | 051 | Explicit read-all bearer authority: reservations:read_all scope AND current owner permission, bounded issuance, live grant revocation, minimal cross-user representation | SAR-051 |
 | 052 | Full qualification and fresh independent ICA over SAR-001–SAR-053 at the exact merged revision, standard five exact-head checks; human milestone judgment separate | all rows |
+
+**Current state (delivered at merged evidence / pending-ICA).** Purposes 048–051 are
+delivered at the actual merged evidence named below, cited to bind the exact merged
+state; a hash, report or CI result alone is not proof that an implementation exists, and
+none of this is milestone closure, release, deployment or human acceptance.
+**048 — one additive grant system, external identifier and deliberate upgrade setup:**
+delivered by PR100 (objective 48, rounds 048-a…048-c), merged 2026-10-17 at
+`12947e9b368445eeb4a48416421626224b49f4dc`, with immutable reports
+`oap/reports/048-a-authorization-foundation.md`,
+`oap/reports/048-b-identifier-review-closure.md` and
+`oap/reports/048-c-deterministic-verification-clock.md`.
+**049 — exact-asset booking eligibility:** delivered by PR102 (rounds 049-a/049-b),
+merged 2026-10-17 at `b873f4cf1071bded044ba456625b0ced355407a8`, with immutable reports
+`oap/reports/049-a-booking-eligibility.md` and
+`oap/reports/049-b-booking-eligibility-corrections.md`.
+**050 — explicit cross-user management visibility and granular capabilities:**
+delivered by PR104 (rounds 050-a…050-c), merged 2026-10-18 at
+`3461fa0106c55994a959f88450d4866b018ad890`, with immutable reports
+`oap/reports/050-a-granular-management-authority.md`,
+`oap/reports/050-b-operator-authorization-guide.md` and
+`oap/reports/050-c-report-identity-binding.md`.
+**051 — explicit read-all bearer authority:** delivered by PR106 (rounds 051-a/051-b),
+merged 2026-10-19 at `1adf776e553bcd56cd0a7fa229c8eb0bcb56c1fe`, with immutable reports
+`oap/reports/051-a-read-all-bearer-authority.md` and
+`oap/reports/051-b-read-all-evidence-closure.md`.
+**052 — full qualification and fresh independent ICA:** the fresh full53 independent
+closure audit at the exact merged revision
+`1adf776e553bcd56cd0a7fa229c8eb0bcb56c1fe` is published unchanged as
+[M-GROUP-AUTHORIZATION-1adf776](docs/audit/reports/M-GROUP-AUTHORIZATION-1adf776.md)
+(SHA-256
+`7b03025c4a4f2757b5a0d2e252878ed5f236594bdc2953e2bb57dd40a28c43f1`). That closure is
+FAILED, not green: 48 rows IMPLEMENTED and 5 PARTIAL (SAR-016, SAR-037, SAR-039,
+SAR-048 and SAR-053), with required findings ICA-GA-001 (current-human admission missing
+on the four older staff read surfaces) and ICA-GA-002 (this canonical-status
+reconciliation); optional ICA-GA-O1 provenance refinements remain separately recorded and
+are not ordered by this text. ICA-GA-001/002 are remediated under issue #107 (order
+052-a); after that repair, a fresh independent full-architecture re-audit at the repaired
+merged revision and human milestone judgment remain required and pending.
 
 **Deferral reconciliation.** SAR-036’s deferral of existing-group/resource restriction
 and delegated management capabilities is superseded only by A-16. All other deferrals
