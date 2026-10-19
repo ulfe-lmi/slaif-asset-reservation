@@ -24,12 +24,14 @@ sections 1–11) covers the additive group/permission grant system,
 exact-asset booking eligibility, the separate cross-user read surfaces
 (session browser and bearer), the optional external identifier and the
 deliberate upgrade procedure, with full qualification; the human retains
-milestone judgment and all real D2 deployment decisions. The same human
-authorization extension explicitly authorized public-repository development
-publication/merges for this development work, reconciling the older
-"private repository" shorthand in the architecture/PLAN history; no
-visibility, protection or repository setting was changed by this
-publication, and real application exposure and deployment remain D2.
+milestone judgment and all real D2 deployment decisions. The human first
+selected the M-GROUP-AUTHORIZATION feature; separately, AFTER the
+repository was independently found to be PUBLIC on GitHub, the human
+explicitly confirmed continued development publication/merges in this
+public repository, reconciling the older "private repository" shorthand in
+the architecture/PLAN history. No agent changed any repository visibility,
+protection or setting, and real application exposure and deployment remain
+D2 - a separate human decision, not granted by that confirmation.
 
 ## Evidence and limits
 

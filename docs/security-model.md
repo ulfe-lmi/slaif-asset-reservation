@@ -157,9 +157,15 @@ owner UUID plus opaque external identifier, safe asset identity, aware times,
 lifecycle and the half-open blocking interval) — never owner email, display
 name, free text or credential material. The legacy staff asset list/detail
 API and, when enabled, the private OpenAPI schema/docs endpoints require a
-current active human staff session; bearer tokens never open them. Every
-bearer endpoint checks explicit scopes;
-authentication alone is not authorization.
+current active human staff session; bearer tokens never open them. Each
+bearer operation enforces its explicit scope: `availability:read` on
+advisory availability, `reservations:read` on the owner-scoped list/detail,
+`reservations:create`, `reservations:cancel` and `reservations:release` on
+the owner-scoped mutations, and the `reservations:read_all` dual gate on the
+cross-user surface. The single identity endpoint `/api/v1/me/` is the named
+exception: it requires a valid bearer token but declares no action scope
+(`MeAPIView.required_scopes = ()`) and returns only that token's own
+principal and token context. Authentication alone is not authorization.
 
 The separate management UI is under `/manage/`. Management routes require an
 authenticated active non-service-account human holding the explicit
@@ -255,15 +261,27 @@ existing bookings. Cross-user management actions (others' reservation
 lifecycle, policies, blackouts, audit browsing and export) require the
 explicit management capabilities documented in
 [docs/authorization.md](authorization.md#management-route-inventory-enforced);
-the staff flag alone no longer admits management routes. The authorized
-cross-user read surfaces are exactly two, and both require the current
+the staff flag alone no longer admits management routes. The selected
+application cross-user read surfaces are two, and both require the current
 `view_all_reservations` capability: the session-based All reservations
 browser under /manage/ (an active non-service-account human session), and
 the separate explicit read-only `all-reservations` bearer surface, which
 additionally requires the `reservations:read_all` token scope (dual gate,
 rechecked per request) and renders the minimal explicit cross-user
-representation described above. No other route, scope or capability
-discloses another owner's reservations.
+representation described above. They are the only /manage/ routes and the
+only bearer routes that widen reservation visibility across owners. They
+are not the only authorization paths that can reveal reservation records:
+the existing Administration Reservation model View permission - staff
+admission plus the per-model permission, with no `view_all_reservations`
+needed - lets its holders inspect other owners' booking records (including
+owner identity, times, purpose and lifecycle) in the read-only
+Administration, and the separately granted `view_audit_history` and
+`export_audit_history` capabilities reveal reservation-related audit
+evidence to their holders. Those independent grants are configured
+separately, disclose only what their own permissions allow, and never grant
+the application read-all interfaces. Ordinary member pages and the
+owner-scoped bearer routes stay private to their owners in every
+combination of grants.
 Projects, organizational memberships and per-token asset scopes remain
 deferred. Permission groups may carry Administration model permissions,
 reservations-namespace application capabilities, or both; grants combine

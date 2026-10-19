@@ -1,6 +1,6 @@
 # API v1 Design Contract
 
-**Status:** internal-alpha implementation contract. Staff asset list/detail endpoints, bearer `/me`,
+**Status:** implemented contract for the controlled authenticated pilot. Staff asset list/detail endpoints, bearer `/me`,
 bearer advisory availability, bearer owner reservation endpoints, the explicit read-only
 cross-user `all-reservations` list/detail surface, shared API abuse budgets, and exact-asset
 group booking eligibility are implemented. Token lifecycle APIs, administrative APIs, projects,
@@ -167,9 +167,11 @@ policy, and reservation domain errors such as `authentication_required`, `invali
 `idempotency_required`, `invalid_idempotency_key`, `idempotency_conflict`,
 `idempotency_expired`, `validation_error`, `asset_not_found`, `reservation_not_found`,
 `policy_not_configured`, `policy_ambiguous`, `reservation_conflict`,
-`reservation_not_cancellable`, `cancellation_cutoff`, and `reservation_not_releasable`.
-Work Order 0007 adds `blackout_conflict` for reservation creation attempts that overlap an active
-maintenance blackout.
+`blackout_conflict`, `reservation_not_cancellable`, `cancellation_cutoff`,
+and `reservation_not_releasable`. A reservation creation attempt that
+overlaps an active maintenance blackout returns `409 blackout_conflict`
+(detail "The requested time is unavailable."); the blackout's operational
+text is not disclosed.
 
 Problem responses do not include ORM exception text, SQL, constraint names, stack traces, token
 lookup details, or secret material.
@@ -186,7 +188,10 @@ Asset Reservation API"; the JSON contract is unchanged.
 
 ### `GET /api/v1/me/`
 
-Requires bearer authentication. Returns safe principal and token context:
+Requires a valid bearer token and no additional action scope: the view
+declares `required_scopes = ()`, so any valid token may call this identity
+endpoint (anonymous requests are rejected with the standard authentication
+failure). Returns safe principal and token context:
 
 ```json
 {

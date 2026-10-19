@@ -1,20 +1,24 @@
 # Authorization — group-based access (available now vs planned)
 
-**Status: available now — the foundation, booking enforcement (the
-`reservations.book_assets` capability and exact-asset group eligibility gate
-new reservations), management capability enforcement (the nine management
-capabilities gate every /manage/ route and the shared mutation services, and
-the separate All reservations browser is live) and the explicit read-only
-bearer `reservations:read_all` cross-user list/detail API surface with its
-issuance ceilings (implemented; the fresh independent full-53 ICA at exact
-merged revision `bddda89a5ddb428c64a36c7c2bd1f35cab2acbba` classifies all
-53 canonical rows IMPLEMENTED within its stated software/synthetic scope).**
+**Status: available now.** This product ships one additive, group-based
+authorization system built on the existing Django groups and permissions:
+ten documented `reservations` application permissions (booking, cross-user
+read, management, audit), per-route enforcement on every `/manage/` page
+and in the shared audited services, exact-asset group eligibility for new
+bookings, the separate All reservations browser, the explicit read-only
+bearer `reservations:read_all` cross-user list/detail API with its issuance
+ceilings, and the optional opaque `User.external_identifier`. Every
+application access requires a current active non-service-account human; the
+staff flag alone grants no /manage/ access, no booking and no application
+read-all - it is additionally required (with that active non-service-account
+human status) for Administration admission and the legacy staff-session
+asset list/detail API, and for the OpenAPI schema/docs endpoints when
+enabled in private mode.
 This page records the selected M-GROUP-AUTHORIZATION contract
-(ARCHITECTURE.md A-16; stable rows SAR-048–SAR-053). That closure is
-published at [docs/audit/reports/M-GROUP-AUTHORIZATION-bddda89.md](audit/reports/M-GROUP-AUTHORIZATION-bddda89.md)
-with its [publication freshness record](audit/qualification/M-GROUP-AUTHORIZATION-FRESHNESS.md);
-it supports presentation to HUMAN milestone judgment only — no human
-acceptance, release or deployment is inferred.
+(ARCHITECTURE.md A-16; stable rows SAR-048–SAR-053) as an operator guide:
+what is implemented, what each permission does, how to grant it, and how to
+upgrade an existing installation. Specialist qualification evidence for the
+selected target is noted at the end of this page.
 
 ## Available now
 
@@ -56,8 +60,14 @@ The delivered foundation and enforcement, and only this:
 - **`manage.py grant_management_access`**, an explicit dry-run-first setup
   command (see the deliberate upgrade section below).
 - **Management capability enforcement**: the ten codenames above are
-  enforced. `is_staff` alone admits `/admin/` only and confers **no**
-  management-area access. Every `/manage/` route requires the documented
+  enforced. `is_staff` admits `/admin/` (staff admission with the existing
+  per-model permissions) and, for a current active non-service-account
+  human, the legacy staff-session asset list/detail API and - when enabled
+  in private mode - the OpenAPI schema/docs endpoints; by itself it
+  confers **no** management-area access, no `book_assets` and no
+  application read-all, and viewing Administration records still
+  additionally requires the per-model permissions. Every `/manage/` route
+  requires the documented
   reservations-namespace application permissions listed in the
   [route inventory](#management-route-inventory-enforced) for a current
   active non-service-account human session (anonymous sessions are redirected
@@ -302,8 +312,12 @@ removes the grants that no other group or individual assignment still
 provides, and a removed grant takes effect on the user's next request.
 Non-staff users may receive any selected application permission,
 including the nine management/read-all capabilities and the matching
-/manage/ pages; the staff flag is required only for /admin/ admission
-plus existing model permissions. Accounts created after the upgrade
+/manage/ pages; the staff flag is required for /admin/ admission (plus the
+existing per-model permissions to view Administration records) and, for a
+current active non-service-account human, for the legacy staff-session
+asset list/detail API and the OpenAPI schema/docs endpoints when enabled
+in private mode. Staff alone grants no /manage/ access, no `book_assets`
+and no application read-all. Accounts created after the upgrade
 receive no automatic application grants or group membership (the one-time
 baseline grant applies only to existing humans).
 
@@ -483,6 +497,19 @@ directory or machine access.
   include it and restoring from such a backup restores it; dropping or
   reverting that migration after the fact would delete that configuration,
   and a code rollback does not restore it.
+
+## Specialist qualification evidence
+
+The selected target's closure was assessed by a fresh independent full
+audit at exact merged revision
+`bddda89a5ddb428c64a36c7c2bd1f35cab2acbba`:
+[docs/audit/reports/M-GROUP-AUTHORIZATION-bddda89.md](audit/reports/M-GROUP-AUTHORIZATION-bddda89.md)
+classifies all 53 canonical architecture rows IMPLEMENTED within its stated
+software/synthetic scope, and the [publication freshness
+record](audit/qualification/M-GROUP-AUTHORIZATION-FRESHNESS.md) binds the
+audited base, digests and source-neutrality. That evidence supports
+presentation to HUMAN milestone judgment only - no human acceptance,
+release or deployment is inferred.
 
 ## Deferrals unchanged by this target
 
