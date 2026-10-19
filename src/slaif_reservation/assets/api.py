@@ -7,10 +7,10 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.pagination import LimitOffsetPagination
-from rest_framework.permissions import IsAdminUser
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from slaif_reservation.api.permissions import IsActiveStaffHuman
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.assets.selectors import (
     AssetFilterError,
@@ -47,7 +47,7 @@ asset_filter_parameters = [
 
 class AssetListAPIView(ListAPIView):  # type: ignore[misc]
     authentication_classes = [SessionAuthentication]
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsActiveStaffHuman]
     serializer_class = AssetSerializer
     pagination_class = AssetLimitOffsetPagination
 
@@ -71,7 +71,7 @@ class AssetListAPIView(ListAPIView):  # type: ignore[misc]
 
 class AssetDetailAPIView(RetrieveAPIView):  # type: ignore[misc]
     authentication_classes = [SessionAuthentication]
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsActiveStaffHuman]
     serializer_class = AssetSerializer
     lookup_url_kwarg = "asset_id"
     lookup_field = "id"
