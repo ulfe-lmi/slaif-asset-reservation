@@ -79,7 +79,7 @@ upgrades.
 | Client | Capabilities |
 | --- | --- |
 | **Humans (browser)** | Browse active assets, see privacy-safe advisory availability, create / cancel / release own reservations, manage own API tokens (one-time display), set display name and timezone. Accounts are administrator-created; there is no self-registration. |
-| **Agents (API)** | `/api/v1/me/`, per-asset advisory availability, and owner-scoped reservation list / detail / create / cancel / release with bounded `Idempotency-Key` mutations and machine-readable problem details, plus an explicit read-only cross-user `all-reservations` list/detail surface (its own `reservations:read_all` scope and the token owner's current view-all-reservations capability). Contract: [docs/api-contract.md](docs/api-contract.md). Asset list/detail endpoints remain staff-session-only — a token alone grants no asset discovery. |
+| **Agents (API)** | `/api/v1/me/`, per-asset advisory availability, and owner-scoped reservation list / detail / create / cancel / release with bounded `Idempotency-Key` mutations and machine-readable problem details, plus an explicit read-only cross-user `all-reservations` list/detail surface (its own `reservations:read_all` scope and the token owner's current view-all-reservations capability). Contract: [docs/api-contract.md](docs/api-contract.md). Asset list/detail endpoints require a current active human staff session — a token alone grants no asset discovery. |
 | **Managers (explicit capabilities)** | `/manage/` — admission requires the documented reservations-namespace management capabilities (the staff flag alone no longer admits it; see [docs/authorization.md](docs/authorization.md#management-route-inventory-enforced)): reservation policies, coarse maintenance blackouts, cross-user reservation inspection and lifecycle, audit review and bounded export. Operational: `/health/live`, `/health/ready`, `operational_check`, `pilot_readiness_check`, backup/restore tooling. |
 
 ## Supported runtime
@@ -113,7 +113,7 @@ upgrades.
 | Appearance customization | [docs/branding.md](docs/branding.md) |
 | Visual design and typography | [docs/ux/visual-design.md](docs/ux/visual-design.md) |
 | Testing and verification | [TESTING.md](TESTING.md) |
-| OpenAPI schema and Swagger UI | `/api/schema/` and `/api/docs/`, enabled by `SLAIF_ENABLE_API_DOCS` (disabled by default in production; staff-only there when enabled) — [docs/deployment.md](docs/deployment.md#4-configuration) |
+| OpenAPI schema and Swagger UI | `/api/schema/` and `/api/docs/`, enabled by `SLAIF_ENABLE_API_DOCS` (disabled by default in production; current active human staff session only there when enabled) — [docs/deployment.md](docs/deployment.md#4-configuration) |
 | Operator runbooks and readiness gates | [docs/runbooks/](docs/runbooks/) |
 | Architecture decision records | [docs/decisions/](docs/decisions/) |
 | Full documentation index | [docs/README.md](docs/README.md) |

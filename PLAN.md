@@ -226,7 +226,8 @@ under Current state below:
 | 051 | Explicit read-all bearer authority: reservations:read_all scope AND current owner permission, bounded issuance, live grant revocation, minimal cross-user representation | SAR-051 |
 | 052 | Full qualification and fresh independent ICA over SAR-001–SAR-053 at the exact merged revision, standard five exact-head checks; human milestone judgment separate | all rows |
 
-**Current state (delivered at merged evidence / pending-ICA).** Purposes 048–051 are
+**Current state (delivered at merged evidence; fresh full-53 ICA published,
+human milestone judgment pending).** Purposes 048–051 are
 delivered at the actual merged evidence named below, cited to bind the exact merged
 state; a hash, report or CI result alone is not proof that an implementation exists, and
 none of this is milestone closure, release, deployment or human acceptance.
@@ -261,8 +262,20 @@ SAR-048 and SAR-053), with required findings ICA-GA-001 (current-human admission
 on the four older staff read surfaces) and ICA-GA-002 (this canonical-status
 reconciliation); optional ICA-GA-O1 provenance refinements remain separately recorded and
 are not ordered by this text. ICA-GA-001/002 are remediated under issue #107 (order
-052-a); after that repair, a fresh independent full-architecture re-audit at the repaired
-merged revision and human milestone judgment remain required and pending.
+052-a), merged 2026-10-19 at `bddda89a5ddb428c64a36c7c2bd1f35cab2acbba`.
+The fresh independent full-architecture re-audit at that exact repaired
+merged revision is published unchanged as
+[M-GROUP-AUTHORIZATION-bddda89](docs/audit/reports/M-GROUP-AUTHORIZATION-bddda89.md)
+(SHA-256
+`574024e2511af121f4665a89fa53cdfd0eefb12c816e82697ed2b9f724cd4177`) with its
+[publication freshness record](docs/audit/qualification/M-GROUP-AUTHORIZATION-FRESHNESS.md):
+53 IMPLEMENTED and 0 PARTIAL/ABSENT/UNPROVEN within the stated software/synthetic
+scope, with no mandatory finding. That software/synthetic closure evidence
+supports presentation to HUMAN milestone judgment only: it is not HUMAN
+milestone acceptance, and no release, real deployment or exposure,
+DNS/TLS/firewall, identity or secret administration, private or lab data
+access or physical allocation is inferred from it; the human owns that
+separate milestone and D2 judgment.
 
 **Deferral reconciliation.** SAR-036’s deferral of existing-group/resource restriction
 and delegated management capabilities is superseded only by A-16. All other deferrals
