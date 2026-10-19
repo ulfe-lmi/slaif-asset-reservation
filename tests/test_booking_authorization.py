@@ -990,7 +990,13 @@ def _create_payload(asset: Asset, start, end) -> dict:
 
 
 def test_api_denies_before_any_record_when_unauthorized(no_grant, unrestricted, client) -> None:
+    # 051-a: a create-scope token can only be minted while the owner
+    # currently holds the booking capability, so represent a LEGITIMATE
+    # historical token: grant, issue, then revoke before any request. The
+    # final no-grant 403 and the no-write assertions are preserved.
+    no_grant.user_permissions.add(book_permission())
     token = _token(no_grant, ["reservations:create"])
+    no_grant.user_permissions.clear()
     before_audit_count = AuditEvent.objects.count()
     start, end = future_window()
     response = client.post(
@@ -1212,7 +1218,10 @@ def test_api_missing_asset_404_callback_preserved_when_authorized(direct_booker,
 
 
 def test_api_missing_asset_without_grant_is_403(no_grant, client) -> None:
+    # 051-a: legitimate historical token (grant -> issue -> revoke).
+    no_grant.user_permissions.add(book_permission())
     token = _token(no_grant, ["reservations:create"])
+    no_grant.user_permissions.clear()
     start, end = future_window()
     payload = {
         "asset_id": str(uuid.uuid4()),

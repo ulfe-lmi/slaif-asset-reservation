@@ -2,13 +2,15 @@
 
 **Status: available now — the foundation, booking enforcement (the
 `reservations.book_assets` capability and exact-asset group eligibility gate
-new reservations) and management capability enforcement (the nine management
+new reservations), management capability enforcement (the nine management
 capabilities gate every /manage/ route and the shared mutation services, and
-the separate All reservations browser is live); planned — the bearer
-`reservations:read_all` cross-user list/detail API surface and its issuance
-rules (NOT yet active).** This page records the selected M-GROUP-AUTHORIZATION
-contract (ARCHITECTURE.md A-16; stable rows SAR-048–SAR-053, all UNPROVEN
-until a fresh independent ICA at the exact merged revision).
+the separate All reservations browser is live) and the explicit read-only
+bearer `reservations:read_all` cross-user list/detail API surface with its
+issuance ceilings (active; still UNPROVEN pending the fresh independent ICA
+at the exact merged revision).** This page records the selected
+M-GROUP-AUTHORIZATION contract (ARCHITECTURE.md A-16; stable rows
+SAR-048–SAR-053, all UNPROVEN until a fresh independent ICA at the exact
+merged revision).
 
 ## Available now
 
@@ -39,9 +41,9 @@ The delivered foundation and enforcement, and only this:
   the active booking-eligibility enforcement (the `assets/authorization.py`
   predicate and the `create_reservation` gate build on it) and the active
   management capability enforcement (the `/manage/` route gates and the
-  shared service guards). The planned bearer `reservations:read_all`
-  surface will reuse the same current-permission checks. It caches nothing
-  across calls.
+  shared service guards) and the active bearer `reservations:read_all`
+  dual gate (the read-all API views reuse the same current-permission
+  checks). It caches nothing across calls.
 - **A one-time baseline booking grant** in the accounts migration: existing
   non-service-account users (including inactive rows, so a later normal
   reactivation preserves their former baseline) received the direct
@@ -83,8 +85,36 @@ The delivered foundation and enforcement, and only this:
   times, status and lifecycle with the existing half-open release/cancel
   history meaning; mutation controls appear only for the corresponding
   capability, and read-only viewers are denied even valid forged
-  POSTs. The member bearer API is unchanged (owner-only) until the
-  planned `reservations:read_all` surface.
+  POSTs.
+- **The explicit read-only bearer read-all surface**: the new
+  `GET /api/v1/all-reservations/` and
+  `GET /api/v1/all-reservations/<uuid>/` routes require BOTH the new
+  `reservations:read_all` token scope AND the token owner's CURRENT
+  `view_all_reservations` application permission, rechecked per request
+  through the same active-human helper before any reservation row is
+  fetched. There is no process-global grant cache: group/permission
+  removal takes effect on the token's next request. The representation is
+  the minimal explicit cross-user allow-list (reservation/asset UUID and
+  safe asset identity, owner UUID plus opaque external identifier or
+  null, aware original/effective times, status/lifecycle,
+  release/cancellation timestamps, and the half-open
+  `blocking_interval`); owner email/display/profile/admin flags,
+  credentials, purposes, cancellation/blackout free text and private
+  locators are excluded by construction. The routes are read-only (405
+  otherwise, no nested cancel/release), carry
+  `Cache-Control: private, no-store` and `Vary: Authorization` on every
+  response, and share the existing validated overlap filters
+  (`effective_end_at > from`, `start_at < to`), bounds, 50/max-100
+  pagination and the existing 403/404/429/503 problem contract.
+  Issuance ceilings: a token can only be created with `read_all` while
+  the owner currently holds `view_all_reservations` (and with `create`
+  while it currently holds `book_assets`), checked on the fresh row-locked
+  owner before any token/secret/audit write; existing tokens keep their
+  stored scopes and protected use rechecks the current capability. The
+  owner-scoped bearer endpoints remain owner-only in every combination of
+  scopes and capabilities. See the
+  [API contract](api-contract.md#dual-gate-for-reservationsread_all) for
+  the full contract and enforcer guidance.
 - **Booking eligibility enforcement for NEW reservations**:
   `Asset.booking_restricted` (default False) and
   `Asset.allowed_booking_groups` (an M2M to the EXISTING `auth.Group`
@@ -105,27 +135,20 @@ The delivered foundation and enforcement, and only this:
   group on restricted assets, and owners keep list/inspect/cancel/release
   of existing bookings after losing the capability or a group.
 
-Everything else on this page that is marked planned is still target
-behavior: **the cross-user bearer list/detail routes, the
-`reservations:read_all` token scope and its issuance rules are NOT
-implemented yet** (the enforced application permissions are the booking
-capability, exact-asset eligibility and the management capabilities
-above). Endpoints and scopes named as target behavior are targets, not
-published interfaces.
+The enforced application permissions are the booking capability,
+exact-asset eligibility, the management capabilities and the bearer
+read-all dual gate documented above; the deferrals below remain deferred.
 
-## Planned (enforcement NOT yet active)
+## Deferred (not part of this target)
 
-- The cross-user bearer list/detail routes (the
-  `reservations:read_all` scope), including token-scope issuance refusal
-  for authority-exceeding read-all/create scopes and the minimal
-  cross-user representation. The All reservations **browser** documented
-  above is a separate web surface and is already live; this planned item
-  is only the bearer API surface.
+- Cross-user bearer **mutation** APIs (the read-all surface is
+  read-only); token/management admin APIs; projects, organizational
+  trees, delegated group ownership and general policy languages.
 - No change to existing tokens, policies, exclusivity, lifecycle, audit or
-  idempotency behavior; booking behavior already carries the active
-  eligibility gate and management behavior already carries the capability
-  gates documented above, and no further booking behavior change is
-  planned in this target.
+  idempotency behavior; booking behavior carries the active eligibility
+  gate and management behavior carries the capability gates documented
+  above, and no further booking behavior change is planned in this
+  target.
 
 ## Current baseline (implemented today)
 
@@ -142,14 +165,18 @@ published interfaces.
   permissions; protected records are read-only or service-backed. The user
   change page now exposes the optional external identifier.
 - Bearer API: owner-only reservations:read/create/cancel/release plus
-  availability:read; asset list/detail remain staff-session-only. The API
+  availability:read; the explicit read-only cross-user
+  `/api/v1/all-reservations/` list/detail (dual gate:
+  `reservations:read_all` scope + current `view_all_reservations`
+  capability); asset list/detail remain staff-session-only. The API
   accepts only its bounded known fields; `external_identifier` is not an
   API input.
 - Booking eligibility is enforced for NEW reservations (global
   `book_assets` capability plus exact-asset group eligibility; restricted
   with no allowed groups fails closed; owners retain existing-booking
-  lifecycle). The cross-user **bearer** read surface is still planned; the
-  live cross-user web read surface is the All reservations browser.
+  lifecycle). Both cross-user read surfaces are live: the All
+  reservations **browser** and the explicit read-only **bearer** read-all
+  routes.
 
 ## Permission matrix (enforced)
 
@@ -277,7 +304,7 @@ constants):**
 | Administrators | All ten `reservations` application permissions; staff flag plus the needed model permissions only if Administration access is intentionally configured | Full member and management capability: books (subject to exact-asset eligibility) and uses every /manage/ module; /admin/ only when deliberately staffed with model permissions. Still meets exact-asset group eligibility on restricted assets — no staff/superuser bypass. |
 | Lab members | `reservations.book_assets`, `reservations.view_all_reservations` | Books (subject to exact-asset eligibility) and reads the All reservations browser; no cancel/release of other owners' reservations, no policy/blackout/audit rights unless separately granted. |
 | Students | `reservations.book_assets` | Books (subject to exact-asset eligibility); the ordinary member surface already provides list/inspect/cancel/release of their own reservations. |
-| Reservation readers | `reservations.view_all_reservations` | Read-only All reservations browser; no booking, no cancel/release of other owners' reservations, no policy/blackout/audit rights. |
+| Reservation readers | `reservations.view_all_reservations` | Read-only All reservations browser AND (with a token carrying the new `reservations:read_all` scope — existing tokens are never auto-expanded) the read-only bearer `/api/v1/all-reservations/` list/detail; no booking, no cancel/release of other owners' reservations, no policy/blackout/audit rights. |
 
 These names are examples of what an operator might create; the
 application contains no group-name constants, creates no groups, and
@@ -295,10 +322,12 @@ its listed existing groups, on top of `reservations.book_assets`;
 unrestricted assets require only `reservations.book_assets`; there is no
 implicit parent inheritance. Owners keep list/inspect/cancel/release of
 already-accepted reservations after losing booking capability or group
-membership. Existing tokens stay owner-only: the cross-user bearer
-`reservations:read_all` scope and its issuance rules remain planned, not
-implemented. This target promises no projects, deny policies, directory
-or machine access.
+membership. Existing tokens stay owner-only on the owner endpoints; the
+cross-user bearer `reservations:read_all` scope and its issuance ceilings
+are implemented as documented above (a reader group gains the bearer
+surface only through a NEW token carrying the scope — existing tokens are
+never auto-expanded). This target promises no projects, deny policies,
+directory or machine access.
 
 ## Exact-asset booking eligibility (implemented)
 
@@ -323,29 +352,35 @@ or machine access.
   capability or asset-group membership, subject to existing lifecycle/
   cutoff rules.
 
-## Future owner-only vs separate read-all bearer contract
+## Owner-only vs separate read-all bearer contract (implemented)
 
-- `reservations:read` remains **owner-only**, even for staff/superusers;
-  existing token scope records never change automatically.
-- A new explicit `reservations:read_all` scope authorizes cross-user
+- `reservations:read` remains **owner-only**, even for staff/superusers
+  holding every application capability and both scopes; existing token
+  scope records never change automatically.
+- The explicit `reservations:read_all` scope authorizes the cross-user
   list/detail routes **only when the owner also currently holds**
   `view_all_reservations`; both are rechecked per request; there is no
   process-global grant cache; group/permission removal takes effect on
-  subsequent requests with the same token.
-- Issuance refuses authority-exceeding read-all and create scopes;
+  subsequent requests with the same token (403 on the next request while
+  the same token keeps working for its owner-only scopes).
+- Issuance refuses authority-exceeding read-all and create scopes on the
+  fresh row-locked owner, before any token/secret/audit write;
   expiry/revocation, activity, service-account and shared abuse controls
-  apply unchanged.
+  apply unchanged; the token creation form offers only the currently
+  issuable scopes.
 - There is **no cross-user bearer mutation surface** in this target.
 - The cross-user representation is minimal and explicit: reservation/asset
   UUID and safe asset identity, owner UUID plus external_identifier (null
   when unset), aware original start/end, effective_end, status/lifecycle,
-  release/cancellation timestamps and unambiguous blocking/effective
-  interval semantics. It excludes owner email/display/profile/admin flags,
-  passwords/verifiers/token secrets, private locators, unrelated metadata
-  and private purpose/cancellation/blackout free text. Owner
-  representations stay compatible.
+  release/cancellation timestamps and the unambiguous half-open
+  `blocking_interval` (null for cancelled). It excludes owner
+  email/display/profile/admin flags, passwords/verifiers/token secrets,
+  private locators, unrelated metadata and private
+  purpose/cancellation/blackout free text. Owner representations stay
+  compatible. The full contract, including enforcer guidance, is in the
+  [API contract](api-contract.md#representation).
 
-## External identifier and external enforcer boundary (implemented field; target enforcement)
+## External identifier and external enforcer boundary (implemented field; external enforcement boundary)
 
 - Optional `external_identifier` on the existing user: opaque,
   case-sensitive, at most 128 characters, numeric strings and leading

@@ -44,6 +44,8 @@ def test_openapi_schema_generation_succeeds(tmp_path: Path) -> None:
     assert "/api/v1/reservations/{reservation_id}/" in schema
     assert "/api/v1/reservations/{reservation_id}/cancel/" in schema
     assert "/api/v1/reservations/{reservation_id}/release/" in schema
+    assert "/api/v1/all-reservations/" in schema
+    assert "/api/v1/all-reservations/{reservation_id}/" in schema
 
     parsed_schema = yaml.safe_load(schema)
     assert "/api/v1/assets/" in parsed_schema["paths"]

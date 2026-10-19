@@ -24,6 +24,7 @@ SCOPE_LABELS = {
     "reservations:create": _("Create reservations"),
     "reservations:cancel": _("Cancel reservations"),
     "reservations:release": _("Release reservations"),
+    "reservations:read_all": _("Read other people's reservations (read-only)"),
 }
 
 SCOPE_EFFECTS = {
@@ -37,10 +38,19 @@ SCOPE_EFFECTS = {
     ),
     "reservations:read": _("Lets the token read this person's own reservations."),
     "reservations:create": _(
-        "Lets the token create reservations under the current policy and limits."
+        "Lets the token create reservations under the current policy and limits. "
+        "You can only create this scope while your account currently has the booking "
+        "capability; restricted assets still need group eligibility at booking time."
     ),
     "reservations:cancel": _("Lets the token cancel this person's upcoming reservations."),
     "reservations:release": _("Lets the token release this person's active reservation early."),
+    "reservations:read_all": _(
+        "Read-only: lets the token list and inspect other people's reservations with "
+        "the minimal shared fields. You can only create this scope while your account "
+        "currently has the view-all-reservations capability; if that capability is "
+        "removed, the scope stops working on the token's next request while its other "
+        "scopes keep working."
+    ),
 }
 
 

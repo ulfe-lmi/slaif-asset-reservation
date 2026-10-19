@@ -18,7 +18,13 @@ current grants.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
+
+from slaif_reservation.accounts.tokens import (
+    ALLOWED_API_TOKEN_SCOPE_SET,
+    ALLOWED_API_TOKEN_SCOPES,
+)
 
 #: Namespace (app label) of the documented application permissions.
 RESERVATIONS_APP_LABEL = "reservations"
@@ -100,6 +106,46 @@ def has_any_reservation_permission(user: Any, codenames: tuple[str, ...] | list[
     if getattr(user, "is_service_account", False):
         return False
     return any(bool(user.has_perm(permission_label(codename))) for codename in codenames)
+
+
+#: Fixed token-scope issuance ceilings (order 051-a). Requesting one of
+#: these scopes at issuance additionally requires the owner's CURRENT
+#: application capability, rechecked on the fresh row-locked owner inside
+#: ``issue_api_token``. The mapping is closed: every other scope keeps its
+#: current meaning, and no authority is inferred from staff status,
+#: Administration model View permissions or the opaque external identifier.
+SCOPE_ISSUANCE_CAPABILITIES: Mapping[str, str] = {
+    "reservations:create": BOOKING_BASELINE_PERMISSION,
+    "reservations:read_all": "view_all_reservations",
+}
+
+
+def can_issue_scope(user: Any, scope: str) -> bool:
+    """Whether ``user`` may currently issue a token carrying ``scope``.
+
+    Scopes without an issuance ceiling keep their current meaning. A
+    ceiling-checked scope requires the owner's CURRENT application
+    capability through :func:`has_reservation_permission`, so the same
+    active-human eligibility, additive group/individual union and trusted
+    superuser semantics apply. Unknown scopes fail closed. Nothing is
+    cached; authoritative checks must pass the fresh locked principal.
+    """
+    if scope not in ALLOWED_API_TOKEN_SCOPE_SET:
+        return False
+    required = SCOPE_ISSUANCE_CAPABILITIES.get(scope)
+    if required is None:
+        return True
+    return has_reservation_permission(user, required)
+
+
+def issuable_token_scopes(user: Any) -> list[str]:
+    """The token scopes currently issuable by ``user`` (UI advisory).
+
+    Filters the closed syntactic allow-list by :func:`can_issue_scope`.
+    An owner without a capability never sees the matching privileged
+    choice; the issuance service remains the authoritative check.
+    """
+    return [scope for scope in ALLOWED_API_TOKEN_SCOPES if can_issue_scope(user, scope)]
 
 
 def is_management_user(user: Any) -> bool:

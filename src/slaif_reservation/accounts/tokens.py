@@ -35,6 +35,7 @@ ALLOWED_API_TOKEN_SCOPES = (
     "reservations:create",
     "reservations:cancel",
     "reservations:release",
+    "reservations:read_all",
 )
 ALLOWED_API_TOKEN_SCOPE_SET = frozenset(ALLOWED_API_TOKEN_SCOPES)
 

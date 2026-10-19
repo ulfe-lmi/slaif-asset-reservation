@@ -24,7 +24,7 @@ from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.debug import sensitive_variables
 
-from slaif_reservation.accounts.exceptions import ApiTokenDomainError
+from slaif_reservation.accounts.exceptions import TOKEN_SCOPE_INVALID, ApiTokenDomainError
 from slaif_reservation.accounts.services import issue_api_token, revoke_api_token
 from slaif_reservation.accounts.tokens import OneTimeBearerToken
 from slaif_reservation.accounts.validators import validate_timezone_name
@@ -221,7 +221,7 @@ def token_create(request: HttpRequest) -> HttpResponse:
     if isinstance(timezone_name, HttpResponse):
         return timezone_name
     if request.method == "POST":
-        form = ApiTokenCreationForm(request.POST)
+        form = ApiTokenCreationForm(request.POST, owner=request.user)
         if form.is_valid():
             try:
                 result = issue_api_token(
@@ -230,7 +230,18 @@ def token_create(request: HttpRequest) -> HttpResponse:
                     scopes=form.cleaned_data["scopes"],
                     lifetime_days=form.cleaned_data["lifetime_days"],
                 )
-            except (ApiTokenDomainError, ValidationError):
+            except ApiTokenDomainError as exc:
+                if exc.code == TOKEN_SCOPE_INVALID:
+                    form.add_error(
+                        "scopes",
+                        _(
+                            "Some selected scopes are not available to your account "
+                            "right now. Try again with the listed options."
+                        ),
+                    )
+                else:
+                    form.add_error(None, _("The API token could not be created."))
+            except ValidationError:
                 form.add_error(None, _("The API token could not be created."))
             else:
                 response = render(
@@ -247,7 +258,7 @@ def token_create(request: HttpRequest) -> HttpResponse:
                 response["Referrer-Policy"] = "no-referrer"
                 return response
     else:
-        form = ApiTokenCreationForm()
+        form = ApiTokenCreationForm(owner=request.user)
     return render(
         request,
         "web/token_create.html",

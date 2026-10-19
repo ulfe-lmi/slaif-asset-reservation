@@ -425,12 +425,21 @@ def probe_asset() -> Asset:
 def test_bearer_api_neither_reveals_nor_modifies_identifier(
     client: Client, member_user: User, probe_asset: Asset
 ) -> None:
+    # 051-a: creating a create-scope token now requires the CURRENT booking
+    # capability, so represent a LEGITIMATE historical token: grant the
+    # baseline capability, issue while it holds, then revoke it before any
+    # request. The stored token keeps its scope; the no-implicit-grant
+    # assertions below are preserved unchanged.
+    book = Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    member_user.user_permissions.add(book)
     issued = issue_api_token(
         owner=member_user,
         name="Foundation probe",
         scopes=["reservations:read", "reservations:create"],
         lifetime_days=1,
     )
+    member_user.user_permissions.remove(book)
+    assert not member_user.has_perm("reservations.book_assets")
     authorization = f"Bearer {issued.bearer_token}"
     me = client.get("/api/v1/me/", HTTP_AUTHORIZATION=authorization)
     assert me.status_code == 200

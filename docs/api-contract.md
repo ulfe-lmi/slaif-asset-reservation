@@ -1,9 +1,10 @@
 # API v1 Design Contract
 
 **Status:** internal-alpha implementation contract. Staff asset list/detail endpoints, bearer `/me`,
-bearer advisory availability, and bearer owner reservation endpoints are implemented. Token
-lifecycle APIs, administrative APIs, projects, memberships, resource restrictions, and API
-throttling remain deferred.
+bearer advisory availability, bearer owner reservation endpoints, the explicit read-only
+cross-user `all-reservations` list/detail surface, shared API abuse budgets, and exact-asset
+group booking eligibility are implemented. Token lifecycle APIs, administrative APIs, projects,
+and memberships remain deferred.
 
 **Base path:** `/api/v1/`
 
@@ -40,26 +41,72 @@ reservations:read
 reservations:create
 reservations:cancel
 reservations:release
+reservations:read_all
 ```
 
 Work Order 0006 uses:
 
 - `availability:read` for asset availability;
-- `reservations:read` for reservation list/detail;
+- `reservations:read` for reservation list/detail (owner-only);
 - `reservations:create` for reservation creation;
 - `reservations:cancel` for cancellation;
-- `reservations:release` for early release.
+- `reservations:release` for early release;
+- `reservations:read_all` for the explicit cross-user list/detail surface.
 
 The existing `/api/v1/assets/` and `/api/v1/assets/{asset_id}/` endpoints still require a staff
 session. Bearer `assets:read` does not grant those endpoints in this slice.
 
+`reservations:read` remains **owner-only**: even a token that also carries
+`reservations:read_all` (or a staff/superuser owner with every application
+capability) sees only the owner's own records on the owner endpoints.
+`reservations:read_all` authorizes only the separate
+`/api/v1/all-reservations/` routes described below, and only together with
+the owner's current `reservations.view_all_reservations` application
+capability (see [Dual gate](#dual-gate-for-reservationsread_all)).
+
+**Issuance ceilings.** A token may be created with `reservations:read_all`
+only while its owner currently holds `reservations.view_all_reservations`,
+and with `reservations:create` only while the owner currently holds
+`reservations.book_assets`. The check runs on the fresh row-locked owner
+inside the issuance service, before any token ID, secret, verifier,
+persistence or audit write; a denial writes nothing. Existing tokens keep
+their stored scopes: after a later capability removal a stored
+`read_all`/`create` scope no longer works on protected operations (rechecked
+per request) while the token still authenticates, uses its remaining
+owner scopes, and revokes normally. No scope backfill, mutation or
+re-scoping exists.
+
 The human UI displays human-readable scope labels (for example
-"Create reservations" for `reservations:create`) on the token creation form
-and the token list, and on the one-time token display. Only the token
-creation form adds a plain-language effect line per scope; the list and the
+"Create reservations" for `reservations:create` and "Read other people's
+reservations (read-only)" for `reservations:read_all`) on the token
+creation form and the token list, and on the one-time token display. The
+token creation form offers only the scopes the server-request owner can
+currently issue (a capability-less account never sees the privileged
+choice), and adds a plain-language effect line per scope; the list and the
 one-time display show labels only. Stored values, form values and wire
 values are always the exact machine strings above; nothing in the UI
 changes the scope contract.
+
+### Dual gate for `reservations:read_all`
+
+The cross-user routes require **both** authorities, rechecked per request:
+
+1. the token's `reservations:read_all` scope (missing scope returns the
+   existing `403 insufficient_scope`); and
+2. the token owner's **current** `reservations.view_all_reservations`
+   application permission, evaluated through the shared active-human
+   helper on the request-time owner (missing capability returns the
+   existing `403 permission_denied`).
+
+There is no process-global grant cache: group or permission removal takes
+effect on the token's next request. Both checks run BEFORE any reservation
+row is fetched, so an unauthorized caller cannot infer the existence of a
+record. Staff status, Administration model View permissions and `book_assets`
+alone never qualify; a trusted active superuser passes the capability gate
+through Django permission semantics but still needs the new scope. Every
+response of these routes (success, error and 405) carries
+`Cache-Control: private, no-store` and a `Vary` header including
+`Authorization`; old endpoint headers are unchanged.
 
 ## Idempotency
 
@@ -129,9 +176,11 @@ lookup details, or secret material.
 
 ### `GET /api/v1/`
 
-Anonymous root describing implemented endpoint families. In a browser this
-endpoint is served by the product-branded Browsable API titled "SLAIF Asset
-Reservation API"; the JSON contract is unchanged.
+Anonymous root describing the implemented endpoint families (links only,
+no data). The cross-user `all-reservations` routes are bearer endpoints
+documented below; they are not part of this static link list. In a browser
+this endpoint is served by the product-branded Browsable API titled "SLAIF
+Asset Reservation API"; the JSON contract is unchanged.
 
 ### `GET /api/v1/me/`
 
@@ -238,16 +287,112 @@ Requires bearer authentication, `reservations:release`, owner access, and `Idemp
 only `release_reservation(..., source="api")`.
 Other-user or guessed UUIDs return non-disclosing `404 reservation_not_found`.
 
+### `GET /api/v1/all-reservations/`
+
+Requires bearer authentication, the `reservations:read_all` scope, and the
+owner's current `view_all_reservations` capability (dual gate above).
+Read-only cross-user list with the minimal explicit representation
+(see [Representation](#representation)). Supports the existing validated
+filters and pagination:
+
+- `asset` UUID;
+- `status`;
+- `lifecycle`;
+- `from` — lower **overlap** bound: `effective_end_at > from` (strict,
+  half-open);
+- `to` — upper **overlap** bound: `start_at < to` (strict, half-open);
+- `limit` (default 50, max 100);
+- `offset`.
+
+The list envelope is `count`/`next`/`previous`/`results` plus
+`correlation_id`. The list includes historical and inactive assets and
+reservation owners: booking-eligibility or account-status changes never
+delete or rewrite accepted records, and the active-human restriction
+applies to the token owner, not to reservation history owners. Missing or
+invalid filter values return the existing `400 validation_error`.
+`POST`/`PUT`/`PATCH`/`DELETE` are refused with `405` and no nested
+cancel/release routes exist under this prefix; the standard safe
+`HEAD`/`OPTIONS` methods may exist.
+
+### `GET /api/v1/all-reservations/{reservation_id}/`
+
+Same dual gate. Returns one cross-user reservation by opaque UUID using
+the same minimal representation plus a `correlation_id` field consistent
+with the `X-Request-ID` header. Missing UUIDs return the existing
+`404 reservation_not_found`; unauthorized callers receive the `403` gate
+responses and cannot infer the record's existence.
+
+### Representation
+
+Each cross-user row is the exact allow-list below — nothing else is
+rendered, for any caller, including superusers:
+
+```json
+{
+  "id": "uuid",
+  "asset": {"id": "uuid", "slug": "gpu-01", "name": "GPU 01", "kind": "gpu"},
+  "owner": {"id": "uuid", "external_identifier": "12345678"},
+  "status": "confirmed",
+  "lifecycle": "active",
+  "start_at": "2026-07-01T08:00:00Z",
+  "end_at": "2026-07-01T09:00:00Z",
+  "effective_end_at": "2026-07-01T09:00:00Z",
+  "released_at": null,
+  "cancelled_at": null,
+  "blocking_interval": {"start_at": "2026-07-01T08:00:00Z", "end_at": "2026-07-01T09:00:00Z"}
+}
+```
+
+- `owner.id` is the stable account UUID; `owner.external_identifier` is the
+  opaque external identifier string, `null` when unset. Numeric strings
+  and leading zeroes are preserved verbatim (max 128 characters,
+  case-sensitive). The owner's current identifier is account-mapping
+  metadata, not a snapshot and not a credential. When the identifier is
+  `null` the consumer cannot infer any machine identity from the row;
+  `owner.id` is only an explicit external mapping key you may choose to
+  store - it is never an automatic Linux UID or host-identity fallback.
+- `lifecycle` is the derived lifecycle (`active`, `upcoming`, `completed`,
+  `cancelled`, `released`).
+- `start_at`/`end_at` are the original (immutable) times;
+  `effective_end_at` carries the half-open release history.
+- `blocking_interval` is the half-open `[start_at, effective_end_at)`
+  interval for confirmed and released records (`null` for cancelled): it
+  is historical/future interval semantics, **not** a promise of currently
+  active or login access. A released record's consumed prefix remains
+  original-end evidence; cancelled records never block.
+
+Excluded by construction: owner email/display name/profile/active/staff/
+superuser flags and groups, passwords/verifiers/token material, purposes,
+cancellation and blackout free text, physical locators, asset
+capabilities/timezone, reservation `source`/`created_at`, and any other
+field outside the allow-list. The existing owner representations are
+compatible and unchanged, and the staff asset inventory/docs boundaries
+are unchanged (no bearer asset discovery).
+
+**Enforcer guidance (external integrations):** map
+`owner.external_identifier` opaquely (a `null` identifier means no machine
+identity can be inferred; `owner.id` is only an explicit external mapping
+key, not an automatic Linux UID fallback); evaluate
+`blocking_interval` as an aware `[start, end)` half-open range at your
+chosen instant (cancelled `null` never blocks; a released prefix is
+history, not current availability); and remember the mapping may change
+over time. The external enforcer owns account enablement, enforcement,
+polling, caches/refresh and outages; there is no promise of an atomic
+full-pagination snapshot. The `read_all` scope is not a permission to an
+API user directory, to free text or to audit inspection, and reservation
+entitlement or this identifier is never a login right.
+
 ## Deferred
 
 - `/api/v1/tokens/` creation/revocation;
 - `/api/v1/me` without trailing slash;
 - administrative reservation APIs;
-- projects, memberships, group/resource authorization;
+- cross-user bearer mutation APIs (the read-all surface is read-only);
+- projects, memberships, and resource authorization beyond exact-asset
+  group booking eligibility and the explicit read-all gate above;
 - availability rules, blackouts, maintenance calendar API;
 - management APIs;
 - service-account/admin token issuance;
-- API throttling;
 - execution gateway integration.
 
 ## Abuse limits and retry
@@ -255,7 +400,10 @@ Other-user or guessed UUIDs return non-disclosing `404 reservation_not_found`.
 API traffic has shared source, authenticated-account and token budgets.
 Defaults are1,200/600/300 requests per minute respectively; the account budget
 covers all its tokens. A blocked request returns429 `rate_limited`, `Retry-After`,
-`Cache-Control: no-store` and the normal correlation fields. Wait before retrying
+`Cache-Control: no-store` and the normal correlation
+fields; on the `all-reservations` route family the early denials carry
+`private, no-store` plus a `Vary` header including `Authorization`,
+matching the in-view responses. Wait before retrying
 and retain the same idempotency key for a mutation retry. Security-counter
 failure returns503 `service_unavailable`; it does not accept the mutation.
 These controls also bound invalid or missing bearer attempts. See

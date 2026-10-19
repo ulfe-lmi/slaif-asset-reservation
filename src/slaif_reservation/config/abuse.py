@@ -67,6 +67,23 @@ def consume(scope: str, identity: str, *, timestamp: float | None = None) -> Non
         raise BudgetExceeded(math.ceil(end - now))
 
 
+#: Published read-all response contract (order 051-a, closed by 051-b):
+#: the ``/api/v1/all-reservations/`` route family answers with
+#: ``Cache-Control: private, no-store`` and a ``Vary`` header including
+#: ``Authorization``. That contract also covers the early budget denials
+#: below, which are produced before the view can add the headers.
+READ_ALL_API_PREFIX = "/api/v1/all-reservations/"
+
+
+def _apply_read_all_response_headers(response: HttpResponse) -> None:
+    response["Cache-Control"] = "private, no-store"
+    vary = response.get("Vary")
+    if vary is None:
+        response["Vary"] = "Authorization"
+    elif "Authorization" not in vary.split(","):
+        response["Vary"] = f"{vary}, Authorization"
+
+
 def purge_expired(*, apply: bool = False, batch: int = 1000) -> int:
     from slaif_reservation.api.models import AbuseBucket
 
@@ -145,7 +162,14 @@ class AbuseControlMiddleware:
                     },
                     status=status,
                 )
-            response["Cache-Control"] = "no-store"
+            if api and (
+                request.path == READ_ALL_API_PREFIX or request.path.startswith(READ_ALL_API_PREFIX)
+            ):
+                _apply_read_all_response_headers(response)
+            else:
+                # Old API routes and the login error page keep the plain
+                # no-store header and no Authorization Vary.
+                response["Cache-Control"] = "no-store"
             if isinstance(error, BudgetExceeded):
                 response["Retry-After"] = str(error.wait)
             return response

@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from django.urls import path
 
+from slaif_reservation.api.read_all_views import (
+    AllReservationDetailAPIView,
+    AllReservationListAPIView,
+)
 from slaif_reservation.api.reservation_views import (
     AvailabilityAPIView,
     MeAPIView,
@@ -38,6 +42,12 @@ urlpatterns = [
         "reservations/<uuid:reservation_id>/release/",
         ReservationReleaseAPIView.as_view(),
         name="reservation-release",
+    ),
+    path("all-reservations/", AllReservationListAPIView.as_view(), name="all-reservation-list"),
+    path(
+        "all-reservations/<uuid:reservation_id>/",
+        AllReservationDetailAPIView.as_view(),
+        name="all-reservation-detail",
     ),
     *asset_api_urls.urlpatterns,
 ]
