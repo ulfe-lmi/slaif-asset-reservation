@@ -3,9 +3,8 @@ from __future__ import annotations
 import csv
 import json
 import uuid
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
-from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
@@ -427,16 +426,22 @@ def _calendar_interval_days(
 
     The interval is rendered once per local day it covers, clipped to the
     window. Half-open semantics are preserved: an interval ending exactly at
-    a local midnight does not cover the following day.
+    a local midnight does not cover the following day. A day is labelled as
+    the ending day only when the interval's true effective end falls on it;
+    an interval still running past the last visible day shows an explicit
+    continuation instead of an apparent end.
     """
     start_local = reservation.start_at.astimezone(zone)
     end_local = reservation.effective_end_at.astimezone(zone)
     first_day = start_local.date()
-    last_day = end_local.date()
+    # The interval's true last covered local day (a local-midnight end
+    # belongs to the previous day, never the following one).
+    true_last_day = end_local.date()
     if end_local.time() == time.min:
-        last_day = last_day - timedelta(days=1)
+        true_last_day = true_last_day - timedelta(days=1)
+    continues_past_window = true_last_day > window_end
     first_day = max(first_day, window_start)
-    last_day = min(last_day, window_end)
+    last_day = min(true_last_day, window_end)
     if first_day > last_day:
         return []
 
@@ -445,13 +450,15 @@ def _calendar_interval_days(
     for offset in range((last_day - first_day).days + 1):
         day = first_day + timedelta(days=offset)
         starts_on_day = day == start_local.date()
-        ends_on_day = day == last_day
+        ends_on_day = day == true_last_day
         if starts_on_day and ends_on_day:
             label = f"{start_local.strftime('%H:%M')} - {end_local.strftime('%H:%M')}"
         elif starts_on_day:
             label = f"{start_local.strftime('%H:%M')} ->"
         elif ends_on_day:
             label = f"-> {end_local.strftime('%H:%M')}"
+        elif continues_past_window and day == last_day:
+            label = "All day ->"
         else:
             label = "All day"
         chips.append(
@@ -563,16 +570,12 @@ def reservation_calendar(request: HttpRequest, asset_id: uuid.UUID) -> HttpRespo
     week_rows = _calendar_days(monday, weeks, zone, monday, window_end_date, reservations, today)
 
     # Plain fallback link so a capped window never omits silently: the
-    # existing filtered All reservations list covering the same window.
-    all_reservations_link = (
-        f"/manage/reservations/?asset={asset.id}"
-        f"&from={quote(window_start.astimezone(UTC).isoformat())}"
-        f"&to={quote(window_end.astimezone(UTC).isoformat())}"
-    )
+    # existing All reservations list for this exact asset. It carries no
+    # start-based from/to window filters, so it is the complete asset
+    # history: an interval that started before this window and still
+    # occupies it remains visible there.
+    all_reservations_link = f"/manage/reservations/?asset={asset.id}"
     window_start_local = window_start.astimezone(zone)
-    # Label the displayed last day (the half-open end instant is the local
-    # midnight after it).
-    window_end_local = (window_end - timedelta(days=1)).astimezone(zone)
     return render(
         request,
         "management_ui/reservation_calendar.html",
@@ -581,9 +584,13 @@ def reservation_calendar(request: HttpRequest, asset_id: uuid.UUID) -> HttpRespo
             "weeks": weeks,
             "week": monday,
             "week_rows": week_rows,
+            # The displayed last day is Monday plus 7*weeks-1 local calendar
+            # days: a fixed 24-hour UTC subtraction from the half-open end
+            # instant mislabels the day across a spring-forward transition,
+            # where the week is 167 hours long, not 168.
             "window_label": (
                 f"{window_start_local.strftime('%a %d %b %Y')} - "
-                f"{window_end_local.strftime('%a %d %b %Y')}"
+                f"{window_end_date.strftime('%a %d %b %Y')}"
             ),
             "display_timezone": tz_name,
             "prev_url": _calendar_url(asset, monday - timedelta(days=7 * weeks), weeks),

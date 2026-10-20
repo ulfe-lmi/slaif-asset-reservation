@@ -110,10 +110,13 @@ The delivered foundation and enforcement, and only this:
   `[start_at, effective_end_at)` intervals are shown for the selected asset
   (overlapped in aware time by `start_at < window_end` and
   `effective_end_at > window_start`); cancelled rows never appear and stay
-  in the All reservations history. The viewer's display name, the displayed
-  interval and the protected detail link are shown; a bounded result cap is
-  stated plainly with a link to the filtered All reservations list. The
-  calendar is offered from the All reservations browser while a valid
+  in the All reservations history. The booking owner's display name, the
+  displayed interval and the protected detail link are shown; a bounded
+  result cap is stated plainly with a link to the All reservations list for
+  the asset: that list carries no start-based date filters, so it is the
+  complete asset history and intervals that started before the window still
+  occupy it. The calendar is offered from the All reservations browser
+  while a valid
   exact-asset filter is selected and from the member asset detail only to
   holders of the capability; staff status alone never shows it.
 - **The explicit read-only bearer read-all surface**: the new

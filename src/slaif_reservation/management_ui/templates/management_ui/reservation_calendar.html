@@ -42,8 +42,8 @@
   {% if truncated %}
     <p class="status-warning">
       {% blocktrans with limit=calendar_limit %}This window can display at most {{ limit }} intervals; the excess is not shown here. See the{% endblocktrans %}
-      <a href="{{ all_reservations_link }}">{% trans " filtered All reservations list" %}</a>
-      {% trans "for the complete window." %}
+      <a href="{{ all_reservations_link }}">{% trans "All reservations list for this asset" %}</a>
+      {% trans "for the complete asset history, including intervals that started before this window." %}
     </p>
   {% endif %}
   <p><a href="{% url 'management-ui:reservation-list' %}">{% trans "All reservations" %} &rarr;</a></p>

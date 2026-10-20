@@ -287,6 +287,13 @@ def week_query(monday: date, weeks: int) -> dict[str, object]:
     return {"week": monday.isoformat(), "weeks": weeks}
 
 
+def window_label(html: str) -> str:
+    """The displayed Monday-Sunday window label paragraph text."""
+    match = re.search(r'<p class="calendar-window">(.*?)</p>', html, re.S)
+    assert match, "window label paragraph not found"
+    return match.group(1).strip()
+
+
 def chip_labels(html: str, day_heading: str) -> list[str]:
     """Time labels of the interval chips inside one day cell."""
     cell = re.search(
@@ -541,6 +548,77 @@ def test_interval_starting_before_window_is_clipped(
 
 
 @pytest.mark.django_db
+def test_interval_continuing_past_window_shows_continuation(
+    client: Client, asset: Asset, owner: User, viewer: User
+) -> None:
+    # Starts before the displayed week and keeps occupying the asset well
+    # past the last visible Sunday (the true end is Friday 13 Nov 06:00).
+    make_reservation(owner, asset, local_cet(2026, 11, 1, 22), local_cet(2026, 11, 13, 6))
+    client.force_login(viewer)
+    html = client.get(calendar_url(asset, **week_query(WEEK_MONDAY, 1))).content.decode()
+    for day in (
+        "Monday 02 Nov 2026",
+        "Tuesday 03 Nov 2026",
+        "Wednesday 04 Nov 2026",
+        "Thursday 05 Nov 2026",
+        "Friday 06 Nov 2026",
+        "Saturday 07 Nov 2026",
+    ):
+        assert chip_labels(html, day) == ["All day"], day
+    # The last visible day must show continuation, not the later end time.
+    assert chip_labels(html, "Sunday 08 Nov 2026") == ["All day ->"]
+    # The four-week view contains the true end and labels it there, not as
+    # a continuation: the clipping is to the display window only.
+    html4 = client.get(calendar_url(asset, **week_query(WEEK_MONDAY, 4))).content.decode()
+    assert chip_labels(html4, "Friday 13 Nov 2026") == ["-> 06:00"]
+    assert chip_labels(html4, "Sunday 08 Nov 2026") == ["All day"]
+
+
+@pytest.mark.django_db
+def test_interval_starting_in_window_and_continuing_past_it(
+    client: Client, asset: Asset, owner: User, viewer: User
+) -> None:
+    make_reservation(owner, asset, local_cet(2026, 11, 6, 10), local_cet(2026, 11, 15, 18))
+    client.force_login(viewer)
+    html = client.get(calendar_url(asset, **week_query(WEEK_MONDAY, 1))).content.decode()
+    assert chip_labels(html, "Friday 06 Nov 2026") == ["10:00 ->"]
+    assert chip_labels(html, "Saturday 07 Nov 2026") == ["All day"]
+    assert chip_labels(html, "Sunday 08 Nov 2026") == ["All day ->"]
+    html4 = client.get(calendar_url(asset, **week_query(WEEK_MONDAY, 4))).content.decode()
+    assert chip_labels(html4, "Friday 06 Nov 2026") == ["10:00 ->"]
+    assert chip_labels(html4, "Sunday 15 Nov 2026") == ["-> 18:00"]
+
+
+@pytest.mark.django_db
+def test_released_consumed_midnight_end_past_window_continues(
+    client: Client, asset: Asset, owner: User, viewer: User
+) -> None:
+    # Consumed until local Tuesday 10 Nov 00:00, one day past the instant
+    # the one-week window half-open ends. The last visible day shows
+    # continuation; the true half-open midnight end belongs to the previous
+    # day, so the four-week view ends it at Monday 00:00 and never
+    # occupies Tuesday.
+    make_reservation(
+        owner,
+        asset,
+        local_cet(2026, 11, 5, 10),
+        local_cet(2026, 11, 10, 12),
+        status=Reservation.STATUS_RELEASED,
+        effective_end=local_cet(2026, 11, 10, 0),
+    )
+    client.force_login(viewer)
+    html = client.get(calendar_url(asset, **week_query(WEEK_MONDAY, 1))).content.decode()
+    assert chip_labels(html, "Thursday 05 Nov 2026") == ["10:00 ->"]
+    assert chip_labels(html, "Friday 06 Nov 2026") == ["All day"]
+    assert chip_labels(html, "Saturday 07 Nov 2026") == ["All day"]
+    assert chip_labels(html, "Sunday 08 Nov 2026") == ["All day ->"]
+    html4 = client.get(calendar_url(asset, **week_query(WEEK_MONDAY, 4))).content.decode()
+    assert chip_labels(html4, "Sunday 08 Nov 2026") == ["All day"]
+    assert chip_labels(html4, "Monday 09 Nov 2026") == ["-> 00:00"]
+    assert chip_labels(html4, "Tuesday 10 Nov 2026") == []
+
+
+@pytest.mark.django_db
 def test_half_open_window_boundaries(
     client: Client, asset: Asset, owner: User, viewer: User
 ) -> None:
@@ -714,6 +792,36 @@ def test_spring_forward_week_skipped_wall_time(
     assert chip_labels(html, "Sunday 28 Mar 2027") == ["01:30 - 03:30"]
 
 
+@pytest.mark.django_db
+def test_window_label_uses_local_date_arithmetic_across_spring_forward(
+    client: Client, asset: Asset, viewer: User
+) -> None:
+    # The 2027-03-28 01:00 UTC transition makes the local week starting
+    # Monday 2027-03-22 only 167 hours long. A fixed 24-hour UTC
+    # subtraction from the half-open end instant would label the last
+    # displayed day Saturday 27 Mar; local date arithmetic gives Sunday.
+    client.force_login(viewer)
+    html = client.get(calendar_url(asset, **week_query(SPRING_MONDAY, 1))).content.decode()
+    assert window_label(html) == "Mon 22 Mar 2027 - Sun 28 Mar 2027"
+    # Four weeks spanning the same transition end Sunday 2027-04-04, not
+    # Friday 2027-04-03.
+    html4 = client.get(calendar_url(asset, week="2027-03-08", weeks=4)).content.decode()
+    assert window_label(html4) == "Mon 08 Mar 2027 - Sun 04 Apr 2027"
+
+
+@pytest.mark.django_db
+def test_window_label_fall_back_week_local_dates(
+    client: Client, asset: Asset, viewer: User
+) -> None:
+    # The 23-hour fall-back week and a four-week window crossing it keep
+    # the same local Monday-Sunday labels.
+    client.force_login(viewer)
+    html = client.get(calendar_url(asset, **week_query(FALL_MONDAY, 1))).content.decode()
+    assert window_label(html) == "Mon 19 Oct 2026 - Sun 25 Oct 2026"
+    html4 = client.get(calendar_url(asset, week="2026-10-05", weeks=4)).content.decode()
+    assert window_label(html4) == "Mon 05 Oct 2026 - Sun 01 Nov 2026"
+
+
 # --------------------------------------------------------------------------
 # Navigation, cap, writes, entry points
 # --------------------------------------------------------------------------
@@ -754,7 +862,7 @@ def test_switching_length_preserves_selected_week(
 
 
 @pytest.mark.django_db
-def test_output_cap_is_stated_plainly_with_history_link(
+def test_output_cap_falls_back_to_complete_asset_history(
     client: Client, asset: Asset, owner: User, viewer: User
 ) -> None:
     start = local_cet(2026, 11, 3, 8)
@@ -769,16 +877,33 @@ def test_output_cap_is_stated_plainly_with_history_link(
             status=Reservation.STATUS_RELEASED,
             effective_end=start + timedelta(minutes=10 * (offset + 1) - 1),
         )
+    # A booking that started before the displayed window (Sunday 23:30)
+    # and still occupies it (Monday 00:30): the All reservations from/to
+    # filters select by reservation START, so no start-based window
+    # filter can find it. It renders exactly one chip (Monday).
+    pre_window = make_reservation(
+        owner, asset, local_cet(2026, 11, 1, 23, 30), local_cet(2026, 11, 2, 0, 30)
+    )
     client.force_login(viewer)
     html = client.get(calendar_url(asset, **week_query(WEEK_MONDAY, 1))).content.decode()
     assert html.count('<a class="calendar-interval') == CALENDAR_MAX_INTERVALS
     assert f"at most {CALENDAR_MAX_INTERVALS} intervals" in html
+    # The warning no longer promises a filtered complete window.
+    assert "complete window" not in html
+    assert "complete asset history" in html
     link = re.search(r'href="(/manage/reservations/\?asset=[^"]+)"', html)
-    assert link, "capped window must link to the filtered All reservations list"
+    assert link, "capped window must link to the asset's All reservations history"
     assert f"asset={asset.id}" in link.group(1)
-    assert "from=" in link.group(1) and "to=" in link.group(1)
-    response = client.get(link.group(1))
-    assert response.status_code == 200
+    # No start-based from/to window filters on the fallback link.
+    assert "from=" not in link.group(1) and "to=" not in link.group(1)
+    first_page = client.get(link.group(1))
+    assert first_page.status_code == 200
+    # 102 rows at 50 per page: the pre-window booking (oldest start) sits
+    # on the final page, reachable through the fallback link.
+    assert "Page 1 of 3" in first_page.content.decode()
+    last_page = client.get(f"{link.group(1)}&page=3")
+    assert last_page.status_code == 200
+    assert str(pre_window.id) in last_page.content.decode()
 
 
 @pytest.mark.django_db
