@@ -3,8 +3,10 @@ from __future__ import annotations
 import csv
 import json
 import uuid
-from datetime import timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -14,10 +16,12 @@ from django.http import (
     Http404,
     HttpRequest,
     HttpResponse,
+    HttpResponseBadRequest,
     HttpResponseNotAllowed,
     StreamingHttpResponse,
 )
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
@@ -26,6 +30,7 @@ from slaif_reservation.accounts.authorization import (
     has_any_reservation_permission,
     has_reservation_permission,
 )
+from slaif_reservation.accounts.validators import validate_timezone_name
 from slaif_reservation.assets.models import Asset
 from slaif_reservation.audit.models import AuditEvent
 from slaif_reservation.management_ui.auth import management_required
@@ -37,10 +42,12 @@ from slaif_reservation.management_ui.forms import (
     ReservationPolicyForm,
 )
 from slaif_reservation.management_ui.selectors import (
+    CALENDAR_MAX_INTERVALS,
     audit_queryset,
     blackout_queryset,
     effective_policy_context,
     policy_queryset,
+    reservation_calendar_query,
     reservation_queryset,
 )
 from slaif_reservation.reservations.exceptions import (
@@ -62,6 +69,10 @@ from slaif_reservation.reservations.services import (
     overlapping_blocking_reservations_queryset,
     release_reservation,
     update_policy,
+)
+from slaif_reservation.reservations.time_utils import (
+    LocalTimeError,
+    interpret_local_wall_time,
 )
 
 EXPORT_LIMIT = 500
@@ -344,6 +355,9 @@ def reservation_list(request: HttpRequest) -> HttpResponse:
         reservation_queryset(form.cleaned_data) if form.is_valid() else Reservation.objects.none()
     )
     page = _page(request, queryset, per_page=50)
+    # The read-only asset calendar covers one exact asset, so it is offered
+    # only while a valid exact-asset filter is selected.
+    calendar_asset = form.cleaned_data.get("asset") if form.is_valid() else None
     return render(
         request,
         "management_ui/reservation_list.html",
@@ -351,6 +365,236 @@ def reservation_list(request: HttpRequest) -> HttpResponse:
             "filter_form": form,
             "page": page,
             "pagination": _pagination(request, page),
+            "calendar_asset": calendar_asset,
+        },
+    )
+
+
+class _CalendarInputError(ValueError):
+    """Bounded GET input problem: answer with a plain 400, no traceback."""
+
+
+#: Calendar week anchors are only meaningful close to the present; anything
+#: farther away is rejected as out of range rather than queried.
+CALENDAR_ANCHOR_MAX_DAYS = 366 * 10
+
+
+def _parse_calendar_week_anchor(raw: str | None, today: date) -> date:
+    """Parse the ``week`` GET input and normalize it to the Monday of that week.
+
+    Missing input defaults to the current local week. Any valid ISO date is
+    accepted and snapped to its Monday; malformed or out-of-range values
+    raise :class:`_CalendarInputError`.
+    """
+    if raw is None or not str(raw).strip():
+        anchor = today
+    else:
+        try:
+            anchor = date.fromisoformat(str(raw).strip())
+        except ValueError as exc:
+            raise _CalendarInputError("Invalid calendar week; use a date like 2026-10-19.") from exc
+    monday = anchor - timedelta(days=anchor.weekday())
+    if abs((monday - today).days) > CALENDAR_ANCHOR_MAX_DAYS:
+        raise _CalendarInputError("Calendar week is outside the supported range.")
+    return monday
+
+
+def _parse_calendar_weeks(raw: str | None) -> int:
+    """Parse the ``weeks`` GET input: exactly 1 or 4, defaulting to 1."""
+    if raw is None or not str(raw).strip():
+        return 1
+    try:
+        weeks = int(str(raw).strip())
+    except ValueError as exc:
+        raise _CalendarInputError("Calendar length must be 1 or 4 weeks.") from exc
+    if weeks not in (1, 4):
+        raise _CalendarInputError("Calendar length must be 1 or 4 weeks.")
+    return weeks
+
+
+def _calendar_url(asset: Asset, week: date, weeks: int) -> str:
+    return f"/manage/reservations/calendar/{asset.id}/?week={week.isoformat()}&weeks={weeks}"
+
+
+def _local_day_label(value: datetime) -> str:
+    return value.strftime("%a %d %b %H:%M")
+
+
+def _calendar_interval_days(
+    reservation: Reservation, zone: Any, window_start: date, window_end: date
+) -> list[dict[str, Any]]:
+    """Per-day presentation of one interval in the viewer's profile timezone.
+
+    The interval is rendered once per local day it covers, clipped to the
+    window. Half-open semantics are preserved: an interval ending exactly at
+    a local midnight does not cover the following day.
+    """
+    start_local = reservation.start_at.astimezone(zone)
+    end_local = reservation.effective_end_at.astimezone(zone)
+    first_day = start_local.date()
+    last_day = end_local.date()
+    if end_local.time() == time.min:
+        last_day = last_day - timedelta(days=1)
+    first_day = max(first_day, window_start)
+    last_day = min(last_day, window_end)
+    if first_day > last_day:
+        return []
+
+    owner = reservation.requested_by_user
+    chips: list[dict[str, Any]] = []
+    for offset in range((last_day - first_day).days + 1):
+        day = first_day + timedelta(days=offset)
+        starts_on_day = day == start_local.date()
+        ends_on_day = day == last_day
+        if starts_on_day and ends_on_day:
+            label = f"{start_local.strftime('%H:%M')} - {end_local.strftime('%H:%M')}"
+        elif starts_on_day:
+            label = f"{start_local.strftime('%H:%M')} ->"
+        elif ends_on_day:
+            label = f"-> {end_local.strftime('%H:%M')}"
+        else:
+            label = "All day"
+        chips.append(
+            {
+                "date": day,
+                "label": label,
+                "full_label": (f"{_local_day_label(start_local)} - {_local_day_label(end_local)}"),
+                "owner": owner.display_name or owner.email,
+                "status": reservation.status,
+                "detail_url": reverse("management-ui:reservation-detail", args=[reservation.id]),
+            }
+        )
+    return chips
+
+
+def _calendar_days(
+    monday: date,
+    weeks: int,
+    zone: Any,
+    window_start_date: date,
+    window_end_date: date,
+    reservations: list[Reservation],
+    today: date,
+) -> list[list[dict[str, Any]]]:
+    """Week rows of day cells covering the fixed window, with intervals."""
+    total_days = weeks * 7
+    days_by_date: dict[date, list[dict[str, Any]]] = {
+        monday + timedelta(days=offset): [] for offset in range(total_days)
+    }
+    for reservation in reservations:
+        for chip in _calendar_interval_days(reservation, zone, window_start_date, window_end_date):
+            if chip["date"] in days_by_date:
+                days_by_date[chip["date"]].append(chip)
+
+    week_rows: list[list[dict[str, Any]]] = []
+    for week_offset in range(weeks):
+        row: list[dict[str, Any]] = []
+        for day_offset in range(7):
+            day = monday + timedelta(days=week_offset * 7 + day_offset)
+            row.append(
+                {
+                    "date": day,
+                    "heading": day.strftime("%A %d %b %Y"),
+                    "is_today": day == today,
+                    "is_weekend": day.weekday() >= 5,
+                    "intervals": days_by_date[day],
+                }
+            )
+        week_rows.append(row)
+    return week_rows
+
+
+@management_required("view_all_reservations")
+def reservation_calendar(request: HttpRequest, asset_id: uuid.UUID) -> HttpResponse:
+    """Read-only one/four-week Monday-Sunday calendar for one exact asset.
+
+    Authorized by the same ``view_all_reservations`` capability as the All
+    reservations browser (staff alone is insufficient; inactive and
+    service-account sessions are denied before any row is fetched). Dates
+    and times use the viewer's profile timezone, including DST boundaries.
+    Only confirmed intervals and released consumed intervals are rendered;
+    cancelled rows remain in the All reservations history only.
+    """
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+
+    user = request.user
+    tz_name = str(getattr(user, "timezone", "") or "").strip()
+    try:
+        validate_timezone_name(tz_name)
+    except ValidationError:
+        messages.error(request, _("Update your timezone before using reservation pages."))
+        return redirect("web:profile")
+    zone = ZoneInfo(tz_name)
+    now_local = timezone.now().astimezone(zone)
+    today = now_local.date()
+
+    try:
+        monday = _parse_calendar_week_anchor(request.GET.get("week"), today)
+        weeks = _parse_calendar_weeks(request.GET.get("weeks"))
+    except _CalendarInputError as exc:
+        return HttpResponseBadRequest(str(exc))
+
+    try:
+        window_start = interpret_local_wall_time(
+            datetime.combine(monday, time.min), timezone_name=tz_name, fold=0
+        ).instant
+        window_end = interpret_local_wall_time(
+            datetime.combine(monday + timedelta(days=7 * weeks), time.min),
+            timezone_name=tz_name,
+            fold=0,
+        ).instant
+    except (LocalTimeError, ValidationError, ZoneInfoNotFoundError, ValueError, OSError):
+        return HttpResponseBadRequest("Invalid calendar week for your timezone.")
+
+    try:
+        asset = Asset.objects.get(pk=asset_id)
+    except ObjectDoesNotExist as exc:
+        raise Http404 from exc
+
+    reservations = list(
+        reservation_calendar_query(asset, window_start, window_end)[: CALENDAR_MAX_INTERVALS + 1]
+    )
+    truncated = len(reservations) > CALENDAR_MAX_INTERVALS
+    if truncated:
+        reservations = reservations[:CALENDAR_MAX_INTERVALS]
+
+    window_end_date = monday + timedelta(days=7 * weeks - 1)
+    week_rows = _calendar_days(monday, weeks, zone, monday, window_end_date, reservations, today)
+
+    # Plain fallback link so a capped window never omits silently: the
+    # existing filtered All reservations list covering the same window.
+    all_reservations_link = (
+        f"/manage/reservations/?asset={asset.id}"
+        f"&from={quote(window_start.astimezone(UTC).isoformat())}"
+        f"&to={quote(window_end.astimezone(UTC).isoformat())}"
+    )
+    window_start_local = window_start.astimezone(zone)
+    # Label the displayed last day (the half-open end instant is the local
+    # midnight after it).
+    window_end_local = (window_end - timedelta(days=1)).astimezone(zone)
+    return render(
+        request,
+        "management_ui/reservation_calendar.html",
+        {
+            "asset": asset,
+            "weeks": weeks,
+            "week": monday,
+            "week_rows": week_rows,
+            "window_label": (
+                f"{window_start_local.strftime('%a %d %b %Y')} - "
+                f"{window_end_local.strftime('%a %d %b %Y')}"
+            ),
+            "display_timezone": tz_name,
+            "prev_url": _calendar_url(asset, monday - timedelta(days=7 * weeks), weeks),
+            "next_url": _calendar_url(asset, monday + timedelta(days=7 * weeks), weeks),
+            "this_week_url": _calendar_url(asset, today - timedelta(days=today.weekday()), weeks),
+            "one_week_url": _calendar_url(asset, monday, 1),
+            "four_week_url": _calendar_url(asset, monday, 4),
+            "is_current_window": monday == today - timedelta(days=today.weekday()),
+            "truncated": truncated,
+            "calendar_limit": CALENDAR_MAX_INTERVALS,
+            "all_reservations_link": all_reservations_link,
         },
     )
 

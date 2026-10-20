@@ -80,6 +80,36 @@ def reservation_queryset(params: Any | None = None) -> QuerySet[Reservation]:
     return queryset
 
 
+#: Hard cap on calendar intervals rendered for one fixed window/asset.
+#: Overflow is stated plainly and linked to the filtered All reservations
+#: list so nothing is silently omitted.
+CALENDAR_MAX_INTERVALS = 100
+
+
+def reservation_calendar_query(
+    asset: Asset, window_start: Any, window_end: Any
+) -> QuerySet[Reservation]:
+    """Intervals that occupy ``asset`` inside the half-open instant window.
+
+    Only confirmed rows and released consumed rows can block an asset
+    (cancelled rows never block), so exactly those two statuses are
+    rendered; a released row contributes ``[start_at, effective_end_at)``,
+    never its original end. The overlap test is the shared half-open form:
+    ``start_at < window_end`` AND ``effective_end_at > window_start`` in
+    aware time.
+    """
+    return (
+        Reservation.objects.select_related("requested_by_user")
+        .filter(
+            asset=asset,
+            status__in=[Reservation.STATUS_CONFIRMED, Reservation.STATUS_RELEASED],
+            start_at__lt=window_end,
+            effective_end_at__gt=window_start,
+        )
+        .order_by("start_at", "id")
+    )
+
+
 def audit_queryset(params: Any | None = None) -> QuerySet[AuditEvent]:
     queryset = AuditEvent.objects.select_related("actor_user").order_by("-occurred_at", "-id")
     if not params:
