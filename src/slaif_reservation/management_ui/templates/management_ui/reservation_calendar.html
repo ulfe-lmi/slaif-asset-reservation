@@ -1,0 +1,50 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% blocktrans with name=asset.name %}Calendar: {{ name }}{% endblocktrans %} — SLAIF Asset Reservation{% endblock %}
+{% block content %}
+  {% include "management_ui/_nav.html" %}
+  <h1>{% blocktrans with name=asset.name %}Calendar: {{ name }}{% endblocktrans %}</h1>
+  <p class="help">
+    {% trans "This calendar is a read-only view of the selected asset only. Confirmed intervals block the asset. Released intervals show the time already consumed before an early release. Cancelled reservations never appear here; they remain in the All reservations history." %}
+  </p>
+  <ul class="calendar-legend" aria-label="{% trans 'Calendar legend' %}">
+    <li><span class="calendar-swatch calendar-swatch-confirmed" aria-hidden="true"></span> {% trans "Confirmed (blocks the asset)" %}</li>
+    <li><span class="calendar-swatch calendar-swatch-released" aria-hidden="true"></span> {% trans "Released (consumed time)" %}</li>
+  </ul>
+  <nav class="calendar-controls" aria-label="{% trans 'Calendar navigation' %}">
+    <a href="{{ prev_url }}">&larr; {% trans "Previous" %}</a>
+    <a href="{{ this_week_url }}"{% if is_current_window %} aria-disabled="true"{% endif %}>{% trans "This week" %}</a>
+    <a href="{{ next_url }}">{% trans "Next" %} &rarr;</a>
+    <span class="calendar-controls-spacer" aria-hidden="true"></span>
+    <a href="{{ one_week_url }}"{% if weeks == 1 %} aria-current="page"{% endif %}>{% trans "1 week" %}</a>
+    <a href="{{ four_week_url }}"{% if weeks == 4 %} aria-current="page"{% endif %}>{% trans "4 weeks" %}</a>
+  </nav>
+  <p class="calendar-window">{{ window_label }}</p>
+  {% for row in week_rows %}
+    <div class="calendar-week" role="group" aria-label="{% trans 'Week' %} {{ forloop.counter }}">
+      {% for day in row %}
+        <div class="calendar-day{% if day.is_today %} calendar-day-today{% endif %}{% if day.is_weekend %} calendar-day-weekend{% endif %}">
+          <h2 class="calendar-day-heading">{{ day.heading }}</h2>
+          {% for chip in day.intervals %}
+            <a class="calendar-interval{% if chip.status == "released" %} calendar-interval-released{% endif %}"
+               href="{{ chip.detail_url }}" title="{{ chip.full_label }}">
+              <span class="calendar-interval-time">{{ chip.label }}</span>
+              <span class="calendar-interval-owner">{{ chip.owner }}</span>
+              {% if chip.status == "released" %}
+                <span class="calendar-interval-status">{% trans "Released" %}</span>
+              {% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+  {% if truncated %}
+    <p class="status-warning">
+      {% blocktrans with limit=calendar_limit %}This window can display at most {{ limit }} intervals; the excess is not shown here. See the{% endblocktrans %}
+      <a href="{{ all_reservations_link }}">{% trans "All reservations list for this asset" %}</a>
+      {% trans "for the complete asset history, including intervals that started before this window." %}
+    </p>
+  {% endif %}
+  <p><a href="{% url 'management-ui:reservation-list' %}">{% trans "All reservations" %} &rarr;</a></p>
+{% endblock %}

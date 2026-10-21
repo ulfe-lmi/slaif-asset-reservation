@@ -100,6 +100,25 @@ The delivered foundation and enforcement, and only this:
   history meaning; mutation controls appear only for the corresponding
   capability, and read-only viewers are denied even valid forged
   POSTs.
+- **The read-only per-asset calendar** at
+  `/manage/reservations/calendar/<uuid>/` (GET only) requires the same
+  `view_all_reservations` capability and an existing exact asset. It renders
+  one or four consecutive Monday-Sunday weeks (previous/next/this-week
+  navigation; the week anchor is a bounded date input, the length exactly
+  1 or 4) in the viewer's profile timezone, including DST boundaries. Only
+  confirmed intervals and released consumed
+  `[start_at, effective_end_at)` intervals are shown for the selected asset
+  (overlapped in aware time by `start_at < window_end` and
+  `effective_end_at > window_start`); cancelled rows never appear and stay
+  in the All reservations history. The booking owner's display name, the
+  displayed interval and the protected detail link are shown; a bounded
+  result cap is stated plainly with a link to the All reservations list for
+  the asset: that list carries no start-based date filters, so it is the
+  complete asset history and intervals that started before the window still
+  occupy it. The calendar is offered from the All reservations browser
+  while a valid
+  exact-asset filter is selected and from the member asset detail only to
+  holders of the capability; staff status alone never shows it.
 - **The explicit read-only bearer read-all surface**: the new
   `GET /api/v1/all-reservations/` and
   `GET /api/v1/all-reservations/<uuid>/` routes require BOTH the new
@@ -222,7 +241,7 @@ landing without unauthorized counts, data, links or actions.
 
 ## Management route inventory (enforced)
 
-All 17 current `/manage/` routes and their required application
+All 18 current `/manage/` routes and their required application
 permissions (reservations namespace). Every route additionally requires a
 current active non-service-account human session; anonymous requests are
 redirected to login and authenticated requests without the capability
@@ -237,6 +256,7 @@ include their module's read interface; no other rights are implied.
 | `blackouts/` and `blackouts/<uuid>/` | `view_maintenance_blackouts` OR `manage_maintenance_blackouts` |
 | `blackouts/new/` (GET+POST), `blackouts/<uuid>/deactivate/` (POST) | `manage_maintenance_blackouts` |
 | `reservations/` and `reservations/<uuid>/` | `view_all_reservations` ONLY (the model View permission is not sufficient) |
+| `reservations/calendar/<uuid>/` (GET, read-only per-asset calendar) | `view_all_reservations` ONLY; no POST surface |
 | `reservations/<uuid>/cancel/` (POST) | `cancel_others_reservations`; no implicit requirement or grant of read-all or release |
 | `reservations/<uuid>/release/` (POST) | `release_others_reservations`; no implicit requirement or grant of read-all or cancel |
 | `audit/` and `audit/<uuid>/` | `view_audit_history` ONLY |

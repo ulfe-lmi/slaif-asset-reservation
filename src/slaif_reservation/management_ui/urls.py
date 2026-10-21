@@ -27,6 +27,11 @@ urlpatterns = [
     ),
     path("reservations/", views.reservation_list, name="reservation-list"),
     path(
+        "reservations/calendar/<uuid:asset_id>/",
+        views.reservation_calendar,
+        name="reservation-calendar",
+    ),
+    path(
         "reservations/<uuid:reservation_id>/",
         views.reservation_detail,
         name="reservation-detail",

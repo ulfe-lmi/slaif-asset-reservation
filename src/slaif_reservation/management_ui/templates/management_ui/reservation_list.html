@@ -4,6 +4,14 @@
 {% block content %}
   {% include "management_ui/_nav.html" %}
   <h1>{% trans "All reservations" %}</h1>
+  {% if calendar_asset %}
+    <p class="help">
+      <a href="{% url 'management-ui:reservation-calendar' calendar_asset.id %}?weeks=1">
+        {% blocktrans with name=calendar_asset.name %}Calendar for {{ name }}{% endblocktrans %}
+        &rarr;
+      </a>
+    </p>
+  {% endif %}
   <form method="get" class="filters">
     {{ filter_form.non_field_errors }}
     {% for field in filter_form %}

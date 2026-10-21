@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n application_access %}
 
 {% block title %}{{ asset.name }} — SLAIF Asset Reservation{% endblock %}
 
@@ -33,6 +33,14 @@
     {% else %}
     <p class="status-warning">{{ booking_note }}</p>
     {% endif %}
+  {% endif %}
+  {% has_permission request.user "view_all_reservations" as can_view_reservation_calendar %}
+  {% if can_view_reservation_calendar %}
+    <p>
+      <a href="{% url 'management-ui:reservation-calendar' asset.id %}">
+        {% trans "Reservation calendar (all owners)" %} &rarr;
+      </a>
+    </p>
   {% endif %}
   {% include "web/_availability.html" %}
 {% endblock %}

@@ -123,7 +123,11 @@ the corresponding capability.
 - **Reservations:** the "All reservations" browser (requires the cross-user
   read capability) filters and inspects other owners' bookings; audited
   cancellation/release actions appear with contextual warnings only for the
-  matching capability.
+  matching capability. With a valid asset filter it offers the read-only
+  per-asset calendar, also reachable from an asset detail when you hold the
+  capability. The calendar shows one or four Monday-Sunday weeks in your
+  profile timezone: confirmed intervals block the asset, released intervals
+  show consumed time, and cancelled bookings stay in the list only.
 - **Audit:** the bounded filtered audit browser requires the audit view
   capability; CSV export requires the export capability (an export-only
   session gets a filtered export form on the management landing and no audit
