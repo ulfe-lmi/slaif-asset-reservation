@@ -193,6 +193,39 @@ def test_horizon_is_elapsed_days_across_dst(clock, policy):
 
 
 @pytest.mark.django_db
+def test_zero_lead_picker_allows_grace_and_defaults_to_current_minute(clock, policy, member):
+    policy.min_lead_minutes = 0
+    form = ReservationForm(timezone_name=member.timezone, policy=policy, now=NOW)
+
+    assert form.fields["start"].widget.attrs["min"] == "2026-10-24T13:36"
+    assert form.initial["start"] == "2026-10-24T13:45"
+    assert form.initial["end"] == "2026-10-24T14:45"
+    assert "10 minutes ago" in form.fields["start"].help_text
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("delay_minutes,allowed", [(5, True), (9, True), (11, False)])
+def test_immediate_booking_survives_form_entry_delay(
+    clock, policy, client, member, asset, staff, monkeypatch, delay_minutes, allowed
+):
+    update_policy(policy=policy, actor_user=staff, min_lead_minutes=0)
+    client.force_login(member)
+    response = client.get(f"/assets/{asset.id}/reserve/")
+    initial_start = response.context["form"].initial["start"]
+    monkeypatch.setattr("django.utils.timezone.now", lambda: NOW + timedelta(minutes=delay_minutes))
+    response = client.post(
+        f"/assets/{asset.id}/reserve/", {"start": initial_start, "duration": "60"}
+    )
+
+    assert response.status_code == (302 if allowed else 200)
+    assert Reservation.objects.count() == int(allowed)
+    if allowed:
+        assert Reservation.objects.get().start_at == NOW.replace(second=0, microsecond=0)
+    else:
+        assert "more than 10 minutes in the past" in response.content.decode()
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("start", "allowed", "error"),
     [
@@ -290,10 +323,10 @@ def test_forged_extreme_start_is_a_form_error_not_a_server_exception():
 @pytest.mark.parametrize(
     ("minimum", "maximum", "lead", "expected_start", "expected_end"),
     [
-        (15, 240, 0, "2026-10-24T13:46", "2026-10-24T14:46"),
+        (15, 240, 0, "2026-10-24T13:45", "2026-10-24T14:45"),
         (15, 240, 30, "2026-10-24T14:16", "2026-10-24T15:16"),
-        (90, 180, 0, "2026-10-24T13:46", "2026-10-24T15:16"),
-        (15, 30, 0, "2026-10-24T13:46", "2026-10-24T14:16"),
+        (90, 180, 0, "2026-10-24T13:45", "2026-10-24T15:15"),
+        (15, 30, 0, "2026-10-24T13:45", "2026-10-24T14:15"),
     ],
 )
 def test_new_form_defaults_use_current_time_profile_and_policy(
@@ -366,7 +399,10 @@ def test_no_defaults_when_no_policy_or_no_start_minute_is_available():
     form = ReservationForm(timezone_name="UTC", now=NOW)
     assert form.initial == {}
     policy = ReservationPolicy(
-        min_duration_minutes=15, max_duration_minutes=240, booking_horizon_days=0
+        min_duration_minutes=15,
+        max_duration_minutes=240,
+        booking_horizon_days=0,
+        min_lead_minutes=1,
     )
     form = ReservationForm(timezone_name="UTC", policy=policy, now=NOW)
     assert form.initial == {}

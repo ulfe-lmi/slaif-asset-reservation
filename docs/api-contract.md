@@ -20,6 +20,9 @@ intended semantics that must stay aligned with implementation.
 - IDs are opaque UUIDs.
 - API timestamps are aware ISO-8601 instants and are serialized as UTC.
 - Mutation endpoints require idempotency.
+- Creation permits a start up to 10 minutes before submission when the effective
+  policy has zero lead time. Positive policy lead times remain enforced, and the
+  end must always be in the future. The same rule applies to browser bookings.
 - Errors use privacy-safe problem-details JSON.
 - Responses never expose bearer tokens, verifiers, peppers, physical locators, raw provenance, audit
   internals, or another user's identity/purpose.
