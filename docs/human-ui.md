@@ -51,6 +51,11 @@ Reservations use half-open intervals: the start is included, the end is free
 again. Times are stored in UTC and shown/entered in your profile timezone.
 The asset timezone is display metadata; it does not override your profile.
 
+When the effective policy requires no lead time, a booking may start up to
+10 minutes before submission, so time spent filling in the form does not
+invalidate an immediate start. Older starts are rejected, and the end must
+still be in the future. A positive policy lead time remains fully enforced.
+
 On a daylight-saving fall-back, a clock time can occur twice. **Start occurrence**
 and **End occurrence** are only relevant to that ambiguity: choose the first
 or second occurrence explicitly. Automatic is rejected for ambiguous times,
@@ -72,8 +77,9 @@ neither runs workloads nor enforces physical usage.
 For a short reservation, select the start in your profile timezone and choose
 **1 hour**, **2 hours** or **4 hours** when the policy permits it. **Custom end time**
 retains explicit end entry. Quick choices measure elapsed time from the interpreted
-start, including DST changes. A new form prefills the start to the next valid minute
-in your profile timezone, allowing for policy lead time. Custom end initially gives
+start, including DST changes. A new form prefills the start to the current minute
+in your profile timezone, or the next permitted minute when the policy requires
+lead time. Custom end initially gives
 one hour, adjusted to the policy's minimum/maximum duration. You can change both times.
 The picker shows current lead-time/horizon bounds;
 the service checks the policy and availability again when you submit.

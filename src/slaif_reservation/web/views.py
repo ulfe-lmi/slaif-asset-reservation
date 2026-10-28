@@ -107,7 +107,7 @@ DOMAIN_ERROR_MESSAGES = {
     ASSET_NOT_RESERVABLE: _("This asset is not reservable."),
     UNSUPPORTED_BOOKING_MODE: _("This asset cannot be reserved through this page."),
     INVALID_TIME_RANGE: _("Check the requested start and end time."),
-    RESERVATION_IN_PAST: _("Reservations cannot start in the past."),
+    RESERVATION_IN_PAST: _("Reservations cannot start more than 10 minutes in the past."),
     LEAD_TIME_VIOLATION: _("The reservation starts before the required lead time."),
     BOOKING_HORIZON_VIOLATION: _("The reservation starts beyond the booking horizon."),
     DURATION_TOO_SHORT: _("The reservation is shorter than the policy minimum."),
