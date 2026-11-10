@@ -1,26 +1,59 @@
 # ACCOUNT-ONBOARDING-PROJECTION-REVIEW — A-17 coverage and measured coding context
 
-Order: 055-a (2026-11-09). This is a **semantic coverage record and measured context
+Order: 055-a (2026-11-09); identities, measurements and the semantic-comparison note
+are updated by the 055-b security-gate amendment (2026-11-10). This is a **semantic
+coverage record and measured context
 record** for the selected account-onboarding target. It is a deliberate semantic
 comparison, not an ICA, and it grants no authority beyond what the order grants.
 
 ## 1. Scope of this review
 
+- Canonical source after 055-b: root `ARCHITECTURE.md` (2026-11-09 edition,
+  A-01..A-17, SAR-001..SAR-056), SHA-256
+  `f7b5c98876a40b052c2d2fe057e57281e917ac5a72508e98caca512c1f0d1286` (93629
+  bytes). The only full-source delta versus the after-055-a identity below is the
+  OAP 055-b controlled security-maintenance DRF evolution (A-03 declared-stack line
+  plus the OAP 055-b evolution sentence, and the SAR-022 version label
+  DRF3.17 -> DRF3.18); no SAR/A ID was added, removed, renumbered or otherwise
+  changed.
 - Canonical source after 055-a: root `ARCHITECTURE.md` (2026-11-09 edition,
   A-01..A-17, SAR-001..SAR-056), SHA-256
   `5ad0ab631696213432c8f513a80b3481fa28a8b0ab89641195ad38725e07db38` (93251
   bytes). The pre-edit accepted identity
   `4566e797b709b71f13b2929572a2d1145d15a5a7ab8b41db50ebfdab962628cd` (80910
   bytes) is preserved below as historical provenance, not a hash rewrite.
+- Compact projection after 055-b: `ARCHITECTURE-for-agents.md`, SHA-256
+  `66d578e9fc263a77ceb4500bb2e8dac88b6080bf8f38890942fd46bc718f60ca` (42869
+  bytes). The only changed pre-existing clauses versus the after-055-a projection
+  are the header full-source digest line (with the after-055-a identity moved to
+  historical provenance), the baseline stack line (DRF source
+  `>=3.18.3,<3.19`, lock resolves 3.18.3) and the SAR-022 row (DRF3.17 ->
+  DRF3.18); no A-17 clause and no other SAR clause changed, and nothing was
+  deleted or renumbered.
 - Compact projection after 055-a: `ARCHITECTURE-for-agents.md`, SHA-256
-  `f0bc75ecba257ad4c70cbec79e79754b4b803b882f6860cdf90f2a25a1ddbbf5` (42676
-  bytes). The pre-055-a projection SHA-256
+  `3d1d618cddcd079eefd78c462815ecf6210030508c1834baf306b2e5c1b8568e` (42678
+  bytes, committed at the 055-a implementation head). The 055-a report-time
+  working-tree measurement recorded next is historical, not a rewrite. The
+  pre-055-a projection SHA-256
   `41c32e0b0d6427a173dfe0b722446ae8ee311f3880929db65ed0245309b3a59e` (36600
   bytes) is historical.
-- `PLAN.md` after 055-a: SHA-256
+- Compact projection after 055-a (report-time working-tree measurement): SHA-256
+  `f0bc75ecba257ad4c70cbec79e79754b4b803b882f6860cdf90f2a25a1ddbbf5` (42676
+  bytes).
+- `PLAN.md` after 055-b: SHA-256
+  `e15eb06f6559886808916812dc555c244cc038ff42996a12276b58319562f864` (28718
+  bytes; only the P-03 stack line DRF3.17 -> DRF3.18). The after-055-a identity
   `f69a1a0c52d35abf1f72ee48e25aa3c2fab23fb6470cf298fa2020ad41eea0da` (28718
-  bytes); pre-edit `8298ef941d02b05c304c48b46734ad678aff80b9ab4e62ca0814b6f03007277f`
-  (23396 bytes) is historical.
+  bytes) and pre-edit `8298ef941d02b05c304c48b46734ad678aff80b9ab4e62ca0814b6f03007277f`
+  (23396 bytes) are historical.
+- `README.md` after 055-b (supported-runtime line): DRF locked version
+  3.17.2 -> 3.18.3; the after-055-b identity is reported in section 6.
+- Unchanged by 055-b as well (re-verified before the 055-b writes):
+  `docs/governance/GROUP-AUTHORIZATION-PROJECTION-REVIEW.md`
+  `dc0085fe0b8c1a1ad4efd780bd9c1517258e5df49b3db662e2fb4c5c7986f5ca`;
+  `docs/security-model.md`
+  `7fcd7abf72a7c7c5e8db9dccaa47e9d281e4662a221caf3add6bf002d6c4d1f1`; the
+  coding-instruction files listed below (unchanged).
 - Unchanged by this order and byte-verified before any write:
   `docs/governance/GROUP-AUTHORIZATION-PROJECTION-REVIEW.md`
   `dc0085fe0b8c1a1ad4efd780bd9c1517258e5df49b3db662e2fb4c5c7986f5ca`;
@@ -89,7 +122,7 @@ the full architecture and A-17 remain reference-only for coding.
    relay/recipient/credential, host/exposure/DNS/TLS/firewall, identity
    administration and deployment (D2).
 
-## 4. Measured context (exact UTF-8 bytes, measured on the working-tree files at 055-a report time)
+## 4. Measured context (exact UTF-8 bytes, measured on the committed files at 055-b report time; the 055-a report-time working-tree figures remain recorded below)
 
 Transitive mandatory coding read set per the generation-1 convention (archived
 `docs/bootstrap/archive/CONTEXT-BUDGET.md`): the routine coding read set
@@ -99,11 +132,16 @@ excluding the active order and product code:
 |---|---:|---:|
 | `AGENTS.md` | 1058 | 2048 |
 | `oap/coding-instructions/AGENTS.md` | 6403 | 12000 |
-| `ARCHITECTURE-for-agents.md` | 42676 | 20000 (exceeded; see below) |
+| `ARCHITECTURE-for-agents.md` | 42869 | 20000 (exceeded; see below) |
 | `OAP-COMMUNICATION-coding-agent.md` | 4105 | 10000 |
 | `oap/coding-instructions/SECURITY-CORE.md` | 1410 | — |
 | `oap/coding-instructions/TESTING-CORE.md` | 1947 | — |
-| **Total (excluding order/code)** | **57599** | **50000 (exceeded by 7599 bytes)** |
+| **Total (excluding order/code)** | **57792** | **50000 (exceeded by 7792 bytes)** |
+
+The 055-a report-time working-tree measurement (projection 42676 bytes, total
+57599 bytes, overage 7599 bytes) is the historical 055-a record; the 055-b
+committed measurement is the table above (projection 42869 bytes, total 57792
+bytes, overage 7792 bytes; +193 bytes over the 055-a committed state).
 
 Ceiling status (honest): the archived ceilings are the 2026-10-04 (A-15)
 generation-1 budget convention; the A-16 target already exceeded them (51047
@@ -119,6 +157,13 @@ this overage is reported, not hidden, and its disposition is strategy-owned
 (section 3, item 7). The 055-a order file itself is order-scoped and not part
 of the routine transitive set, per the generation-1 convention.
 
+After the 055-b controlled security-maintenance evolution (header digest and
+provenance line, baseline stack line and SAR-022 row version label only; no
+obligation added or truncated), the committed projection is 42869 bytes and
+the routine read set total is 57792 bytes. The overage versus the archived
+A-15-era ceilings remains reported, not hidden, and its disposition remains
+strategy-owned (section 3, item 7).
+
 Tokens: **UNMEASURED** — no qualified tokenizer for the configured model was
 run; character estimates are not presented as exact counts (same convention as
 generation 1 and the A-16 record).
@@ -129,6 +174,20 @@ generation 1 and the A-16 record).
   the embedded full-source SHA-256
   (`5ad0ab631696213432c8f513a80b3481fa28a8b0ab89641195ad38725e07db38`) was
   computed from the post-edit `ARCHITECTURE.md` bytes.
+- 055-b recomposition: after the controlled security-maintenance DRF
+  evolution, the projection was recomposed again and the embedded full-source
+  SHA-256 updated to
+  `f7b5c98876a40b052c2d2fe057e57281e917ac5a72508e98caca512c1f0d1286`,
+  computed from the post-055-b `ARCHITECTURE.md` bytes. Against the
+  after-055-a committed projection
+  (`3d1d618cddcd079eefd78c462815ecf6210030508c1834baf306b2e5c1b8568e`), the
+  only changed clauses are the header full-source digest/provenance line, the
+  baseline stack line (DRF source `>=3.18.3,<3.19`, lock resolves 3.18.3) and
+  the SAR-022 row (DRF3.17 -> DRF3.18), matching the full-source delta; every
+  A-17 clause and all other pre-existing clauses are byte-identical, with
+  nothing deleted or renumbered. A structural hash alone is not semantic
+  proof; this comparison is the recorded 055-b semantic check, and it is not
+  an ICA and certifies nothing at runtime.
 - Semantic comparison (facet-by-facet against root A-17 and the three new
   A-14 rows) was performed deliberately. Against the pre-055-a projection
   (`41c32e0b0d6427a173dfe0b722446ae8ee311f3880929db65ed0245309b3a59e`), the
@@ -145,6 +204,13 @@ generation 1 and the A-16 record).
 - No product, runtime, test, dependency, migration, deployment or bootstrap
   byte was changed by this order (verified by git diff against base
   `1eade24e2032b8525d3b0151daaca38830e24d03`); no CRITICAL change.
+- 055-b (supersedes that 055-a statement for the files it touches): the
+  ordered bounded dependency repair changed exactly `pyproject.toml` (DRF
+  constraint `>=3.18.3,<3.19`) and `uv.lock` (djangorestframework 3.18.3,
+  filelock 4.2.10, msgpack 1.2.4; 71 packages, no additions/removals), plus
+  the ordered governance/doc truth files listed in section 6; no application
+  source, migration, test, Compose/proxy, SMTP or bootstrap byte changed, and
+  no CRITICAL change.
 - All SAR-054–SAR-056 rows are initially UNPROVEN; they are selected-target
   obligations, not implemented controls, and remain so until a fresh isolated
   ICA at the exact merged revision.
@@ -164,5 +230,21 @@ generation 1 and the A-16 record).
   bytes); `ARCHITECTURE-for-agents.md`
   `f0bc75ecba257ad4c70cbec79e79754b4b803b882f6860cdf90f2a25a1ddbbf5` (42676
   bytes); plus this review and the order/pointer/report files.
+- The 055-b order metadata `source_hashes` bind the accepted pre-055-b source
+  (the after-055-a identities); all seven were verified byte-identical before
+  any 055-b write (section 1), including `pyproject.toml`
+  `033a5cabab0d0bca8ab53675e640dbbe568330095136964e9a5602dec34db16d` and
+  `uv.lock` `7b4c1891763f5a7667893cd4796fa44f0129a5a212d3249e1a7c00f8aab2dc9a`.
+- Candidate (post-055-b) identities: `ARCHITECTURE.md`
+  `f7b5c98876a40b052c2d2fe057e57281e917ac5a72508e98caca512c1f0d1286` (93629
+  bytes); `PLAN.md`
+  `e15eb06f6559886808916812dc555c244cc038ff42996a12276b58319562f864` (28718
+  bytes); `ARCHITECTURE-for-agents.md`
+  `66d578e9fc263a77ceb4500bb2e8dac88b6080bf8f38890942fd46bc718f60ca` (42869
+  bytes); `README.md` (supported-runtime DRF locked-version line only);
+  `pyproject.toml` and `uv.lock` (DRF `>=3.18.3,<3.19` resolving 3.18.3;
+  filelock 4.2.10 and msgpack 1.2.4, both dev-only transitives of
+  pip-audit[filecache]); plus this review and the 055-b order/pointer/report
+  files.
 - This review's committed byte count is reported at the report (measured on
   the committed file before publication).

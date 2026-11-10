@@ -1,8 +1,11 @@
 # ARCHITECTURE-for-agents — executor projection
 
 Source: root ARCHITECTURE.md, 2026-11-09 edition (A-01..A-17, SAR-001..SAR-056); current
-full-source SHA-256 `5ad0ab631696213432c8f513a80b3481fa28a8b0ab89641195ad38725e07db38`. The
-2026-10-17 edition identity
+full-source SHA-256 `f7b5c98876a40b052c2d2fe057e57281e917ac5a72508e98caca512c1f0d1286`. The
+2026-11-09 pre-055-b source SHA-256
+`5ad0ab631696213432c8f513a80b3481fa28a8b0ab89641195ad38725e07db38` (the OAP 055-b
+security-maintenance DRF evolution is the only full-source delta), the 2026-10-17 edition
+identity
 `4566e797b709b71f13b2929572a2d1145d15a5a7ab8b41db50ebfdab962628cd` and the initial projection
 source SHA-256 `9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4` are
 historical provenance.
@@ -22,7 +25,7 @@ the full source. A genuine gap goes to strategy for a bounded correction/excerpt
 Baseline (historical, 2026-09): private ulfe-lmi/slaif-asset-reservation; WO0001–0013 complete;
 main at the original projection observed 1fcc2c91d793556a91711365abef562604b62f84, and at this
 projection observed 3abe17d026d7ebfe402426afd89e30cdc6924f61 (merged PR62).
-Python3.13/Django5.2/DRF (source >=3.16,<3.18; lock authoritative, resolves 3.17.2)/PostgreSQL17;
+Python3.13/Django5.2/DRF (source >=3.18.3,<3.19; lock authoritative, resolves 3.18.3)/PostgreSQL17;
 preserve uv.lock. SAR-001..SAR-038 are stable; SAR-039..SAR-047 are new A-15 facets, initially
 UNPROVEN until a fresh ICA at the exact merged revision.
 
@@ -68,7 +71,7 @@ UNPROVEN until a fresh ICA at the exact merged revision.
 
 **SAR-021 / Bounded audit evidence:** Audit is append-only at application/ORM/admin boundary, not tamper-proof against DB operators. Reject credential-like metadata recursively. Staff browsing/export is filtered, bounded, CSV-safe and privacy-minimized; export is not a raw forensic dump.
 
-**SAR-022 / Reproducible monolith:** Preserve Python3.13, Django5.2, DRF3.17, PostgreSQL17, uv.lock, Gunicorn, WhiteNoise, local Swagger sidecar and server-rendered views. Add no production dependency or alternate stack without ordered justification/accepted decision.
+**SAR-022 / Reproducible monolith:** Preserve Python3.13, Django5.2, DRF3.18, PostgreSQL17, uv.lock, Gunicorn, WhiteNoise, local Swagger sidecar and server-rendered views. Add no production dependency or alternate stack without ordered justification/accepted decision.
 
 **SAR-023 / Production fail closed:** Production requires nonplaceholder distinct secrets/pepper, DB, hosts and validated security settings. Secure cookies/private docs default; HSTS explicit opt-in. Local/test values do not authorize real deployment.
 

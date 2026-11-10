@@ -101,11 +101,15 @@ be broadened to copy private control-plane homes, tokens, logs, FIFOs or install
 ## A-03. Stack and topology
 
 The declared stack at this revision is Python `>=3.13,<3.14`, Django `>=5.2,<5.3`, DRF
-`>=3.16,<3.18` (current source constraint; the lock is authoritative and resolves DRF 3.17.x),
+`>=3.18.3,<3.19` (current source constraint; the lock is authoritative and resolves DRF 3.18.3),
 PostgreSQL17, uv with a committed lockfile, psycopg, Gunicorn, WhiteNoise, PyYAML/jsonschema,
 drf-spectacular plus its local sidecar. Tests use pytest/pytest-django, Playwright, coverage,
 Ruff, mypy/django-stubs and pip-audit. These are observed constraints, not a request to upgrade
-dependencies. Exact resolved versions come from the preserved uv.lock.
+dependencies. Exact resolved versions come from the preserved uv.lock. The locked DRF 3.17.2
+was carried to 3.18.3 by OAP 055-b (2026-11-10), a controlled security-maintenance evolution
+inside the same Django/DRF stack: the locked 3.17.2 carried advisories fixed in 3.18.2 and
+3.18.3, and the minor update introduces no domain, protocol, stack or deployment change; the
+no-opportunistic-upgrade discipline of SAR-022 applies unchanged afterwards.
 
 The intended service deployment is a Linux host: HTTPS reverse proxy (Caddy example) -> Gunicorn
 Django application -> private PostgreSQL. The runtime image uses UID:GID 10001:10001 and includes
@@ -583,7 +587,7 @@ Initial independent-closure classification: **UNPROVEN**.
 
 ### SAR-022 — Reproducible monolith
 
-Preserve Python3.13, Django5.2, DRF3.17, PostgreSQL17, uv.lock, Gunicorn, WhiteNoise, local Swagger sidecar and server-rendered views. Add no production dependency or alternate stack without ordered justification/accepted decision.
+Preserve Python3.13, Django5.2, DRF3.18, PostgreSQL17, uv.lock, Gunicorn, WhiteNoise, local Swagger sidecar and server-rendered views. Add no production dependency or alternate stack without ordered justification/accepted decision.
 
 Source: AGENTS.md accepted baseline; pyproject.toml.
 
