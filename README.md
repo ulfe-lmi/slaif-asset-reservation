@@ -84,7 +84,7 @@ upgrades.
 
 ## Supported runtime
 
-- **Python 3.13**, **Django 5.2** (locked 5.2.17), **DRF** (locked 3.17.2),
+- **Python 3.13**, **Django 5.2** (locked 5.2.17), **DRF** (locked 3.18.3),
   **PostgreSQL 17**; dependencies locked in `uv.lock`.
 - **Docker Compose** on a single Linux host (`linux/amd64` is the supported
   and verified architecture): loopback-only development Compose, and a
