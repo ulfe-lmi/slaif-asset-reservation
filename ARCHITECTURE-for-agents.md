@@ -1,17 +1,23 @@
 # ARCHITECTURE-for-agents — executor projection
 
-Source: root ARCHITECTURE.md, 2026-10-17 edition (A-01..A-16, SAR-001..SAR-053); current
-full-source SHA-256 `4566e797b709b71f13b2929572a2d1145d15a5a7ab8b41db50ebfdab962628cd`. Initial projection source SHA-256
-`9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4` is historical provenance.
+Source: root ARCHITECTURE.md, 2026-11-09 edition (A-01..A-17, SAR-001..SAR-056); current
+full-source SHA-256 `5ad0ab631696213432c8f513a80b3481fa28a8b0ab89641195ad38725e07db38`. The
+2026-10-17 edition identity
+`4566e797b709b71f13b2929572a2d1145d15a5a7ab8b41db50ebfdab962628cd` and the initial projection
+source SHA-256 `9e7c60e4ef6cee99d5baf20ee5ef6afcff38b10aa2eaa74a5a27084ff515a0c4` are
+historical provenance.
 Scope: preservation and bounded development of existing SLAIF Asset Reservation, including the
-selected M-INTERNET-UX-PILOT development target (A-15) and the later-selected
-M-GROUP-AUTHORIZATION target (A-16); real Internet exposure remains human D2.
+selected M-INTERNET-UX-PILOT development target (A-15), the later-selected
+M-GROUP-AUTHORIZATION target (A-16) and the later-selected M-ACCOUNT-ONBOARDING target
+(A-17); real Internet exposure remains human D2.
 SAR-039..SAR-047 rows carry their executor-relevant conditions directly; SAR-048..SAR-053 rows
-and the group-authorization clauses below carry the A-16 executor obligations directly; root
-A-15 and A-16 are reference only (not mandatory reads). All six SAR-048..SAR-053 rows are
-initially UNPROVEN until a fresh ICA at the exact merged revision. Not independent
-architecture or approval. Normal coding reads this file, not the full source. A genuine gap
-goes to strategy for a bounded correction/excerpt.
+and the group-authorization clauses below carry the A-16 executor obligations directly;
+SAR-054..SAR-056 rows and the account-onboarding clauses below carry the A-17 executor
+obligations directly; root A-15, A-16 and A-17 are reference only (not mandatory reads). All
+six SAR-048..SAR-053 rows are initially UNPROVEN until a fresh ICA at the exact merged
+revision, and the three new SAR-054..SAR-056 rows are initially UNPROVEN for the same
+fresh-ICA rule. Not independent architecture or approval. Normal coding reads this file, not
+the full source. A genuine gap goes to strategy for a bounded correction/excerpt.
 
 Baseline (historical, 2026-09): private ulfe-lmi/slaif-asset-reservation; WO0001–0013 complete;
 main at the original projection observed 1fcc2c91d793556a91711365abef562604b62f84, and at this
@@ -124,6 +130,12 @@ UNPROVEN until a fresh ICA at the exact merged revision.
 **SAR-052 / Opaque external user identifier:** Optional external_identifier on the existing User: opaque case-sensitive string of at most 128 characters, numeric strings and leading zeroes preserved, populated values unique, unset is NULL (multiple users may be unset), no inference or backfill, existing accounts remain unset; only authorized account administrators edit it in existing Administration; member profile and bearer input cannot modify it; neither a credential nor Linux UID validation and no replacement for UUID/email/password/token identity; the external enforcer owns account mapping, enforcement, polling, caches/refresh and outages; no SSH/PAM, account synchronization, workload/container execution, GPU allocation or automatic machine login grants enter this application; reservation entitlement is not login authority.
 
 **SAR-053 / Authorization upgrade and qualification:** Deliberate upgrade inventories every current management route/action and maps its grant; explicit migrations and setup docs preserve users/groups/reservations/policies/audits/tokens and old individual permissions; one-time baseline booking-permission assignment to existing non-service-account users (documented, tested against a populated pre-upgrade database); newly created accounts receive no automatic application grants or privileged-group membership; current staff management access is NOT silently retained through is_staff: dry-run-first explicit idempotent operator setup grants the chosen management capability set; never infer read-all from old Administration View permissions; deployed DB changes remain operator-owned with backup/rollback guidance; migrations tested only on owned synthetic databases; example operator group names are never authorization constants; qualification covers direct endpoint/service denial, nonstaff partial grants, additive multi-group and individual grants, staff/no-grant and superuser boundaries, viewer mutation denial, removal while tokens stay valid, missing scopes, retained owner lifecycle access, opaque/unique/unset identifiers, minimal-response canaries, unchanged conflicts/lifecycle/audit/idempotency, and a fresh exact-revision independent ICA mapping all applicable stable rows.
+
+**SAR-054 / Logged-in own-password change:** A logged-in active non-service-account human member changes only their own password via a CSRF-protected POST requiring the current password; the new password passes the normal validator set including the existing minimum length (no weakened path). Current session continues; all other sessions for the account are invalidated. No bearer/API mutation surface, no reset or forgotten-password flow; SAR-043/044 apply to the new surface.
+
+**SAR-055 / Operator SMTP onboarding and failure boundary:** SMTP is explicitly operator-enabled (standard Django email-backend settings plus a canonical configured HTTPS base URL); development uses synthetic SMTP only, never a real relay or recipient. Disabled/incomplete relay => admin add must not claim delivery and must not create an active short-password account. Enabled add: commit the account first inactive (pending onboarding), send exactly one login-details email (canonical HTTPS URL, account email identifier, temporary password), activate only after SMTP accepts; failure stays inactive with a nonsecret status; manual reissue rotates the previous credential; no ambiguous-send auto-retry; no plaintext persistence; no bodies/credentials in logs; links from the canonical URL, never Host; production-enabled relay requires TLS and bounded timeout; no queue/Celery/Gateway dependency; not a general mail system or notifications.
+
+**SAR-056 / Six-character temporary admin creation and forced change:** The admin add GET prepopulates BOTH password controls with the same new CSPRNG six-character value; only a generated initial temporary credential gets this narrow length exception — the normal validators are never globally weakened. It expires within 24h and cannot establish a NEW login after expiry; successful login is restricted to changing it to a normal-validator password before any member/management/Administration/session-API work. Existing accounts unchanged; human/password permissions, group grants, API token records and reservation domain services intact.
 
 **Selected target qualification (A-15):** Real unit/integration tests, PostgreSQL concurrency/rollback, browser HTTP auth/CSRF/privacy, real Gunicorn positive plus old-sync negative, disposable Internet HTTPS proxy, shared abuse controls, production-settings negatives, container/Compose/health, fresh+upgrade policy init, default/custom branding; standard five exact-head checks plus links/pip audit; exact source/revision/evidence statuses, no mocked-boundary pass. Browser surfaces: anonymous landing/login/admin login; member dashboard/assets list+detail/availability/reservation create+list+detail/profile/token list+create; staff management/policy list+detail+form/blackout list+detail+form/reservations/audit list+detail+export controls; admin index/user list+change/asset list+change/relevant protected models. Real Playwright capture/view/iterate at ~1440/1024/768/390 desktop/mobile, default/custom, with STRATEGIC visual review mandatory; durable semantic assertions on overflow, actions, navigation, focus, labels, associated help, tables, forms, no framework text, no anonymous leak; privacy-safe screenshots (no tokens/passwords/verifiers/CSRF/cookies/raw traces/private data); no brittle pixel CI unless stability proven. Final fresh isolated full-architecture ICA over all SAR-001..SAR-047 at the exact merged revision runs AFTER implementation; the old internal audit is historical; findings require bounded repair then a FULL architecture-to-current-main re-audit, not closed-findings-only review. Human acceptance/release/D2 real resources remain separate. Product-first docs reconcile behavior without ledger or public-production claims.
 
@@ -245,6 +257,61 @@ controls; upgrade tests; generated OpenAPI; docs links; full normal exact-head c
 The final independent audit starts with this human scope, full current architecture and
 the exact merged revision, maps all applicable stable requirements and records limits;
 it is not strategic self-certification or real deployment authorization.
+
+## Selected account onboarding target (A-17)
+
+Selected 2026-11-09 (M-ACCOUNT-ONBOARDING). This section carries the A-17 executor
+obligations directly; it is a selected target. At contract time (2026-11-09) no
+password-change route, SMTP setting, temporary-credential mechanism, command or
+migration below existed; ordered implementation purposes 056–058 (PLAN P-09 scope
+map) arrive with their own strategy-issued orders. Nothing here authorizes a real
+SMTP relay or recipient, identity administration, host/exposure/DNS/TLS/firewall,
+deployment or release. All facets remain UNPROVEN until a fresh independent ICA at
+the exact merged revision (SAR-054..SAR-056).
+
+**Logged-in own-password change (SAR-054).** Member route only, CSRF-protected
+POST, current password required, new password through the normal validator set
+including the existing minimum length, no weakened path. Active
+non-service-account human eligibility; on success the current session continues
+and all other sessions for the account are invalidated. No bearer/API mutation
+surface, no reset or forgotten-password flow. New/changed surfaces follow
+SAR-043 branding and SAR-044 explained accessible forms.
+
+**Operator SMTP onboarding and failure boundary (SAR-055).** Explicitly
+operator-enabled standard Django email-backend configuration (host/port/
+credentials/sender, TLS/STARTTLS, bounded timeout) plus a canonical configured
+HTTPS base URL; development uses synthetic SMTP only, never a real relay or
+recipient. Disabled or incomplete relay => the admin add must not claim delivery
+and must not create an active short-password account. Enabled add: commit the
+account first in an inactive (pending onboarding) state, send exactly one
+login-details email (canonical HTTPS URL, account email identifier, temporary
+password), activate only after SMTP accepts. Failure stays inactive; the admin
+sees a nonsecret status and may manually reissue a fresh temporary credential
+that invalidates any previous one. No automated retry of an ambiguous SMTP send;
+no plaintext persistence; no email bodies or credentials in logs; links derive
+only from the canonical configured HTTPS base URL, never the request Host.
+Production-enabled relay requires TLS and a bounded timeout. No queue, Celery or
+Gateway dependency; not a general mail system or notifications.
+
+**Six-character temporary onboarding credential (SAR-056).** The admin add GET
+prepopulates BOTH password controls with the same new CSPRNG six-character
+value; only a generated initial temporary credential receives this narrow length
+exception — the normal validators are never globally weakened. The credential
+expires within 24h and cannot establish a NEW login after expiry; a successful
+login is restricted to changing it to a normal-validator password before any
+member/management/Administration/session-API work. Reissuance rotates and
+invalidates the previous credential. Existing accounts remain unchanged: no
+backfill, no retroactive exception, no forced change.
+
+**Retained exclusions (A-17 does not select).** General OIDC, public
+forgotten-password reset, public self-registration and general notifications
+remain deferred. Human/password permissions, group grants, API token records,
+reservation policies/domain services and the deliberate-upgrade grant discipline
+(SAR-053) are unchanged; onboarding creates no automatic grants or privileged
+group membership. A-17 is target design, not an implementation or ICA pass; a
+fresh exact-revision independent ICA precedes any later
+M-ACCOUNT-ONBOARDING milestone-closure claim, and human acceptance/release/D2
+real infrastructure remain separate.
 
 ## Component routing
 
