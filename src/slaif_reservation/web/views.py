@@ -6,7 +6,7 @@ from typing import Any, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
-from django.contrib.auth import SESSION_KEY
+from django.contrib.auth import SESSION_KEY, update_session_auth_hash
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.views import LoginView, LogoutView
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -22,7 +22,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
-from django.views.decorators.debug import sensitive_variables
+from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 
 from slaif_reservation.accounts.exceptions import TOKEN_SCOPE_INVALID, ApiTokenDomainError
 from slaif_reservation.accounts.services import issue_api_token, revoke_api_token
@@ -81,6 +81,7 @@ from slaif_reservation.web.forms import (
     ApiTokenCreationForm,
     CancellationForm,
     HumanAuthenticationForm,
+    MemberPasswordChangeForm,
     ProfileForm,
     ReservationForm,
 )
@@ -192,6 +193,34 @@ def profile(request: HttpRequest) -> HttpResponse:
             "display_timezone": display_timezone,
         },
     )
+
+
+@sensitive_post_parameters("old_password", "new_password1", "new_password2")
+@active_human_required
+@sensitive_variables("form")
+def password_change(request: HttpRequest) -> HttpResponse:
+    """Logged-in own-password change (SAR-054).
+
+    Only the current request user's password is ever touched. The
+    standard form requires the current password and applies the normal
+    validator set; on success the current session keeps working and
+    every other session for the account is invalidated. Only GET and
+    POST are accepted, GET and error responses never render submitted
+    values or stored hashes, and the submitted credential fields are
+    marked sensitive for technical exception reporting.
+    """
+    if request.method not in ("GET", "POST"):
+        return HttpResponseNotAllowed(["GET", "POST"])
+    if request.method == "POST":
+        form = MemberPasswordChangeForm(request.user, request.POST)
+        if form.is_valid():
+            form.save()
+            update_session_auth_hash(request, form.user)
+            messages.success(request, _("Password changed."))
+            return redirect("web:profile")
+    else:
+        form = MemberPasswordChangeForm(request.user)
+    return render(request, "web/password_change.html", {"form": form})
 
 
 @active_human_required

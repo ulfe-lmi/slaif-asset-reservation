@@ -8,9 +8,11 @@ interface.
 
 Open `/` and choose **Log in**. An administrator must first create your account;
 your email address is the login identifier. There is no self-registration,
-institutional single sign-on or password-reset/email workflow. Contact an
-administrator if you need a password changed. Service accounts cannot use the
-human login or administration interface.
+institutional single sign-on or public password-reset/email workflow. After
+signing in you can change your own password from the profile page; an
+administrator can also set or change it in Administration. There is no public
+reset or recovery flow. Service accounts cannot use the human login or
+administration interface.
 
 The public **Administration** action opens `/admin/login/`. Administration
 requires an active human staff account and the applicable model permissions;
@@ -31,6 +33,7 @@ is temporarily unavailable. There is no permanent automatic account lockout.
 | Make a booking | Asset's **Reserve this asset** action | Requires your current booking capability and the asset's group eligibility; current policy, maintenance and PostgreSQL conflict checks decide acceptance. |
 | Cancel or release | Your reservation detail | Cancel upcoming bookings; release active bookings early. Both actions are explicit and audited. |
 | Set your display preferences | `/profile/` | Display name and a required valid IANA timezone, used when entering and displaying booking times. |
+| Change your password | `/profile/password/` | Requires your current password and a new one that passes the site password rules; your current session stays signed in and every other session for the account is signed out. |
 | Connect an API agent | `/tokens/` | Create scoped, expiring tokens, inspect their prefix/status and revoke them. |
 
 Booking access is explicit: creating a reservation requires the

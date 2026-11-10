@@ -218,6 +218,48 @@ def test_profile_guidance_and_invalid_timezone_post(client: Client, member_user:
 
 
 @pytest.mark.django_db
+def test_password_change_page_guidance(client: Client, member_user: User) -> None:
+    client.force_login(member_user)
+    html = client.get("/profile/password/").content.decode()
+    _assert_no_dangling_aria(html)
+    _assert_guided(
+        html,
+        "id_old_password-help",
+        "The password you currently use to sign in.",
+        control_id="id_old_password",
+    )
+    _assert_guided(
+        html,
+        "id_new_password1-help",
+        "Your new password must satisfy the site password rules:",
+        control_id="id_new_password1",
+    )
+    _assert_guided(
+        html,
+        "id_new_password2-help",
+        "Enter the same new password again to confirm it.",
+        control_id="id_new_password2",
+    )
+    # The normal validator set, including the existing minimum length, is
+    # rendered as nearby help — no weakened path.
+    assert "Your password must contain at least 8 characters." in unescape(html)
+
+    # Unchanged negative: a weak new password is rejected with the guidance
+    # and bound help intact, and the stored hash is untouched.
+    response = client.post(
+        "/profile/password/",
+        {"old_password": "not-a-secret", "new_password1": "short", "new_password2": "short"},
+    )
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "id_old_password-help" in html
+    assert "id_new_password1-help" in html
+    _assert_no_dangling_aria(html)
+    member_user.refresh_from_db()
+    assert member_user.check_password("not-a-secret")
+
+
+@pytest.mark.django_db
 def test_reservation_form_guidance_and_invalid_post(
     client: Client,
     member_user: User,
@@ -985,7 +1027,7 @@ def test_admin_user_add_guidance(client: Client, admin_user: User) -> None:
     _assert_guided(
         html,
         "id_password1_helptext",
-        "Members cannot change their own password",
+        "The member can later change their own password from the profile page",
         control_id="id_password1",
     )
     _assert_guided(
