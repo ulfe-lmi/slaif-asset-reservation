@@ -78,6 +78,17 @@ Production settings must include, as applicable:
 
 Local-auth password reset/email workflows must not reveal whether an account exists.
 
+Password change is a member self-service route, not a reset flow. A logged-in
+active non-service-account human changes only their own password through a
+CSRF-protected POST that requires the current password; the new password
+passes the normal validator set, including the existing minimum length, with
+no weakened path. On success the standard session-authentication-hash update
+keeps the current browser signed in and invalidates every other session for
+the account. There is no bearer or API mutation surface, no public
+forgotten-password reset, and no email notification; submitted values are
+excluded from request/exception logging and never rendered in error pages,
+messages, audit, reports or test output.
+
 Human login uses administrator-created email accounts, denies inactive and
 service accounts with a generic failure, preserves CSRF/session protections,
 and exposes logout only as POST. Member and Administration attempts share

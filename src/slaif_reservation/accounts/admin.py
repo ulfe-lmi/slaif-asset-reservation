@@ -331,11 +331,11 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
             if form.base_fields.get("password1"):
                 form.base_fields["password1"].help_text = (
                     _(
-                        "Choose the initial password for this account. "
-                        "Members cannot change their own password: the "
-                        "profile page edits display name and timezone only, "
-                        "so an administrator sets or changes it from this "
-                        "user page. It must satisfy the site password rules:"
+                        "Choose the initial password for this account. The "
+                        "member can later change their own password from "
+                        "the profile page; an administrator can also set or "
+                        "change it from this user page. It must satisfy the "
+                        "site password rules:"
                     )
                     + password_validators_help_text_html()
                 )

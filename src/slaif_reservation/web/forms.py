@@ -6,7 +6,8 @@ from zoneinfo import ZoneInfo
 
 from django import forms
 from django.conf import settings
-from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm
+from django.contrib.auth.password_validation import password_validators_help_text_html
 from django.core.validators import MaxValueValidator
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -85,6 +86,42 @@ class ProfileForm(forms.ModelForm):  # type: ignore[type-arg]
         value = str(self.cleaned_data["timezone"]).strip()
         validate_timezone_name(value)
         return value
+
+
+class MemberPasswordChangeForm(PasswordChangeForm):
+    """Logged-in own-password change (SAR-054).
+
+    Inherits Django's standard current-password verification, the normal
+    validator set, hashing and ``set_password``/``save`` behavior
+    unchanged. Only the labels, rendered help text, widget autocomplete
+    attributes and the accessible ``aria-describedby`` binding differ;
+    no validation, hashing, storage or permission behavior changes.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.fields["old_password"].label = _("Current password")
+        self.fields["old_password"].help_text = _(
+            "The password you currently use to sign in. It is checked and "
+            "never stored or displayed."
+        )
+        self.fields["old_password"].widget.attrs["autocomplete"] = "current-password"
+        self.fields["new_password1"].label = _("New password")
+        # The standard Django password-change presentation: the normal
+        # validator set, including the existing minimum length, is shown
+        # as nearby rendered help (no weakened path).
+        self.fields["new_password1"].help_text = (
+            _("Your new password must satisfy the site password rules:")
+            + " "
+            + password_validators_help_text_html()
+        )
+        self.fields["new_password1"].widget.attrs["autocomplete"] = "new-password"
+        self.fields["new_password2"].label = _("New password confirmation")
+        self.fields["new_password2"].help_text = _(
+            "Enter the same new password again to confirm it."
+        )
+        self.fields["new_password2"].widget.attrs["autocomplete"] = "new-password"
+        _wire_field_help(self, ("old_password", "new_password1", "new_password2"))
 
 
 _FOLD_CHOICES = [

@@ -27,4 +27,9 @@
     </div>
     <button type="submit">{% trans "Save profile" %}</button>
   </form>
+  <h2 id="security-heading">{% trans "Security" %}</h2>
+  <p>
+    {% trans "Change the password you use to sign in. Your current session stays signed in; every other signed-in session for this account is signed out." %}
+  </p>
+  <a class="button" href="{% url 'web:password-change' %}">{% trans "Change your password" %}</a>
 {% endblock %}

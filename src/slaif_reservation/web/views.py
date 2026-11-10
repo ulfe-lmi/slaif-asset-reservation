@@ -6,7 +6,7 @@ from typing import Any, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
-from django.contrib.auth import SESSION_KEY
+from django.contrib.auth import SESSION_KEY, update_session_auth_hash
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.views import LoginView, LogoutView
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -81,6 +81,7 @@ from slaif_reservation.web.forms import (
     ApiTokenCreationForm,
     CancellationForm,
     HumanAuthenticationForm,
+    MemberPasswordChangeForm,
     ProfileForm,
     ReservationForm,
 )
@@ -192,6 +193,29 @@ def profile(request: HttpRequest) -> HttpResponse:
             "display_timezone": display_timezone,
         },
     )
+
+
+@active_human_required
+@sensitive_variables("form")
+def password_change(request: HttpRequest) -> HttpResponse:
+    """Logged-in own-password change (SAR-054).
+
+    Only the current request user's password is ever touched. The
+    standard form requires the current password and applies the normal
+    validator set; on success the current session keeps working and
+    every other session for the account is invalidated. GET and error
+    responses never render submitted values or stored hashes.
+    """
+    if request.method == "POST":
+        form = MemberPasswordChangeForm(request.user, request.POST)
+        if form.is_valid():
+            form.save()
+            update_session_auth_hash(request, form.user)
+            messages.success(request, _("Password changed."))
+            return redirect("web:profile")
+    else:
+        form = MemberPasswordChangeForm(request.user)
+    return render(request, "web/password_change.html", {"form": form})
 
 
 @active_human_required
