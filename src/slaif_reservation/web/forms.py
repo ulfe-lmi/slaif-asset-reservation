@@ -19,6 +19,7 @@ from slaif_reservation.accounts.models import User
 from slaif_reservation.accounts.tokens import ALLOWED_API_TOKEN_SCOPES
 from slaif_reservation.accounts.validators import TIMEZONE_NAME_MAX_LENGTH, validate_timezone_name
 from slaif_reservation.reservations.models import ReservationPolicy
+from slaif_reservation.reservations.services import earliest_reservation_start
 from slaif_reservation.reservations.time_utils import LocalTimeError, interpret_local_wall_time
 
 
@@ -99,8 +100,8 @@ class ReservationForm(forms.Form):
         label=_("Start"),
         widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "60"}),
         help_text=_(
-            "Local date and time the asset is needed. It must be in the future "
-            "and within the asset's booking horizon."
+            "Local date and time the asset is needed, within the booking horizon. "
+            "Without a required lead time, starts up to 10 minutes ago are allowed."
         ),
     )
     start_fold = forms.ChoiceField(
@@ -178,10 +179,11 @@ class ReservationForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.order_fields(["start", "duration", "start_fold", "end", "end_fold", "purpose"])
         self.fields["start"].help_text = _(
-            "Local date and time the asset is needed, in %(timezone)s (your profile timezone)."
+            "Local date and time the asset is needed, in %(timezone)s (your profile timezone). "
+            "Without a required lead time, starts up to 10 minutes ago are allowed."
         ) % {"timezone": timezone_name}
         self.fields["end"].help_text = _(
-            "Local end date and time, in %(timezone)s, after the start. The "
+            "Local end date and time, in %(timezone)s, after the start and in the future. The "
             "asset is held from the start until the end; the end instant itself "
             "is free again."
         ) % {"timezone": timezone_name}
@@ -199,7 +201,7 @@ class ReservationForm(forms.Form):
         ]
         if policy is not None:
             current = (timezone.now() if now is None else now).astimezone(UTC)
-            earliest = current + timedelta(minutes=policy.min_lead_minutes)
+            earliest = earliest_reservation_start(policy, now=current)
             latest = current + timedelta(days=policy.booking_horizon_days)
             # The picker uses whole minutes. Round inward so it never suggests
             # a start outside the current instant-based domain bounds.
@@ -215,12 +217,13 @@ class ReservationForm(forms.Form):
                     "max": last_local.strftime("%Y-%m-%dT%H:%M"),
                 }
             )
-            if not self.is_bound and "start" not in self.initial and first_minute <= last_minute:
+            initial_start = max(first_minute, current.replace(second=0, microsecond=0))
+            if not self.is_bound and "start" not in self.initial and initial_start <= last_minute:
                 # Defaults come from real instants, in the member's timezone.
                 # Never replace submitted values, even after validation errors.
                 minutes = max(policy.min_duration_minutes, min(60, policy.max_duration_minutes))
-                end_local = (first_minute + timedelta(minutes=minutes)).astimezone(zone)
-                for name, value in (("start", first_local), ("end", end_local)):
+                end_local = (initial_start + timedelta(minutes=minutes)).astimezone(zone)
+                for name, value in (("start", initial_start.astimezone(zone)), ("end", end_local)):
                     if name not in self.initial:
                         self.initial[name] = value.strftime("%Y-%m-%dT%H:%M")
                         # At fall-back this exact instant already determines
