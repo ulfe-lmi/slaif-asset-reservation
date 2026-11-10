@@ -22,7 +22,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
-from django.views.decorators.debug import sensitive_variables
+from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 
 from slaif_reservation.accounts.exceptions import TOKEN_SCOPE_INVALID, ApiTokenDomainError
 from slaif_reservation.accounts.services import issue_api_token, revoke_api_token
@@ -195,6 +195,7 @@ def profile(request: HttpRequest) -> HttpResponse:
     )
 
 
+@sensitive_post_parameters("old_password", "new_password1", "new_password2")
 @active_human_required
 @sensitive_variables("form")
 def password_change(request: HttpRequest) -> HttpResponse:
@@ -203,9 +204,13 @@ def password_change(request: HttpRequest) -> HttpResponse:
     Only the current request user's password is ever touched. The
     standard form requires the current password and applies the normal
     validator set; on success the current session keeps working and
-    every other session for the account is invalidated. GET and error
-    responses never render submitted values or stored hashes.
+    every other session for the account is invalidated. Only GET and
+    POST are accepted, GET and error responses never render submitted
+    values or stored hashes, and the submitted credential fields are
+    marked sensitive for technical exception reporting.
     """
+    if request.method not in ("GET", "POST"):
+        return HttpResponseNotAllowed(["GET", "POST"])
     if request.method == "POST":
         form = MemberPasswordChangeForm(request.user, request.POST)
         if form.is_valid():

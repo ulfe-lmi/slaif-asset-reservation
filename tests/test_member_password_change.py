@@ -4,19 +4,25 @@ Focused positive/negative coverage for the member route: admission
 boundary (anonymous/inactive/service-account/bearer-only denial), current
 password requirement, normal validator set without a weakened path, CSRF,
 session semantics (current session retained, other sessions invalidated),
-own-account-only mutation and no credential material in rendered output.
+own-account-only mutation, GET/POST-only method handling and no credential
+material in rendered output or technical exception reports.
 """
 
 from __future__ import annotations
 
 import re
+import sys
 
 import pytest
-from django.contrib.auth import authenticate
-from django.test import Client
+from django.contrib.auth import SESSION_KEY, authenticate
+from django.contrib.sessions.backends.db import SessionStore
+from django.http import HttpRequest
+from django.test import Client, RequestFactory
+from django.views.debug import SafeExceptionReporterFilter, technical_500_response
 
 from slaif_reservation.accounts.models import User
 from slaif_reservation.accounts.services import issue_api_token
+from slaif_reservation.web.views import password_change
 
 URL = "/profile/password/"
 LOGIN_URL = "/login/"
@@ -67,6 +73,20 @@ def _input_value(html: str, control_id: str) -> str:
     return value.group(1) if value else ""
 
 
+def _technical_report_for(request: HttpRequest) -> str:
+    """Render the production technical 500 report for a request.
+
+    The simulated failure is raised in this helper so no submitted value
+    appears in the report's traceback frames or source context; the
+    request data sections are the evidence under test.
+    """
+    try:
+        raise RuntimeError("simulated failure while handling the request")
+    except RuntimeError:
+        exc_info = sys.exc_info()
+    return technical_500_response(request, *exc_info).content.decode()
+
+
 @pytest.mark.django_db
 def test_anonymous_get_and_post_are_denied(client: Client) -> None:
     get = client.get(URL)
@@ -110,7 +130,9 @@ def test_bearer_only_request_is_denied(client: Client, member_user: User) -> Non
     result = issue_api_token(
         owner=member_user, name="Bearer-only", scopes=["reservations:read"], lifetime_days=1
     )
-    headers = {"HTTP_AUTHORIZATION": f"Bearer {result.token}"}
+    # The real opaque bearer secret is exercised but never printed or
+    # asserted by value.
+    headers = {"HTTP_AUTHORIZATION": f"Bearer {result.bearer_token}"}
     get = client.get(URL, **headers)
     assert get.status_code == 302
     assert get["Location"].startswith(LOGIN_URL)
@@ -121,6 +143,23 @@ def test_bearer_only_request_is_denied(client: Client, member_user: User) -> Non
     )
     assert post.status_code == 302
     assert post["Location"].startswith(LOGIN_URL)
+    # A valid bearer token grants no member-route admission or mutation.
+    member_user.refresh_from_db()
+    assert member_user.check_password("not-a-secret")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("http_method", ["put", "patch", "delete"])
+def test_unsupported_methods_are_rejected_without_change(
+    client: Client, member_user: User, http_method: str
+) -> None:
+    client.force_login(member_user)
+    stored = member_user.password
+    response = getattr(client, http_method)(URL)
+    assert response.status_code == 405
+    assert response["Allow"] == "GET, POST"
+    member_user.refresh_from_db()
+    assert member_user.password == stored
 
 
 @pytest.mark.django_db
@@ -177,6 +216,46 @@ def test_wrong_current_password_fails_without_db_change(client: Client, member_u
     assert "leak-old-secret-1" not in html
     assert "brand-new-passw0rd" not in html
     assert "pbkdf2_sha256" not in html
+
+
+@pytest.mark.django_db
+def test_submitted_credentials_are_redacted_from_exception_report(
+    member_user: User, settings
+) -> None:
+    # The default safe reporter filter redacts marked POST parameters in
+    # production mode.
+    settings.DEBUG = False
+    request = RequestFactory(HTTP_ACCEPT="text/html").post(
+        URL,
+        {
+            "old_password": "canary-old-credential-7f3a9",
+            "new_password1": "canary-new-credential-4b1c2",
+            "new_password2": "canary-new-credential-4b1c2",
+        },
+    )
+    request.session = SessionStore()
+    request.session[SESSION_KEY] = member_user.pk
+    request.user = member_user
+    response = password_change(request)
+    # A wrong current password is a rejected change, not a DB mutation.
+    assert response.status_code == 200
+    assert member_user.check_password("not-a-secret")
+    # The decorated view marked every submitted credential field on the
+    # request before any handler code ran.
+    assert request.sensitive_post_parameters == (
+        "old_password",
+        "new_password1",
+        "new_password2",
+    )
+    # The technical exception report for that request redacts the values
+    # instead of echoing them; the canaries are compared by their POST
+    # values, never by source literals.
+    report = _technical_report_for(request)
+    for field in ("old_password", "new_password1", "new_password2"):
+        assert request.POST.get(field) not in report, (
+            f"submitted {field} leaked into the exception report"
+        )
+    assert SafeExceptionReporterFilter.cleansed_substitute in report
 
 
 @pytest.mark.django_db
