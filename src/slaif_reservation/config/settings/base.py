@@ -116,6 +116,14 @@ API_DOCS_PUBLIC = False
 API_TOKEN_PEPPER = DEVELOPMENT_API_TOKEN_PEPPER
 API_TOKEN_MAX_LIFETIME_DAYS = 90
 
+# Account email transport (SAR-055). The capability is disabled by
+# default; with the dummy backend no send can reach a relay. The local
+# and production settings resolve the operator opt-in configuration
+# with fail-closed validation (docs/deployment.md, section 4).
+ACCOUNT_EMAIL_ENABLED = False
+PUBLIC_BASE_URL: str | None = None
+EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",

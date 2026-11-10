@@ -314,3 +314,38 @@ def validate_csrf_origin(origin: str) -> str:
     # Canonical scheme closes case-based bypasses of production's HTTPS gate.
     suffix = f":{port}" if port is not None else ""
     return f"{parsed.scheme}://{host}{suffix}"
+
+
+def validate_canonical_service_url(raw_value: str) -> str:
+    """Validate the canonical operator-configured HTTPS service base URL.
+
+    Only a bare https origin (``https://host[:port]``) is accepted: no
+    userinfo, no path, no query, no fragment, no whitespace. The host must
+    be an explicit valid hostname or IP literal. Returns the canonical
+    normalized form; error messages are category-only and never echo the
+    configured value.
+    """
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in raw_value):
+        raise ImproperlyConfigured("SLAIF_PUBLIC_BASE_URL must not include whitespace")
+    try:
+        parsed = urlparse(raw_value)
+        port = parsed.port
+    except ValueError:
+        raise ImproperlyConfigured("SLAIF_PUBLIC_BASE_URL must use valid hosts and ports") from None
+    if parsed.scheme != "https":
+        raise ImproperlyConfigured("SLAIF_PUBLIC_BASE_URL must be an https origin")
+    if not parsed.hostname:
+        raise ImproperlyConfigured("SLAIF_PUBLIC_BASE_URL must include a host")
+    if parsed.netloc.endswith(":") or port == 0:
+        raise ImproperlyConfigured("SLAIF_PUBLIC_BASE_URL must use valid hosts and ports")
+    try:
+        host = validate_allowed_host_entry(parsed.hostname)
+    except ImproperlyConfigured:
+        raise ImproperlyConfigured("SLAIF_PUBLIC_BASE_URL must use explicit valid hosts") from None
+    if parsed.username or parsed.password:
+        raise ImproperlyConfigured("SLAIF_PUBLIC_BASE_URL must not include userinfo")
+    if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+        msg = "SLAIF_PUBLIC_BASE_URL must be a bare origin without path, query or fragment"
+        raise ImproperlyConfigured(msg)
+    suffix = f":{port}" if port is not None else ""
+    return f"https://{host}{suffix}"
