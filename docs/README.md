@@ -42,7 +42,9 @@ Remote users use the HTTPS hostname configured through INSTALL, not port 8000.
   database-unavailable response, token/pepper incidents, blackouts,
   idempotency cleanup, SmartScheduling migration.
 - [runbooks/internal-alpha-pilot-preparation.md](runbooks/internal-alpha-pilot-preparation.md) —
-  internal-network preparation pack; use INSTALL for the current Internet-facing boundary.
+  historical/superseded internal-network planning template, not current
+  operator guidance; current installation and deployment are in
+  [INSTALL.md](../INSTALL.md).
 - [runbooks/internal-alpha-pilot-readiness.md](runbooks/internal-alpha-pilot-readiness.md) —
   database/inventory readiness gates, complementing current HTTPS/security qualification.
 - [runbooks/backup-and-restore.md](runbooks/backup-and-restore.md) — backup

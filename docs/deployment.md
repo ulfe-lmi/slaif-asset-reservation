@@ -717,15 +717,17 @@ storage, restore drills, monitoring, incident response and privacy/retention pol
 The repository provides commands and rehearsals, not an installed operations stack.
 
 The database role is shared and privileged under the Compose defaults; role
-separation remains deferred. Authenticated humans have broad reservation access
-under policy rules; site groups do not implement project/membership or per-token
-asset restrictions. Institutional OIDC, public forgotten-password reset,
-general notifications, workload execution/gateway/scheduler integration and
-private SmartScheduling cutover are outside the current service; a logged-in
-member can change their own password at any time, and the
-administrator-created onboarding email is available when the account email
-transport is configured. Imported inventory is not evidence of
-hardware availability or verification.
+separation remains deferred. Creating a reservation requires the explicit
+`reservations.book_assets` grant, a group-restricted asset requires at least
+one allowed-group membership, and existing policy rules still apply; new
+accounts receive no automatic booking grant. Site groups do not implement
+project/membership or per-token asset restrictions. Institutional OIDC,
+public forgotten-password reset, general notifications, workload
+execution/gateway/scheduler integration and private SmartScheduling cutover
+are outside the current service; a logged-in member can change their own
+password at any time, and the administrator-created onboarding email is
+available when the account email transport is configured. Imported inventory
+is not evidence of hardware availability or verification.
 
 ### Shared abuse budgets
 

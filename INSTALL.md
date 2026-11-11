@@ -764,10 +764,16 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
   grants: to let a new account book,
   grant `reservations.book_assets` deliberately (directly or via an operator
   group) and, for restricted assets, add the account to an allowed group.
+  Cross-user reservation reading is implemented as a separate read-only
+  surface: the All reservations browser view requires the explicit
+  `reservations.view_all_reservations` permission, and the cross-user bearer
+  list/detail additionally requires the token's `reservations:read_all` scope
+  plus the token owner's current `view_all_reservations` permission. Both are
+  read-only; no cross-user mutation or general user-directory API is implied.
   Project/group resource authorization beyond booking (projects,
-  organizational memberships, cross-user read access) is not implemented yet;
-  account creation does not create project-scoped resource permissions. See
-  [docs/authorization.md](docs/authorization.md).
+  organizational memberships) and per-token asset restrictions are not
+  implemented yet; account creation does not create project-scoped resource
+  permissions. See [docs/authorization.md](docs/authorization.md).
 
 ### 13. Documentation map
 
