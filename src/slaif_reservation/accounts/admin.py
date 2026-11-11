@@ -197,6 +197,20 @@ def _wire_user_field_help(form: Any, names: tuple[str, ...]) -> None:
             field.widget.attrs["aria-describedby"] = f"id_{name}_helptext"
 
 
+def _activation_locked(user: Any) -> bool:
+    """True while an administrator-created account is INACTIVE and still
+    pending its first forced password change (SAR-055).
+
+    In that state the account may be activated only by the exact-generation
+    post-commit relay callback. The Administration change form must not offer
+    an editable ``is_active`` switch that could flip it active, and a crafted
+    change POST must not activate it either. Ordinary (non-pending) accounts
+    and an already-active pending account (which may still be deliberately
+    deactivated, with reissue required to reactivate it) are unaffected.
+    """
+    return onboarding.is_pending_onboarding(user) and not getattr(user, "is_active", False)
+
+
 class SlaifAdminPasswordChangeForm(AdminPasswordChangeForm):  # type: ignore[type-arg]
     """Per-user password change with product-accurate guidance.
 
@@ -279,6 +293,17 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
     )
     readonly_fields = ["created_at", "updated_at"]
     change_password_form = SlaifAdminPasswordChangeForm
+
+    def get_readonly_fields(self, request: HttpRequest, obj: Any = None) -> list[Any]:
+        readonly = list(super().get_readonly_fields(request, obj))
+        # An inactive pending onboarding account can only be activated by the
+        # exact-generation relay callback, so the ``is_active`` switch must
+        # not be offered as an editable control on this account's change
+        # form. Ordinary accounts and an active pending account (which may
+        # still be deactivated) keep the normal editable switch.
+        if obj is not None and _activation_locked(obj) and "is_active" not in readonly:
+            readonly.append("is_active")
+        return readonly
 
     def formfield_for_dbfield(self, db_field: Any, request: HttpRequest, **kwargs: Any) -> Any:
         form_field = super().formfield_for_dbfield(db_field, request, **kwargs)
@@ -398,6 +423,24 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
 
     def save_model(self, request: HttpRequest, obj: Any, form: Any, change: bool) -> None:
         if change:
+            # Server-side backstop for the SAR-055 activation boundary. The
+            # change form renders ``is_active`` read-only for an inactive
+            # pending account, and this re-read of the persisted flag keeps
+            # the guarantee even if a crafted POST (e.g. ``is_active=on``)
+            # ever reached the save path: an inactive pending account is
+            # never allowed to be flipped to active here. Only that
+            # inactive->active transition is prevented; deactivation of an
+            # already-active account and every ordinary (non-pending)
+            # account are untouched.
+            persisted_active = (
+                User.objects.filter(pk=obj.pk).values_list("is_active", flat=True).first()
+            )
+            if (
+                onboarding.is_pending_onboarding(obj)
+                and persisted_active is False
+                and obj.is_active
+            ):
+                obj.is_active = False
             super().save_model(request, obj, form, change)
             return
         if not settings.ACCOUNT_EMAIL_ENABLED:

@@ -387,3 +387,66 @@ def test_browser_disabled_reissue_ui(
         user.refresh_from_db()
         assert user.password == stored_hash
         assert user.is_active is False
+
+
+@pytest.mark.django_db(transaction=True)
+def test_browser_failed_delivery_activation_locked_ui(
+    page: Page,
+    live_server,
+    output_path,
+    admin_user: User,
+    settings,
+) -> None:
+    """059-a: a failed-delivery (inactive pending) account's change page shows
+    why activation is unavailable — the Active control is read-only and only
+    the accepted onboarding relay (via reissue) can activate it — with the
+    reissue path, no framework branding, no overflow and no secret displayed,
+    at desktop 1440 and mobile 390."""
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    settings.PUBLIC_BASE_URL = BASE_URL
+    settings.DEFAULT_FROM_EMAIL = FROM_EMAIL
+
+    page.set_viewport_size(DESKTOP)
+    _admin_login(page, live_server, admin_user)
+
+    # Add with a synthetic relay that never accepts: the account is committed
+    # pending and stays INACTIVE (a failed delivery).
+    with override_settings(EMAIL_BACKEND=FAILING_BACKEND):
+        page.goto(f"{live_server.url}/admin/accounts/user/add/")
+        prefill = page.locator("#id_password1").input_value()
+        assert prefill == page.locator("#id_password2").input_value()
+        page.locator("#id_email").fill("onb-browser-locked@example.com")
+        page.get_by_role("button", name="Save", exact=True).click()
+        page.wait_for_url(re.compile(r"/admin/accounts/user/[\w-]+/change/"))
+
+    user = User.objects.get(email="onb-browser-locked@example.com")
+    assert user.is_active is False
+
+    # The change page explains the state, why activation is unavailable here,
+    # and the reissue recovery path; the Active control is read-only (no
+    # editable checkbox) and no credential is rendered.
+    content = page.content()
+    assert "Onboarding in progress" in content
+    assert "cannot sign in yet" in content
+    assert "Activation is not available from this page" in content
+    assert "Active control is read-only" in content
+    assert "could not be confirmed as delivered" in content
+    assert "Reissue onboarding login details" in content
+    assert f"/admin/accounts/user/{user.pk}/onboarding-reissue/" in content
+    assert page.locator('input[name="is_active"]').count() == 0
+    assert prefill not in content
+    _assert_no_horizontal_overflow(page)
+    _assert_no_framework_branding(page)
+    _capture(page, output_path, "admin-onboarding-activation-locked-1440")
+
+    # Mobile 390: the same surface holds, including the read-only Active
+    # control and the reissue path.
+    page.set_viewport_size(MOBILE)
+    page.goto(f"{live_server.url}/admin/accounts/user/{user.pk}/change/")
+    content = page.content()
+    assert "Activation is not available from this page" in content
+    assert "Reissue onboarding login details" in content
+    assert page.locator('input[name="is_active"]').count() == 0
+    _assert_no_horizontal_overflow(page)
+    _assert_no_framework_branding(page)
+    _capture(page, output_path, "admin-onboarding-activation-locked-390")

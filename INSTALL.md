@@ -723,7 +723,10 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
   cookies and SSL redirect are on by default; HSTS stays disabled until the
   final HTTPS hostname is verified, then must be enabled explicitly.
 - Administrator-created local accounts support the authenticated pilot.
-  Institutional OIDC and password-reset/email workflows remain deferred.
+  Administrator-created onboarding email and the logged-in own-password
+  change are available when the account email transport is configured;
+  public forgotten-password reset, institutional OIDC and general
+  notifications remain deferred.
 - Internet access uses the qualified HTTPS proxy boundary and shared PostgreSQL
   budgets for member/admin login and API traffic. Keep the application listener
   private; configure explicit proxy peers, overwrite forwarding headers, preserve
@@ -735,8 +738,10 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
 ### 12. Operating limits
 
 - No institutional OIDC or SSO; accounts are administrator-created only.
-- No password reset or email workflow; lost credentials require
-  administrator-level recovery.
+- No public forgotten-password reset or self-service recovery; a signed-in
+  member can change their own password, and an administrator-created account
+  receives a one-time onboarding login-details email only when the account
+  email transport is configured.
 - No notification system (no reservation emails or reminders).
 - No execution enforcement: the system grants reservation entitlement only;
   it does not run jobs or allocate/enforce GPU usage.
