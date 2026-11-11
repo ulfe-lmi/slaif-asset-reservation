@@ -944,21 +944,45 @@ def test_change_page_state_specific_text(
 
 
 @pytest.mark.django_db
-def test_change_post_forged_is_active_on_cannot_activate_pending_inactive(
+def test_zero_accept_add_then_forged_is_active_on_cannot_activate(
     admin_user: User,
     admin_client: Client,
-    email_enabled: None,
+    fixed_generator: None,
+    django_capture_on_commit_callbacks: Any,
 ) -> None:
-    """059-a F-01: an inactive pending (failed/undelivered) account cannot be
-    activated through the Administration change form. The change GET does not
-    offer an editable is_active switch and explains the restriction; a
-    CSRF-valid, manually constructed POST carrying is_active=on and every
-    other current field must not activate the account, must not change the
-    stored credential or expiry, must not claim a delivery, and the correct
-    temporary value must still be refused."""
-    user = _pending_user("forged-activation@example.com", "Ab12cd", active=False)
+    """059-a F-01 composed: an ACTUAL Admin Add (GET/POST) under a synthetic
+    zero-accept relay commits the account INACTIVE/pending; a CSRF-valid,
+    manually constructed User change POST with is_active=on on THAT SAME
+    account must not activate it — the stored credential and expiry stay
+    unchanged, the correct temporary value is still refused, and no delivery
+    outcome is claimed. The change GET offers no editable is_active switch
+    and explains the restriction."""
+    _ZeroAcceptBackend.calls = 0
+    with override_settings(
+        ACCOUNT_EMAIL_ENABLED=True,
+        PUBLIC_BASE_URL=BASE_URL,
+        DEFAULT_FROM_EMAIL=FROM_EMAIL,
+        EMAIL_BACKEND=ZERO_ACCEPT_BACKEND,
+    ):
+        # Real Admin Add GET/POST with the synthetic zero-accept relay: the
+        # account is committed inactive/pending and the single send accepts
+        # nothing.
+        admin_client.get(ADD_URL)
+        with django_capture_on_commit_callbacks(execute=True):
+            admin_client.post(
+                ADD_URL,
+                {
+                    "email": "forged-composed@example.com",
+                    "password1": "Ab12cd",
+                    "password2": "Ab12cd",
+                },
+            )
+    assert _ZeroAcceptBackend.calls == 1  # no automatic retry
+    user = User.objects.get(email="forged-composed@example.com")
+    assert user.is_active is False  # the zero-accept Add leaves it inactive
     stored_hash = user.password
     stored_expiry = user.onboarding_password_expires_at
+    assert stored_expiry is not None
     change_url = f"/admin/accounts/user/{user.pk}/change/"
 
     # The change GET renders is_active read-only (no editable checkbox) and
@@ -980,11 +1004,15 @@ def test_change_post_forged_is_active_on_cannot_activate_pending_inactive(
     # The correct temporary value is still refused: the account has not been
     # activated and the credential has not been changed.
     assert authenticate(username=user.email, password="Ab12cd") is None
-    # No delivery / activation outcome was claimed for this account.
+    # No delivery / activation outcome was claimed for this account: the
+    # forged change POST registered nothing, and the Add admin's zero-accept
+    # outcome is still the truthful "undelivered".
     statuses = csrf_client.session.get(onboarding.DELIVERY_STATUS_SESSION_KEY)
     assert not (
         isinstance(statuses, dict) and statuses.get(str(user.pk)) in ("delivered", "superseded")
     )
+    add_statuses = admin_client.session.get(onboarding.DELIVERY_STATUS_SESSION_KEY)
+    assert not (isinstance(add_statuses, dict) and add_statuses.get(str(user.pk)) == "delivered")
 
 
 @pytest.mark.django_db

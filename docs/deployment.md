@@ -721,10 +721,10 @@ separation remains deferred. Authenticated humans have broad reservation access
 under policy rules; site groups do not implement project/membership or per-token
 asset restrictions. Institutional OIDC, public forgotten-password reset,
 general notifications, workload execution/gateway/scheduler integration and
-private SmartScheduling cutover are outside the current service; the
-administrator-created onboarding email and the logged-in own-password change
-are available when the account email transport is configured. Imported
-inventory is not evidence of
+private SmartScheduling cutover are outside the current service; a logged-in
+member can change their own password at any time, and the
+administrator-created onboarding email is available when the account email
+transport is configured. Imported inventory is not evidence of
 hardware availability or verification.
 
 ### Shared abuse budgets

@@ -723,10 +723,10 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
   cookies and SSL redirect are on by default; HSTS stays disabled until the
   final HTTPS hostname is verified, then must be enabled explicitly.
 - Administrator-created local accounts support the authenticated pilot.
-  Administrator-created onboarding email and the logged-in own-password
-  change are available when the account email transport is configured;
-  public forgotten-password reset, institutional OIDC and general
-  notifications remain deferred.
+  A logged-in member can change their own password at any time; the
+  administrator-created onboarding login-details email is available when the
+  account email transport is configured. Public forgotten-password reset,
+  institutional OIDC and general notifications remain deferred.
 - Internet access uses the qualified HTTPS proxy boundary and shared PostgreSQL
   budgets for member/admin login and API traffic. Keep the application listener
   private; configure explicit proxy peers, overwrite forwarding headers, preserve
