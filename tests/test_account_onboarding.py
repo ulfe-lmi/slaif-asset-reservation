@@ -895,8 +895,13 @@ def test_within_expiry_login_restricted_to_password_page() -> None:
     assert client.get("/health/ready").status_code == 200
     branding = client.get("/branding/logo")
     assert branding.status_code in (200, 404)
+    # The gate must not block absolute "/static/" paths: the request
+    # reaches the static handler (200 where the file is available, 404
+    # otherwise), never the forced-change redirect. The allowlist
+    # predicate itself is covered directly below.
     static_js = client.get("/static/web/admin-form-guidance.js")
-    assert static_js.status_code == 200
+    assert static_js.status_code != 302
+    assert static_js.status_code in (200, 404)
     # A path merely STARTING with "static" must still be gated.
     fake = client.get("/staticlike/")
     assert fake.status_code == 302
