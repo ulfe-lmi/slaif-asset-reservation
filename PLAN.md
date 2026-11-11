@@ -303,16 +303,16 @@ explicit instruction to first make the OAP plan and then implement; the
 planning is this P-09 plus the ARCHITECTURE.md A-17 contract, and implementation
 follows only under separately strategy-issued orders.
 
-**Current contradiction recorded honestly.** Today there is no member
-password-change route: the profile page edits display name and timezone only,
-and the Administration user page help states that members cannot change their
-own password. The normal password policy is the standard validator set
-(including `MinimumLengthValidator`, whose default minimum is eight
-characters), applied to every normal password creation or change. The
-selected six-character initial password therefore conflicts with that normal
-baseline; it is admitted ONLY as a generated temporary onboarding credential
-with the bounded mitigations below, never as a weakening of the normal
-validators.
+**Selection-era contradiction, recorded honestly.** At the 2026-11-09
+target selection there was no member password-change route: the profile page
+edited display name and timezone only, and the Administration user page help
+stated that members could not change their own password. The normal password
+policy is the standard validator set (including `MinimumLengthValidator`,
+whose default minimum is eight characters), applied to every normal password
+creation or change. The selected six-character initial password therefore
+conflicted with that normal baseline; it is admitted ONLY as a generated
+temporary onboarding credential with the bounded mitigations below, never as
+a weakening of the normal validators.
 
 **Bounded mitigations (selected, not optional).** A CSPRNG temporary
 password; maximum 24-hour validity, after which it cannot establish a new
@@ -338,12 +338,13 @@ no real relay, recipient, credential, identity administration,
 host/exposure/DNS/TLS/firewall, production database, deployment or
 release is authorized by it.
 
-**Development purposes — scope map (055–059).** The private strategic
-sequence is recorded here as the selected scope map. Each purpose requires
-its own strategy-issued order with live authority, exact scope, base and PR;
-numbering is a private orientation, not an active backlog. Purposes 056–059
-are DRAFT here: no issue, PR, SHA or result for them exists or is claimed,
-and none is executable until strategy issues its order.
+**Development purposes — scope map (055–059, as selected).** The private
+strategic sequence is recorded here as the selected scope map, as it stood at
+the 2026-11-09 selection. Each purpose requires its own strategy-issued order
+with live authority, exact scope, base and PR; numbering is a private
+orientation, not an active backlog. At that selection, purposes 056–059 were
+DRAFT: no issue, PR, SHA or result for them existed or was claimed, and none
+was executable until strategy issued its order.
 
 | # | Purpose (derived from A-17) | Stable rows | Depends on |
 |---|---|---|---|
@@ -353,12 +354,15 @@ and none is executable until strategy issues its order.
 | 058 | Six-character temporary admin creation and forced change: add-form prepopulation of both controls with one new CSPRNG six-character value, narrow temporary-only length exception, expiry within 24h, forced change to normal validators before any other work, existing accounts unchanged | SAR-056 | 056, 057 |
 | 059 | Integration and qualification: full focused positive/negative/browser evidence, standard five exact-head checks, and a fresh independent ICA over the full current architecture at the exact merged revision before any milestone-closure claim | all rows | 056, 057, 058 |
 
-**Status.** UNPROVEN. All of A-17/SAR-054–SAR-056 is selected target design
-recorded by order 055-a; nothing is implemented by this text. No
-email/password-reset feature, route, setting or delivery exists or is
-claimed as existing until the implementation purposes above land at their
-exact merged evidence, and a fresh independent ICA at the exact merged
-revision is required before any later M-ACCOUNT-ONBOARDING
-milestone-closure claim. The milestone history in P-06 is otherwise
-unchanged; human acceptance, release and real infrastructure decisions
-remain separate.
+**Status.** The selected logged-in own-password change (SAR-054, delivered
+by order 056-a, issue #116 / PR #117), operator SMTP onboarding with the
+failure boundary (SAR-055, order 057-a, issue #118 / PR #119) and the
+six-character temporary Admin onboarding credential with forced change
+(SAR-056, order 058-a, issue #120 / PR #121) have landed in merged main;
+integration and qualification evidence was published by order 059-a
+(issue #122 / PR #123). Their exact evidence lives in those merged PRs and
+in the OAP reports under `oap/reports/`. A fresh independent ICA at the
+exact merged revision, and human acceptance, release and real-infrastructure
+decisions (including any real SMTP relay or deployment), remain separate from
+this documentation; no M-ACCOUNT-ONBOARDING milestone-closure claim is made
+here. The milestone history in P-06 is otherwise unchanged.
