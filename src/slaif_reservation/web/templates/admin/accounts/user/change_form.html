@@ -13,6 +13,7 @@
         <p>{% translate "This account is pending its first forced password change. It signs in with the temporary password, and until it chooses its own password it can only open the password-change page. The temporary password can establish a session only until it expires; after expiry — or after the forced change — it no longer works." %}</p>
       {% else %}
         <p>{% translate "This account is pending its first forced password change, but it cannot sign in yet: it stays inactive until the login-details email for its current temporary password is accepted by the email relay. Once accepted, the member signs in with that temporary password and is asked to choose its own; the temporary password can establish a session only until it expires, is reissued or is changed." %}</p>
+        <p class="hint">{% translate "Activation is not available from this page: the Active control is read-only while the account is inactive and pending, so it cannot be switched on here. The account becomes active only when its onboarding login-details email is accepted by the configured email relay; if delivery failed or was uncertain, use the reissue action below to send the details again." %}</p>
       {% endif %}
       {% if onboarding_delivery_undelivered %}
         <div class="messagelist">

@@ -189,6 +189,41 @@ def _reissue_url(user: User) -> str:
     return f"/admin/accounts/user/{user.pk}/onboarding-reissue/"
 
 
+def _change_post(client: Client, user: User, *, is_active: str) -> Any:
+    """A CSRF-valid Admin change POST carrying every required current field.
+
+    The client must have ``enforce_csrf_checks=True``: the page is fetched
+    first (establishing the session and CSRF cookie), the form token is read
+    from it, and the POST is submitted with that token so the request is
+    genuinely CSRF-valid and reaches the form/save path. All fields other
+    than ``is_active`` are submitted with the account's current value, so the
+    POST is otherwise a no-op.
+    """
+    change_url = f"/admin/accounts/user/{user.pk}/change/"
+    page = client.get(change_url)
+    assert page.status_code == 200
+    token = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', page.content.decode())
+    assert token, "change form did not render a CSRF token"
+    joined = user.date_joined
+    return client.post(
+        change_url,
+        {
+            "email": user.email,
+            "display_name": user.display_name,
+            "timezone": user.timezone,
+            "is_service_account": "on" if user.is_service_account else "",
+            "is_staff": "on" if user.is_staff else "",
+            "is_superuser": "on" if user.is_superuser else "",
+            "is_active": is_active,
+            "last_login_0": "",
+            "last_login_1": "",
+            "date_joined_0": joined.strftime("%Y-%m-%d"),
+            "date_joined_1": joined.strftime("%H:%M:%S"),
+            "csrfmiddlewaretoken": token.group(1),
+        },
+    )
+
+
 # --- temporary credential generation ----------------------------------------
 
 
@@ -906,6 +941,152 @@ def test_change_page_state_specific_text(
     assert "It signs in with the temporary password" in html
     assert "cannot sign in yet" not in html
     assert "could not be confirmed as delivered" not in html
+
+
+@pytest.mark.django_db
+def test_zero_accept_add_then_forged_is_active_on_cannot_activate(
+    admin_user: User,
+    admin_client: Client,
+    fixed_generator: None,
+    django_capture_on_commit_callbacks: Any,
+) -> None:
+    """059-a F-01 composed: an ACTUAL Admin Add (GET/POST) under a synthetic
+    zero-accept relay commits the account INACTIVE/pending; a CSRF-valid,
+    manually constructed User change POST with is_active=on on THAT SAME
+    account must not activate it — the stored credential and expiry stay
+    unchanged, the correct temporary value is still refused, and no delivery
+    outcome is claimed. The change GET offers no editable is_active switch
+    and explains the restriction."""
+    _ZeroAcceptBackend.calls = 0
+    with override_settings(
+        ACCOUNT_EMAIL_ENABLED=True,
+        PUBLIC_BASE_URL=BASE_URL,
+        DEFAULT_FROM_EMAIL=FROM_EMAIL,
+        EMAIL_BACKEND=ZERO_ACCEPT_BACKEND,
+    ):
+        # Real Admin Add GET/POST with the synthetic zero-accept relay: the
+        # account is committed inactive/pending and the single send accepts
+        # nothing.
+        admin_client.get(ADD_URL)
+        with django_capture_on_commit_callbacks(execute=True):
+            admin_client.post(
+                ADD_URL,
+                {
+                    "email": "forged-composed@example.com",
+                    "password1": "Ab12cd",
+                    "password2": "Ab12cd",
+                },
+            )
+    assert _ZeroAcceptBackend.calls == 1  # no automatic retry
+    user = User.objects.get(email="forged-composed@example.com")
+    assert user.is_active is False  # the zero-accept Add leaves it inactive
+    stored_hash = user.password
+    stored_expiry = user.onboarding_password_expires_at
+    assert stored_expiry is not None
+    change_url = f"/admin/accounts/user/{user.pk}/change/"
+
+    # The change GET renders is_active read-only (no editable checkbox) and
+    # explains that activation is unavailable here.
+    html = admin_client.get(change_url).content.decode()
+    assert "Activation is not available from this page" in html
+    assert "Active control is read-only" in html
+    assert not re.search(r'<input[^>]*name="is_active"[^>]*>', html)
+
+    # A CSRF-valid forged change POST with is_active=on cannot activate it.
+    csrf_client = Client(enforce_csrf_checks=True)
+    csrf_client.force_login(admin_user)
+    response = _change_post(csrf_client, user, is_active="on")
+    assert response.status_code == 302
+    user.refresh_from_db()
+    assert user.is_active is False  # the attempted activation is ignored
+    assert user.password == stored_hash  # stored credential unchanged
+    assert user.onboarding_password_expires_at == stored_expiry  # expiry unchanged
+    # The correct temporary value is still refused: the account has not been
+    # activated and the credential has not been changed.
+    assert authenticate(username=user.email, password="Ab12cd") is None
+    # No delivery / activation outcome was claimed for this account: the
+    # forged change POST registered nothing, and the Add admin's zero-accept
+    # outcome is still the truthful "undelivered".
+    statuses = csrf_client.session.get(onboarding.DELIVERY_STATUS_SESSION_KEY)
+    assert not (
+        isinstance(statuses, dict) and statuses.get(str(user.pk)) in ("delivered", "superseded")
+    )
+    add_statuses = admin_client.session.get(onboarding.DELIVERY_STATUS_SESSION_KEY)
+    assert not (isinstance(add_statuses, dict) and add_statuses.get(str(user.pk)) == "delivered")
+
+
+@pytest.mark.django_db
+def test_change_post_ordinary_account_activation_deactivation_unaffected(
+    admin_user: User,
+    admin_client: Client,
+    email_enabled: None,
+) -> None:
+    """059-a: an ordinary (non-onboarding) account keeps the normal
+    permission-checked Admin activation/deactivation through the is_active
+    switch; the pending-account guard does not touch it."""
+    user = User.objects.create_user(
+        email="ordinary-account@example.com",
+        password="Ord1nary-pw-x9",
+        is_active=False,
+    )
+    assert user.onboarding_password_expires_at is None
+
+    # The is_active switch is still editable for a non-pending account.
+    html = admin_client.get(f"/admin/accounts/user/{user.pk}/change/").content.decode()
+    assert re.search(r'<input[^>]*name="is_active"[^>]*>', html)
+
+    csrf_client = Client(enforce_csrf_checks=True)
+    csrf_client.force_login(admin_user)
+    # Activate.
+    response = _change_post(csrf_client, user, is_active="on")
+    assert response.status_code == 302
+    user.refresh_from_db()
+    assert user.is_active is True
+    # And deactivate again.
+    response = _change_post(csrf_client, user, is_active="")
+    assert response.status_code == 302
+    user.refresh_from_db()
+    assert user.is_active is False
+
+
+@pytest.mark.django_db
+def test_change_post_active_pending_deactivate_allowed_reactivate_blocked(
+    admin_user: User,
+    email_enabled: None,
+) -> None:
+    """059-a: an accepted-delivery (active) pending account may be
+    deliberately deactivated; once inactive and pending the is_active switch
+    is read-only and a CSRF-valid forged is_active=on cannot reactivate it
+    (explicit SMTP reissue is the only path back to active)."""
+    user = _pending_user("active-pending@example.com", "Zz98ab", active=True)
+    change_url = f"/admin/accounts/user/{user.pk}/change/"
+    csrf_client = Client(enforce_csrf_checks=True)
+    csrf_client.force_login(admin_user)
+
+    # Active pending: the switch is editable and deactivation is allowed.
+    assert re.search(
+        r'<input[^>]*name="is_active"[^>]*>', csrf_client.get(change_url).content.decode()
+    )
+    response = _change_post(csrf_client, user, is_active="")
+    assert response.status_code == 302
+    user.refresh_from_db()
+    assert user.is_active is False
+    assert user.onboarding_password_expires_at is not None  # still pending
+
+    # Now inactive+pending: the switch is read-only and a forged
+    # is_active=on cannot reactivate it.
+    html = csrf_client.get(change_url).content.decode()
+    assert "Activation is not available from this page" in html
+    assert not re.search(r'<input[^>]*name="is_active"[^>]*>', html)
+    stored_hash = user.password
+    stored_expiry = user.onboarding_password_expires_at
+    response = _change_post(csrf_client, user, is_active="on")
+    assert response.status_code == 302
+    user.refresh_from_db()
+    assert user.is_active is False  # manual reactivation blocked
+    assert user.password == stored_hash
+    assert user.onboarding_password_expires_at == stored_expiry
+    assert authenticate(username=user.email, password="Zz98ab") is None
 
 
 @pytest.mark.django_db

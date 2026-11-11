@@ -719,9 +719,12 @@ The repository provides commands and rehearsals, not an installed operations sta
 The database role is shared and privileged under the Compose defaults; role
 separation remains deferred. Authenticated humans have broad reservation access
 under policy rules; site groups do not implement project/membership or per-token
-asset restrictions. Institutional OIDC, password reset/email, notifications,
-workload execution/gateway/scheduler integration and private SmartScheduling
-cutover are outside the current service. Imported inventory is not evidence of
+asset restrictions. Institutional OIDC, public forgotten-password reset,
+general notifications, workload execution/gateway/scheduler integration and
+private SmartScheduling cutover are outside the current service; a logged-in
+member can change their own password at any time, and the
+administrator-created onboarding email is available when the account email
+transport is configured. Imported inventory is not evidence of
 hardware availability or verification.
 
 ### Shared abuse budgets
