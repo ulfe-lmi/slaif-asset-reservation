@@ -523,7 +523,7 @@ def test_browser_admin_user_forms_guidance(
     _assert_help_near_control(page, "#id_password2", "id_password2_helptext")
     _assert_help_near_control(page, "#id_is_staff", "id_is_staff_helptext")
     assert (
-        "The member can later change their own password from the profile page"
+        "account email (SMTP) transport to be configured"
         in page.locator("#id_password1_helptext").inner_text()
     )
     assert (

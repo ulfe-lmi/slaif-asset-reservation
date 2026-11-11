@@ -12,7 +12,7 @@
       <p>{% translate "This account is pending its first forced password change. It signs in with the temporary password, and until it chooses its own password it can only open the password-change page. The temporary password can establish a session only until it expires; after expiry — or after the forced change — it no longer works." %}</p>
       {% if onboarding_delivery_undelivered %}
         <div class="messagelist">
-          <p class="warning">{% translate "The login-details email for this account could not be confirmed as delivered. The account stays inactive; use the reissue action to send the details again (reissue again if delivery stays uncertain). Email delivery can be ambiguous, so do not assume the member has a working password." %}</p>
+          <p class="warning">{% translate "The login-details email for this account could not be confirmed as delivered. The account stays inactive and cannot sign in yet; use the reissue action to send the details again (reissue again if delivery stays uncertain). Email delivery can be ambiguous, so do not assume the member has a working password." %}</p>
         </div>
       {% endif %}
       {% if onboarding_expires_at %}

@@ -209,23 +209,18 @@ def password_change(request: HttpRequest) -> HttpResponse:
     values or stored hashes, and the submitted credential fields are
     marked sensitive for technical exception reporting.
 
-    Admission is the usual active-human boundary with one narrow addition
-    (SAR-056): an account pending its first forced change is inactive on
-    purpose, yet it must be able to reach this page (and only this page,
-    logout, login and static/branding/health, which the onboarding
-    session gate enforces for all other routes). Disallowed sessions are
-    terminated without redirect loops, exactly as before.
+    Admission is the usual active-human boundary. An account pending its
+    first forced change is active (its delivery was accepted) and reaches
+    this page through that same boundary; the onboarding session gate
+    (SAR-056) allows it only this page, logout, login and
+    static/branding/health for all other routes, and terminates the
+    session after the temporary credential expires. Disallowed sessions
+    are terminated without redirect loops, exactly as before.
     """
     if request.method not in ("GET", "POST"):
         return HttpResponseNotAllowed(["GET", "POST"])
     user = request.user
-    admitted = user.is_authenticated and (
-        is_active_human(user)
-        or (
-            onboarding.is_pending_onboarding(user)
-            and not onboarding.temporary_credential_expired(user)
-        )
-    )
+    admitted = user.is_authenticated and is_active_human(user)
     if not admitted:
         if user.is_authenticated or SESSION_KEY in request.session:
             auth_logout(request)

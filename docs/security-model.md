@@ -89,22 +89,33 @@ forgotten-password reset, and no email notification; submitted values are
 excluded from request/exception logging and never rendered in error pages,
 messages, audit, reports or test output.
 
-Administrator-created member accounts may start with a generated
-six-character temporary password (shown only in the Administration add form
-and in the one-time plain-text login-details email). The email is sent
-exactly once, after the account commits, through the configured SMTP
-transport; the account is activated only on relay acceptance and there is no
-automatic retry (the administrator reissues explicitly, which rotates the
-previous credential). Until the member chooses their own password, that
-session can reach only the password-change page, logout, login and the
-static/branding/health surfaces. The temporary credential expires no later
-than 24 hours and cannot establish a new member or Administration session
-after expiry. The forced change uses the normal validator set, keeps the
-current session, and invalidates every other session. Email delivery is not
-a secure secret channel: mailbox/relay compromise and online guessing
-remain residual risks; the shared login abuse budgets, the short expiry and
-the one-time change gate mitigate but do not eliminate that risk. No
-plaintext credential is persisted, logged, audited, rendered or reported.
+Administrator-created member accounts are onboarded through a temporary
+credential: the generated six-character temporary password prefilled in
+the Administration add form, or a manually entered password that passes
+the normal validator set — while account email is enabled both are
+treated identically. The login-details email is sent exactly once, after
+the account commits, through the configured SMTP transport; the account
+stays inactive and cannot sign in (member or Administration) until the
+relay accepts the send, and there is no automatic retry (the
+administrator reissues explicitly, which rotates the previous credential
+and leaves the account inactive while the new delivery is pending).
+Activation is exact-generation: the send may only activate the account
+while it still holds the very credential that was sent, so a reissue
+supersedes a scheduled or in-flight send and a stale accepted send can
+never activate a newer pending credential. Until the member chooses
+their own password, that session can reach only the password-change
+page, logout, login and the static/branding/health surfaces. The
+temporary credential expires no later than 24 hours and cannot establish
+a new member or Administration session after expiry. The forced change
+uses the normal validator set, keeps the current session, and invalidates
+every other session. Email delivery is not a secure secret channel:
+mailbox/relay compromise and online guessing remain residual risks; the
+shared login abuse budgets, the short expiry and the one-time change gate
+mitigate but do not eliminate that risk. No plaintext credential is
+persisted, logged, audited or reported, and it is rendered only in the
+two prefilled password controls of the non-cacheable add-user form (the
+sole intentional browser rendering) and in the one-time login-details
+email.
 
 Human login uses administrator-created email accounts, denies inactive and
 service accounts with a generic failure, preserves CSRF/session protections,

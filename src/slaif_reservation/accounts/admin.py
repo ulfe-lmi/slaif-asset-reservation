@@ -381,35 +381,40 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
     def get_changeform_initial_data(self, request: HttpRequest) -> dict[str, Any]:
         """Prefill the add form with a fresh generated temporary password.
 
-        Only while account email is enabled: the add form then carries the
-        generated six-character value in BOTH password controls plus a
-        short-lived signed digest (in the session, never rendered) bound to
-        this administrator's session. Each GET generates a fresh value.
+        Every add GET generates a fresh six-character value in BOTH
+        password controls plus a short-lived signed digest (in the
+        session, never rendered) bound to this administrator's session —
+        whether or not account email is enabled: with email enabled the
+        value is the onboarding credential, with email disabled it shows
+        the prefilled form whose submissions are refused until the
+        transport is configured. Each GET generates a fresh value.
         """
-        if settings.ACCOUNT_EMAIL_ENABLED:
-            value = onboarding.generate_temporary_password()
-            nonce = onboarding.session_nonce(request.session)
-            request.session[onboarding.PREFILL_PROOF_SESSION_KEY] = onboarding.sign_prefill_proof(
-                value, nonce
-            )
-            return {"password1": value, "password2": value}
-        return {}
+        value = onboarding.generate_temporary_password()
+        nonce = onboarding.session_nonce(request.session)
+        request.session[onboarding.PREFILL_PROOF_SESSION_KEY] = onboarding.sign_prefill_proof(
+            value, nonce
+        )
+        return {"password1": value, "password2": value}
 
     def save_model(self, request: HttpRequest, obj: Any, form: Any, change: bool) -> None:
         if change:
             super().save_model(request, obj, form, change)
             return
-        generated = isinstance(form, SlaifUserCreationForm) and form.onboarding_generated
-        if not generated:
-            # Regular add (manually entered normal-length password or email
-            # disabled): exactly the pre-existing behavior, no onboarding
-            # state, no mail.
-            super().save_model(request, obj, form, change)
-            return
-        # Onboarding add: commit the account INACTIVE/PENDING with only the
-        # password hash and the nonsecret expiry metadata, then register
-        # exactly one post-commit send. Activation happens only when the
-        # SMTP backend reports acceptance (see onboarding module).
+        if not settings.ACCOUNT_EMAIL_ENABLED:
+            # Unreachable through the form, which refuses every add POST
+            # while account email is disabled. Fail closed regardless:
+            # never write an account without the delivery workflow.
+            raise RuntimeError(
+                "Admin account add requires the account email transport to "
+                "be enabled; the add form refuses it while disabled."
+            )
+        # Onboarding add — the generated six-character prefill or a
+        # manually entered normal-validator password: commit the account
+        # INACTIVE/PENDING with only the password hash and the nonsecret
+        # expiry metadata, then register exactly one post-commit send.
+        # Activation happens only when the SMTP backend reports
+        # acceptance of THIS exact credential generation (see onboarding
+        # module); the credential must be changed on first login.
         temporary = str(form.cleaned_data["password1"])
         onboarding.start_onboarding(obj, temporary)
         super().save_model(request, obj, form, change)
@@ -420,6 +425,8 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 user_pk=obj.pk,
                 temporary_password=temporary,
                 request=request,
+                sent_hash=obj.password,
+                sent_expires_at=obj.onboarding_password_expires_at,
             )
         )
 
@@ -440,10 +447,12 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 context["onboarding_can_reissue"] = self.has_change_permission(request, obj)
                 # The nonsecret delivery outcome from this administrator's
                 # last send (persisted by the post-commit delivery step)
-                # warns while the account is still pending.
+                # warns while the account is still pending. It is scoped
+                # to THIS account: a failed send for another user must not
+                # show on this page.
                 context["onboarding_delivery_undelivered"] = (
                     onboarding.is_pending_onboarding(obj)
-                    and request.session.get(onboarding.DELIVERY_STATUS_SESSION_KEY) == "undelivered"
+                    and onboarding.delivery_status_for(request, obj.pk) == "undelivered"
                 )
         response = super().render_change_form(request, context, *args, **kwargs)
         if kwargs.get("add"):
@@ -505,6 +514,8 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                         user_pk=user.pk,
                         temporary_password=value,
                         request=request,
+                        sent_hash=user.password,
+                        sent_expires_at=user.onboarding_password_expires_at,
                         reissue=True,
                     )
                 )

@@ -1,4 +1,4 @@
-"""Real Chromium/HTTP/PostgreSQL checks for administrator account onboarding (058-a).
+"""Real Chromium/HTTP/PostgreSQL checks for administrator account onboarding (058-a/058-b).
 
 Desktop 1440 and mobile 390 over real HTTP with a synthetic locmem SMTP
 sink: the admin add form prefills a fresh six-character temporary
@@ -9,8 +9,10 @@ the single accepted send; a member signing in with the temporary
 credential is gated to the password-change page only; the forced change
 uses the normal validators, keeps the current session and invalidates
 the old credential; the explicit reissue control rotates the credential
-with exactly one new send. Screenshots are limited to privacy-safe
-surfaces (two in this file).
+with exactly one new send; a FAILED synthetic delivery leaves the
+account inactive — the correct credential cannot establish a session —
+and only the accepted reissue delivery activates it. Screenshots are
+limited to privacy-safe surfaces (three in this file).
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from datetime import timedelta
 
 import pytest
 from django.core import mail
+from django.test import override_settings
 from django.utils import timezone
 from playwright.sync_api import Page
 
@@ -40,6 +43,20 @@ MOBILE = {"width": 390, "height": 844}
 BASE_URL = "https://reservation.example.test"
 FROM_EMAIL = "no-reply@example.test"
 NEW_PASSWORD = "onboard-into-safe-pw0rd"
+
+
+class _FailingBrowserSMTPBackend:
+    """Synthetic relay that never accepts (browser live server, same
+    process, referenced by import path)."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def send_messages(self, messages) -> int:
+        raise RuntimeError("synthetic browser SMTP down")
+
+
+FAILING_BACKEND = "test_account_onboarding_browser._FailingBrowserSMTPBackend"
 
 
 @pytest.fixture
@@ -198,10 +215,13 @@ def test_browser_admin_reissue_flow(
     settings.PUBLIC_BASE_URL = BASE_URL
     settings.DEFAULT_FROM_EMAIL = FROM_EMAIL
 
+    # Accepted-delivery baseline: the account is ACTIVE while pending its
+    # forced change; reissuing makes it inactive again until the new
+    # delivery is accepted.
     pending = User.objects.create_user(
         email="onb-browser-reissue@example.com",
         password="Mn56yz",
-        is_active=False,
+        is_active=True,
     )
     pending.onboarding_password_expires_at = timezone.now() + timedelta(hours=24)
     pending.save(update_fields=["onboarding_password_expires_at"])
@@ -235,3 +255,74 @@ def test_browser_admin_reissue_flow(
     assert pending.is_active is True
     assert pending.onboarding_password_expires_at is not None
     assert "The new onboarding login details were delivered by email." in page.content()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_browser_admin_add_failed_delivery_then_reissue(
+    page: Page,
+    live_server,
+    output_path,
+    admin_user: User,
+    settings,
+) -> None:
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    settings.PUBLIC_BASE_URL = BASE_URL
+    settings.DEFAULT_FROM_EMAIL = FROM_EMAIL
+
+    page.set_viewport_size(DESKTOP)
+    _admin_login(page, live_server, admin_user)
+
+    # Add with a synthetic relay that never accepts: the account is
+    # committed pending and stays INACTIVE (no session is possible).
+    with override_settings(EMAIL_BACKEND=FAILING_BACKEND):
+        page.goto(f"{live_server.url}/admin/accounts/user/add/")
+        prefill = page.locator("#id_password1").input_value()
+        assert prefill == page.locator("#id_password2").input_value()
+        assert len(prefill) == 6
+        page.locator("#id_email").fill("onb-browser-failed@example.com")
+        page.get_by_role("button", name="Save", exact=True).click()
+        page.wait_for_url(re.compile(r"/admin/accounts/user/[\w-]+/change/"))
+
+    user = User.objects.get(email="onb-browser-failed@example.com")
+    assert user.is_active is False
+    assert len(mail.outbox) == 0
+    # Nonsecret failure warning, no credential rendered.
+    content = page.content()
+    assert "could not be confirmed as delivered" in content
+    assert "cannot sign in yet" in content
+    assert prefill not in content
+    _assert_no_horizontal_overflow(page)
+    _capture(page, output_path, "admin-onboarding-failed-delivery-1440")
+
+    # The correct credential CANNOT establish a session while inactive.
+    page.context.clear_cookies()
+    _member_login(page, live_server, "onb-browser-failed@example.com", prefill)
+    page.wait_for_url(f"{live_server.url}/login/")
+    assert "Enter a valid email address and password." in page.content()
+
+    # The administrator explicitly reissues over the healthy synthetic
+    # relay: exactly one new send, accepted, account activated.
+    _admin_login(page, live_server, admin_user)
+    page.goto(f"{live_server.url}/admin/accounts/user/{user.pk}/onboarding-reissue/")
+    before = len(mail.outbox)
+    page.get_by_role("button", name="Yes, reissue the onboarding login details").click()
+    page.wait_for_url(f"{live_server.url}/admin/accounts/user/{user.pk}/change/")
+
+    user.refresh_from_db()
+    assert len(mail.outbox) - before == 1
+    new_password = re.search(r"Temporary password: (\S+)", mail.outbox[-1].body).group(1)
+    assert len(new_password) == 6 and new_password != prefill
+    assert user.check_password(new_password)
+    assert user.is_active is True
+    assert "The new onboarding login details were delivered by email." in page.content()
+
+    # After the accepted delivery the member signs in and is forced to
+    # change the credential; the old one is dead.
+    page.context.clear_cookies()
+    _member_login(page, live_server, "onb-browser-failed@example.com", new_password)
+    page.wait_for_url(f"{live_server.url}/profile/password/")
+    _assert_no_horizontal_overflow(page)
+    page.context.clear_cookies()
+    _member_login(page, live_server, "onb-browser-failed@example.com", prefill)
+    page.wait_for_url(f"{live_server.url}/login/")
+    assert "Enter a valid email address and password." in page.content()

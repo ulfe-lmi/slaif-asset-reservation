@@ -1029,7 +1029,7 @@ def test_admin_user_add_guidance(client: Client, admin_user: User) -> None:
     _assert_guided(
         html,
         "id_password1_helptext",
-        "The member can later change their own password from the profile page",
+        "account email (SMTP) transport to be configured",
         control_id="id_password1",
     )
     _assert_guided(

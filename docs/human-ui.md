@@ -155,17 +155,23 @@ the stored password verifier is never displayed. The password-change form
 explains that disabling password authentication loses the current password and
 that no alternate human login backend is provided.
 
-While account email is enabled, the user add form prefills a freshly
-generated six-character temporary password in both password controls and
-explains the temporary-credential path; leaving it as-is creates the account
-inactive/pending and sends one login-details email after the account is
-saved (the account is activated only when the relay confirms acceptance; on
-failure or an unconfirmed result it stays inactive and no automatic retry is
-made). The user change page shows the onboarding status with the temporary
-password expiry and an explicit **Reissue onboarding login details** action
-that rotates the previous temporary password and sends the new details once.
-The temporary password is never displayed on any administration page, in
-logs, or in the audit record.
+The user add form always prefills a freshly generated six-character
+temporary password in both password controls. While account email is
+enabled, keeping the prefill or entering your own regular password that
+satisfies the site rules creates the account inactive/pending and sends
+one login-details email after the account is saved (the account is
+activated only when the relay confirms acceptance of that exact
+credential; on failure or an unconfirmed result it stays inactive, the
+member cannot sign in yet, and no automatic retry is made). While account
+email is disabled, the prefill is still shown with clear setup guidance
+and every submission is refused until the transport is configured. The
+user change page shows the onboarding status — including a delivery-failure
+warning for that specific account — with the temporary password expiry and
+an explicit **Reissue onboarding login details** action that rotates the
+previous temporary password and sends the new details once. The temporary
+password is never displayed outside the non-cacheable add-user form
+prefill (and the one login-details email): no other administration page,
+log or audit record contains it.
 
 Policies, reservations, blackouts, audit events and API tokens are protected
 read-only records in administration. Their guidance identifies the supported

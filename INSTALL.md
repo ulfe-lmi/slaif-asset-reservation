@@ -140,17 +140,20 @@ and the fresh database's global `default` policy. Existing policies are preserve
 
 ### Optional: account email transport (before member creation)
 
-Creating a human member account in Administration generates a fresh
-six-character temporary password, prefills it in both password controls,
-and — when account email is enabled — sends that account exactly one
-plain-text login-details email after the account is saved. The account
-is activated only when the SMTP backend confirms acceptance (there is no
-automatic retry), and the member must choose their own password at first
-sign-in, within 24 hours. The transport is **disabled by default**; while
-disabled the add form behaves as a normal initial-password form and no
-email is sent. If you expect to onboard members by email, configure the
-transport now in `deploy/env.production` from the commented opt-in block
-in `deploy/env.production.example` (`SLAIF_ACCOUNT_EMAIL_ENABLED`,
+Creating a human member account in Administration prefills a fresh
+six-character temporary password in both password controls on every
+add-page load. When account email is enabled, the entered password — the
+generated prefill or a regular password you enter yourself — sends that
+account exactly one plain-text login-details email after the account is
+saved; the account stays inactive until the SMTP backend confirms
+acceptance (there is no automatic retry), the member cannot sign in until
+then, and the member must choose their own password at first sign-in,
+within 24 hours. The transport is **disabled by default**; while
+disabled every Administration add submission is refused without creating
+an account (the form still shows the prefill and the setup guidance) and
+no email is sent. If you expect to onboard members by email, configure
+the transport now in `deploy/env.production` from the commented opt-in
+block in `deploy/env.production.example` (`SLAIF_ACCOUNT_EMAIL_ENABLED`,
 `SLAIF_PUBLIC_BASE_URL`, `SLAIF_SMTP_*`). While disabled, the app starts
 without any `SLAIF_SMTP_*` value and sends nothing. When enabled,
 production validates the full transport contract fail-closed at settings

@@ -47,22 +47,22 @@ class HumanAuthenticationForm(AuthenticationForm):
 
     def confirm_login_allowed(self, user: User) -> None:
         # Active non-service-account humans log in exactly as before.
-        # One narrow addition (SAR-055/056): an account still pending its
-        # first forced change is INACTIVE on purpose; it may authenticate
-        # with its temporary credential only while that credential is
-        # inside its 24-hour window (the session gate then allows only the
-        # password-change page). After expiry the backend refuses it and
-        # the generic non-disclosing error below applies.
+        # One narrow addition (SAR-055/056): an account pending its first
+        # forced change is ACTIVE (its login-details delivery was
+        # accepted) and may authenticate with its temporary credential
+        # only while that credential is inside its 24-hour window (the
+        # session gate then allows only the password-change page).
+        # Accounts whose delivery failed, is pending or was superseded by
+        # a reissue are INACTIVE and are refused here with the generic
+        # non-disclosing error, exactly like any other inactive account.
         if user.is_service_account:
             raise forms.ValidationError(
                 self.error_messages["invalid_login"],
                 code="invalid_login",
                 params={"username": self.username_field.verbose_name},
             )
-        if user.is_active:
-            return
-        if onboarding.is_pending_onboarding(user) and not onboarding.temporary_credential_expired(
-            user
+        if user.is_active and not (
+            onboarding.is_pending_onboarding(user) and onboarding.temporary_credential_expired(user)
         ):
             return
         raise forms.ValidationError(

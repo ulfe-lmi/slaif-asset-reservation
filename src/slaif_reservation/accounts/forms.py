@@ -8,9 +8,16 @@ the add form may be submitted as-is, proved by a short-lived signed
 digest bound to the creating administrator's session. An edited,
 tampered, expired or unbound six-character value is rejected, and every
 manually entered password (normal length or more) is validated exactly
-as before. The form never lowers the global minimum, never stores the
-credential in a server session or database plaintext, and never echoes
-it into errors.
+as before.
+
+While account email is enabled, EVERY valid submission — the generated
+prefill or a manually entered normal-validator password — is an
+onboarding credential: the account commits inactive/pending and is
+activated only by the accepted post-commit send. While account email is
+disabled, every submission is refused with clear setup guidance before
+any account is written. The form never lowers the global minimum, never
+stores the credential in a server session or database plaintext, and
+never echoes it into errors.
 """
 
 from __future__ import annotations
@@ -55,10 +62,10 @@ class SlaifUserCreationForm(UserCreationForm):  # type: ignore[type-arg]
         self._onboarding_nonce = onboarding_nonce
         self._onboarding_prefill_proof = onboarding_prefill_proof
         self.onboarding_generated = False
-        # The generated temporary credential (when account email is
-        # enabled) is prefilled in BOTH controls: render the value and
-        # explain the narrow generated-only path. Without account email
-        # the form behaves exactly like the regular add form.
+        # The generated temporary credential is prefilled in BOTH
+        # controls on every add GET (account email enabled or not):
+        # render the value and explain the narrow generated-only path /
+        # the disabled-state refusal below.
         for name in ("password1", "password2"):
             field = self.fields.get(name)
             if field is None:
@@ -76,27 +83,48 @@ class SlaifUserCreationForm(UserCreationForm):  # type: ignore[type-arg]
                     _(
                         "A temporary six-character password has been "
                         "generated for you and prefilled in both fields. "
-                        "Keep it as-is to create the account and email "
-                        "these login details; the member must then choose "
-                        "their own password within 24 hours after signing "
-                        "in. Or clear the fields and enter a regular "
-                        "password that satisfies the site rules:"
+                        "Keep it as-is, or clear the fields and enter a "
+                        "regular password that satisfies the site rules: "
+                        "either way the account is created inactive "
+                        "pending onboarding, its login details are "
+                        "emailed only after the account is saved, the "
+                        "account is activated only once delivery is "
+                        "confirmed, and the member must choose their own "
+                        "password within 24 hours after signing in."
                     )
                     + " "
                     + password_validators_help_text_html()
                 )
             else:
-                password1.help_text = (
-                    _(
-                        "Choose the initial password for this account. The "
-                        "member can later change their own password from "
-                        "the profile page; an administrator can also set or "
-                        "change it from this user page. It must satisfy the "
-                        "site password rules:"
-                    )
-                    + " "
-                    + password_validators_help_text_html()
+                password1.help_text = _(
+                    "Creating accounts from this form requires the "
+                    "account email (SMTP) transport to be configured "
+                    "and enabled. Both fields are prefilled with a "
+                    "generated six-character temporary password, but "
+                    "while account email is disabled every submission "
+                    "here is refused and NO account is created. "
+                    "Configure the account email transport, reload "
+                    "this form, and create the account then."
                 )
+
+    def clean(self) -> dict[str, Any]:
+        cleaned = super().clean() or {}
+        if not settings.ACCOUNT_EMAIL_ENABLED:
+            # Without the account-email transport, Administration-created
+            # accounts could not be delivered and could not be onboarded:
+            # refuse EVERY add submission (generated or manually entered)
+            # before any account is written. CLI createsuperuser and
+            # existing accounts are unaffected.
+            self.add_error(
+                None,
+                _(
+                    "Creating accounts from this form requires the "
+                    "account email (SMTP) transport to be enabled and "
+                    "configured. Configure it, reload this form and try "
+                    "again; no account has been created."
+                ),
+            )
+        return cleaned
 
     def _verify_generated(self, password: str) -> bool:
         return onboarding.verify_prefill_proof(

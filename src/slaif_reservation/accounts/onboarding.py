@@ -4,24 +4,36 @@ Implements the selected M-ACCOUNT-ONBOARDING workflow around the existing
 Django account model:
 
 * a fresh six-character temporary credential is generated with a CSPRNG
-  and prefilled in the Administration add-user form;
+  and prefilled in the Administration add-user form on every GET (with
+  clear setup guidance while the account-email transport is disabled);
 * the form carries a short-lived signed digest (bound to the creating
   administrator's session) proving the submitted six-character value was
   generated, so edited, tampered, expired or unbound values are rejected
   while manually entered normal-length passwords keep the full validator
   set;
-* the account is committed inactive/pending with only a password hash,
-  and exactly one plain-text login-details email (canonical configured
+* while account email is enabled, EVERY valid add submission (the
+  generated prefill or a manually entered normal-validator password)
+  commits the account inactive/pending with only a password hash, and
+  exactly one plain-text login-details email (canonical configured
   HTTPS base URL + login path, account email identifier, temporary
   password) is sent after the commit; the account is activated only when
   the SMTP backend reports acceptance, and stays inactive on failure,
-  zero or ambiguous results (no automatic retry);
+  zero or ambiguous results (no automatic retry). While account email is
+  disabled every add submission is refused before any account is
+  written;
+* activation is exact-generation: the post-commit send may only activate
+  the account while it still holds the very password hash and pending
+  expiry/generation that was sent, so a reissue supersedes a scheduled
+  or in-flight send and a stale accepted callback can never activate a
+  newer pending credential or claim its delivery;
 * a manual, permission-checked reissue control rotates the credential
-  and repeats the same single post-commit send;
-* the temporary credential expires within 24 hours and cannot establish
-  a new session after expiry (authentication backend), and a
-  session gate allows an in-onboarding user only the password-change
-  page, logout and the static/branding/health surfaces.
+  (making the account inactive again while delivery is pending) and
+  repeats the same single post-commit send;
+* the temporary credential may establish a session only after the
+  account is active (delivery accepted); it expires within 24 hours and
+  cannot establish a new session after expiry (authentication backend),
+  and a session gate allows an in-onboarding user only the
+  password-change page, logout and the static/branding/health surfaces.
 
 Nothing here persists or logs a plaintext credential, derives a URL from
 the request Host, sends to a real relay in tests, or grants any group,
@@ -71,7 +83,8 @@ TEMPORARY_PASSWORD_ALPHABET = string.ascii_letters + string.digits
 # from the request Host).
 LOGIN_PATH = "/login/"
 
-# The only surfaces an in-onboarding (inactive/pending) user may reach.
+# Absolute path prefixes for the in-onboarding session gate (note
+# the leading slash on "/static/").
 _ONBOARDING_EXACT_PATHS = frozenset(
     {
         "/profile/password/",
@@ -81,7 +94,7 @@ _ONBOARDING_EXACT_PATHS = frozenset(
         "/health/ready",
     }
 )
-_ONBOARDING_STATIC_PREFIXES = ("/branding/", "static/")
+_ONBOARDING_STATIC_PREFIXES = ("/branding/", "/static/")
 
 
 # --- temporary credential generation --------------------------------------
@@ -250,45 +263,132 @@ def send_login_details_email(user: User, temporary_password: str) -> int:
     )
 
 
+def _set_delivery_status(request: Any, user_pk: Any, status: str) -> None:
+    """Persist the nonsecret outcome in the creating administrator's
+    session, scoped to the specific account (``{str(pk): status}``).
+
+    The single send runs after commit, so an explicit save keeps the
+    status on the account page regardless of when the surrounding
+    request's session would otherwise be written. The stored values are
+    status words only — never a credential.
+    """
+    try:
+        session = getattr(request, "session", None)
+        if session is None:
+            return
+        statuses = session.get(DELIVERY_STATUS_SESSION_KEY)
+        if not isinstance(statuses, dict):
+            statuses = {}
+        statuses[str(user_pk)] = status
+        session[DELIVERY_STATUS_SESSION_KEY] = statuses
+        session.save()
+    except Exception:
+        # Advisory UI state only; never fail the delivery path.
+        pass
+
+
+def delivery_status_for(request: Any, user_pk: Any) -> str | None:
+    """The creating administrator's last recorded status for this account.
+
+    Accepts the current per-account mapping as well as the legacy
+    account-unscoped single value written by earlier versions.
+    """
+    session = getattr(request, "session", None)
+    if session is None:
+        return None
+    raw = session.get(DELIVERY_STATUS_SESSION_KEY)
+    if isinstance(raw, dict):
+        value = raw.get(str(user_pk))
+        return value if isinstance(value, str) else None
+    return raw if isinstance(raw, str) else None
+
+
 def deliver_onboarding_email(
     user_pk: Any,
     temporary_password: str,
     request: Any,
     *,
+    sent_hash: str,
+    sent_expires_at: Any,
     reissue: bool = False,
 ) -> bool:
-    """Exactly one post-commit send; activate only on SMTP acceptance.
+    """Exactly one post-commit send; exact-generation activation only.
 
     Registered with ``transaction.on_commit`` after the pending account
-    (re)creation committed. SMTP acceptance is the backend returning
-    exactly one accepted message; a raised error, zero or any other
-    result leaves the account inactive. There is no automatic retry: the
-    administrator uses the explicit reissue control instead. The admin
-    status is nonsecret (the credential itself is never shown).
+    (re)creation committed. ``sent_hash`` and ``sent_expires_at`` are the
+    stored password hash and pending expiry of the EXACT credential
+    generation being sent. The send is made only while the account still
+    holds that generation: if a reissue (or any other change) superseded
+    the credential before delivery ran, the scheduled credential is never
+    emailed and the account state is left untouched. Activation is a
+    conditional update matching the same generation, so even an accepted
+    send whose generation moved in the meantime matches zero rows, never
+    activates the newer pending credential and never claims delivery.
+
+    SMTP acceptance is the backend returning exactly one accepted
+    message; a raised error, zero or any other result leaves the account
+    inactive. There is no automatic retry: the administrator uses the
+    explicit reissue control instead. The admin status is nonsecret (the
+    credential itself is never shown) and is scoped to this account.
     """
+    status = "undelivered"
+    superseded = False
     accepted = False
     try:
         user = User.objects.filter(pk=user_pk).first()
-        if user is None or not is_pending_onboarding(user):
-            # The account vanished or left onboarding before delivery.
-            return False
-        accepted = send_login_details_email(user, temporary_password) == 1
+        if (
+            user is None
+            or user.is_active
+            or not is_pending_onboarding(user)
+            or user.password != sent_hash
+            or user.onboarding_password_expires_at != sent_expires_at
+        ):
+            # The account vanished, was activated by another path or its
+            # credential was reissued before this delivery ran: the
+            # scheduled credential is superseded. Do not email it and do
+            # not touch the current state.
+            superseded = True
+        else:
+            accepted = send_login_details_email(user, temporary_password) == 1
     except Exception:
         accepted = False
     if accepted:
-        User.objects.filter(pk=user_pk, is_active=False).update(is_active=True)
-        if reissue:
-            messages.success(
-                request,
-                "The new onboarding login details were delivered by email. "
-                "The previous temporary password no longer works.",
-            )
+        updated = User.objects.filter(
+            pk=user_pk,
+            is_active=False,
+            password=sent_hash,
+            onboarding_password_expires_at=sent_expires_at,
+        ).update(is_active=True)
+        if updated:
+            status = "delivered"
+            if reissue:
+                messages.success(
+                    request,
+                    "The new onboarding login details were delivered by email. "
+                    "The previous temporary password no longer works.",
+                )
+            else:
+                messages.success(
+                    request,
+                    "The account was created and its login details were delivered by email.",
+                )
         else:
-            messages.success(
+            # The send was accepted, but the account's credential changed
+            # in the meantime: the scheduled credential does not work and
+            # the newer pending credential has NOT been delivered.
+            superseded = True
+            status = "superseded"
+            messages.warning(
                 request,
-                "The account was created and its login details were delivered by email.",
+                "The login-details email for the scheduled onboarding "
+                "credential was accepted by the relay, but the account's "
+                "credential changed before it was applied (for example "
+                "through a reissue), so nothing was activated. The "
+                "scheduled credential does not work; check the "
+                "account's current onboarding state or reissue.",
             )
-    else:
+    elif not superseded:
+        status = "undelivered"
         if reissue:
             messages.warning(
                 request,
@@ -303,20 +403,18 @@ def deliver_onboarding_email(
                 request,
                 "The account was created but its login-details email "
                 "could not be confirmed as delivered. The account stays "
-                "inactive; open it and use the onboarding reissue "
-                "action to send the details again.",
+                "inactive and cannot sign in yet; open it and use the "
+                "onboarding reissue action to send the details again.",
             )
-    # Persist the nonsecret outcome in the creating administrator's
-    # session. The single send runs after commit, so an explicit save
-    # keeps the status on the account page regardless of when the
-    # surrounding request's session would otherwise be written. The
-    # stored value is a status word only — never a credential.
-    try:
-        session = getattr(request, "session", None)
-        if session is not None:
-            session[DELIVERY_STATUS_SESSION_KEY] = "delivered" if accepted else "undelivered"
-            session.save()
-    except Exception:
-        # Advisory UI state only; never fail the delivery path.
-        pass
-    return accepted
+    else:
+        status = "superseded"
+        messages.warning(
+            request,
+            "The scheduled onboarding delivery was not made: the "
+            "account's credential or state changed after it was "
+            "scheduled (for example a reissue). The scheduled "
+            "credential does not work; check the account's current "
+            "onboarding state or reissue.",
+        )
+    _set_delivery_status(request, user_pk, status)
+    return status == "delivered"

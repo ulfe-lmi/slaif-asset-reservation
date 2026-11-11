@@ -1,16 +1,23 @@
-"""Administrator account onboarding (order 058-a, SAR-055/SAR-056).
+"""Administrator account onboarding (orders 058-a/058-b, SAR-055/SAR-056).
 
 Focused positive/negative coverage on real PostgreSQL and real admin
-HTTP: add-form prefill with a deterministic generator, the short-lived
-signed prefill proof (edited/tampered/expired/unbound rejection, manual
-normal-length passwords unaffected), disabled/incomplete-email fail
-closed, exactly-one post-commit synthetic delivery with activation only
-on SMTP acceptance, nonsecret failure status and no auto retry, manual
-permission-checked reissue with rotation, the 24-hour temporary
-lifecycle (member and Administration login denial after expiry,
-forced-change routing, session termination), forced-change completion
-(session semantics, old credential invalidation), privacy (no plaintext
-in DB/LogEntry/session/rendered pages), the unchanged createsuperuser
+HTTP: add-form prefill on every GET (enabled AND disabled, with
+setup guidance when disabled), the short-lived signed prefill proof
+(edited/tampered/expired/unbound rejection, manual normal-length
+passwords unaffected), disabled-email fail closed (every add POST
+refused before any account is written, CLI createsuperuser unchanged),
+exactly-one post-commit synthetic delivery with activation only on
+SMTP acceptance of the EXACT credential generation, failed/zero/
+ambiguous delivery leaving the account inactive and unable to sign in,
+account-scoped nonsecret failure status and no auto retry, manual
+permission-checked reissue with rotation (inactive again while the new
+delivery is pending), stale/superseded callbacks that neither send nor
+activate nor claim delivery, the 24-hour temporary lifecycle (member
+and Administration login denial after expiry, forced-change routing,
+session termination), forced-change completion (session semantics, old
+credential invalidation), the onboarding session-gate path allowlist
+(including the "/static/" prefix), privacy (no plaintext in
+DB/LogEntry/session/rendered pages), the unchanged createsuperuser
 baseline, retained permission boundaries and the shared login abuse
 budget. All mail is synthetic (locmem or in-test backends); no real
 relay or recipient is used.
@@ -119,6 +126,23 @@ class _ZeroAcceptBackend:
         return 0
 
 
+class _MidSendReissueBackend:
+    """Accepts the send, but rotates the credential while the send is
+    "in flight" — a reissue landing between acceptance and activation."""
+
+    calls = 0
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def send_messages(self, messages: list[Any]) -> int:
+        type(self).calls += 1
+        user = User.objects.get(email="member@example.com")
+        onboarding.rotate_onboarding(user, "Rq67tv")
+        user.save()
+        return 1  # the relay accepted the (now stale) credential
+
+
 # ``django.core.mail.get_connection`` resolves the configured backend with
 # ``import_string``, so the synthetic backends are referenced by import
 # path, not by class object. Pytest imports this module as
@@ -127,11 +151,18 @@ class _ZeroAcceptBackend:
 # object.
 FAILING_BACKEND = "test_account_onboarding._FailingSMTPBackend"
 ZERO_ACCEPT_BACKEND = "test_account_onboarding._ZeroAcceptBackend"
+MID_SEND_BACKEND = "test_account_onboarding._MidSendReissueBackend"
 
 
-def _pending_user(email: str, temporary: str, *, hours: float = 24.0) -> User:
-    """A pending onboarding account with a known temporary credential."""
-    user = User.objects.create_user(email=email, password=temporary, is_active=False)
+def _pending_user(email: str, temporary: str, *, hours: float = 24.0, active: bool = True) -> User:
+    """A pending onboarding account with a known temporary credential.
+
+    ``active=True`` models an ACCEPTED delivery (the account was activated
+    by the post-commit send and is pending its forced change);
+    ``active=False`` models a failed/pending delivery that must not be
+    able to sign in.
+    """
+    user = User.objects.create_user(email=email, password=temporary, is_active=active)
     user.onboarding_password_expires_at = timezone.now() + timedelta(hours=hours)
     user.save(update_fields=["onboarding_password_expires_at"])
     return user
@@ -147,6 +178,10 @@ def _stale_signed(digest: str, age_seconds: int) -> str:
 
 def _login(client: Client, email: str, password: str) -> Any:
     return client.post(LOGIN_URL, {"username": email, "password": password})
+
+
+def _reissue_url(user: User) -> str:
+    return f"/admin/accounts/user/{user.pk}/onboarding-reissue/"
 
 
 # --- temporary credential generation ----------------------------------------
@@ -199,15 +234,23 @@ def test_add_get_prefills_both_controls_with_same_generated_value(
 
 
 @pytest.mark.django_db
-def test_add_get_without_email_has_no_prefill(admin_client: Client) -> None:
+def test_add_get_without_email_still_prefills_with_setup_guidance(
+    admin_client: Client, fixed_generator: None
+) -> None:
+    """Disabled transport: the prefill is still shown on every GET, with
+    clear nearby guidance that user creation requires SMTP setup."""
     response = admin_client.get(ADD_URL)
+    assert response.status_code == 200
     html = response.content.decode()
-    assert _input_value(html, "id_password1") == ""
-    assert _input_value(html, "id_password2") == ""
-    assert onboarding.PREFILL_PROOF_SESSION_KEY not in admin_client.session
-    assert "temporary six-character password" not in html
-    # The normal initial-password guidance still applies.
-    assert "Choose the initial password for this account" in html
+    assert _input_value(html, "id_password1") == "Ab12cd"
+    assert _input_value(html, "id_password2") == "Ab12cd"
+    assert "no-store" in response["Cache-Control"]
+    assert "account email (SMTP) transport" in html
+    assert "every submission on this page is refused and no account is created" in html
+    # The signed digest (never plaintext) is still session-bound.
+    session = admin_client.session
+    assert onboarding.PREFILL_PROOF_SESSION_KEY in session
+    assert "Ab12cd" not in str(session)
 
 
 # --- proof negative paths -----------------------------------------------------
@@ -284,53 +327,33 @@ def test_add_post_unbound_proof_rejected(
     assert not User.objects.filter(email="member@example.com").exists()
 
 
+# --- disabled email: every add POST refused, nothing written -------------------
+
+
 @pytest.mark.django_db
-def test_add_post_six_char_without_email_enabled_rejected(admin_client: Client) -> None:
+@pytest.mark.parametrize(
+    ("password1", "password2"),
+    [("Ab12cd", "Ab12cd"), ("ManualSecret123", "ManualSecret123"), ("short", "short")],
+    ids=["generated", "manual-normal", "manual-weak"],
+)
+def test_add_post_refused_when_email_disabled_creates_no_account(
+    admin_client: Client, fixed_generator: None, password1: str, password2: str
+) -> None:
+    """Without account email the Administration add is refused for
+    generated or manually entered (normal or weak) credentials, before
+    any account is written; nothing is sent."""
     admin_client.get(ADD_URL)
     response = admin_client.post(
-        ADD_URL,
-        {"email": "member@example.com", "password1": "Ab12cd", "password2": "Ab12cd"},
+        ADD_URL, {"email": "member@example.com", "password1": password1, "password2": password2}
     )
     assert response.status_code == 200
+    html = response.content.decode()
+    assert "requires the account email" in html
     assert not User.objects.filter(email="member@example.com").exists()
     assert mail.outbox == []
 
 
-@pytest.mark.django_db
-def test_add_post_manual_normal_password_bypasses_onboarding(
-    admin_client: Client, email_enabled: None, fixed_generator: None
-) -> None:
-    admin_client.get(ADD_URL)
-    response = admin_client.post(
-        ADD_URL,
-        {
-            "email": "member@example.com",
-            "password1": "ManualSecret123",
-            "password2": "ManualSecret123",
-        },
-    )
-    assert response.status_code == 302
-    user = User.objects.get(email="member@example.com")
-    assert user.is_active is True
-    assert user.onboarding_password_expires_at is None
-    assert user.check_password("ManualSecret123")
-    assert mail.outbox == []
-
-
-@pytest.mark.django_db
-def test_add_post_weak_manual_password_still_rejected(
-    admin_client: Client, email_enabled: None, fixed_generator: None
-) -> None:
-    admin_client.get(ADD_URL)
-    response = admin_client.post(
-        ADD_URL,
-        {"email": "member@example.com", "password1": "short", "password2": "short"},
-    )
-    assert response.status_code == 200
-    assert not User.objects.filter(email="member@example.com").exists()
-
-
-# --- post-commit delivery ------------------------------------------------------
+# --- enabled email: generated AND manual adds deliver --------------------------
 
 
 @pytest.mark.django_db
@@ -383,7 +406,78 @@ def test_add_post_generated_commits_inactive_then_single_send_activates(
 
 
 @pytest.mark.django_db
-def test_add_post_delivery_failure_leaves_inactive_with_nonsecret_status(
+def test_add_post_manual_normal_password_is_onboarding_credential(
+    admin_client: Client,
+    email_enabled: None,
+    fixed_generator: None,
+    django_capture_on_commit_callbacks: Any,
+) -> None:
+    """With account email enabled a manually entered normal-validator
+    password is ALSO an onboarding credential: inactive pending account,
+    exactly one post-commit send, activation only on acceptance, forced
+    first change."""
+    admin_client.get(ADD_URL)
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.post(
+            ADD_URL,
+            {
+                "email": "member@example.com",
+                "password1": "ManualSecret123",
+                "password2": "ManualSecret123",
+            },
+        )
+        assert response.status_code == 302
+        # Committed BEFORE the send: inactive/pending with the manual
+        # credential (hashed) and nonsecret expiry metadata.
+        user = User.objects.get(email="member@example.com")
+        assert user.is_active is False
+        assert user.check_password("ManualSecret123")
+        assert "ManualSecret123" not in user.password
+        assert user.onboarding_password_expires_at is not None
+        assert mail.outbox == []
+    # The accepted send activates; the manual credential (never rendered
+    # by the app) is the emailed login detail.
+    user.refresh_from_db()
+    assert user.is_active is True
+    assert len(mail.outbox) == 1
+    assert "ManualSecret123" in mail.outbox[0].body
+    # Forced first change: the manual credential is a temporary one.
+    client = Client()
+    assert _login(client, "member@example.com", "ManualSecret123").status_code == 302
+    assert client.get("/profile/").status_code == 302
+    assert client.get(PW_URL).status_code == 200
+    response = client.post(
+        PW_URL,
+        {
+            "old_password": "ManualSecret123",
+            "new_password1": "brand-new-passw0rd",
+            "new_password2": "brand-new-passw0rd",
+        },
+    )
+    assert response.status_code == 302
+    user.refresh_from_db()
+    assert user.check_password("brand-new-passw0rd")
+    assert user.onboarding_password_expires_at is None
+
+
+@pytest.mark.django_db
+def test_add_post_weak_manual_password_still_rejected(
+    admin_client: Client, email_enabled: None, fixed_generator: None
+) -> None:
+    admin_client.get(ADD_URL)
+    response = admin_client.post(
+        ADD_URL,
+        {"email": "member@example.com", "password1": "short", "password2": "short"},
+    )
+    assert response.status_code == 200
+    assert not User.objects.filter(email="member@example.com").exists()
+
+
+# --- post-commit delivery ------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_add_post_delivery_failure_leaves_inactive_denied_and_scoped(
     admin_client: Client,
     fixed_generator: None,
     django_capture_on_commit_callbacks: Any,
@@ -411,12 +505,24 @@ def test_add_post_delivery_failure_leaves_inactive_with_nonsecret_status(
         user = User.objects.get(email="member@example.com")
         assert user.is_active is False
         assert backend.calls == 1  # no automatic retry
+        # The correct temporary credential CANNOT establish a session
+        # while the account is inactive after a failed send.
+        assert authenticate(username=user.email, password="Ab12cd") is None
+        denied = _login(Client(), user.email, "Ab12cd")
+        assert denied.status_code == 200
+        assert "Enter a valid email address and password." in denied.content.decode()
+        assert denied.wsgi_request.user.is_anonymous
         # The change page (redirect target) shows a nonsecret warning.
         change_page = admin_client.get(response["Location"])
         html = change_page.content.decode()
         assert "could not be confirmed as delivered" in html
-        assert "inactive" in html
+        assert "cannot sign in yet" in html
         assert "Ab12cd" not in html
+        # The status is scoped to THIS account: another pending account's
+        # page shows no delivery-failure warning.
+        other = _pending_user("other@example.com", "Zz98ab")
+        other_page = admin_client.get(f"/admin/accounts/user/{other.pk}/change/")
+        assert "could not be confirmed as delivered" not in other_page.content.decode()
 
 
 @pytest.mark.django_db
@@ -445,6 +551,7 @@ def test_add_post_zero_acceptance_leaves_inactive(
             )
         user = User.objects.get(email="member@example.com")
         assert user.is_active is False
+        assert authenticate(username=user.email, password="Ab12cd") is None
         assert backend.calls == 1  # no automatic retry
         change_page = admin_client.get(f"/admin/accounts/user/{user.pk}/change/")
         assert "could not be confirmed as delivered" in change_page.content.decode()
@@ -504,7 +611,7 @@ def test_reissue_rotates_credential_and_sends_once(
     django_capture_on_commit_callbacks: Any,
 ) -> None:
     user = _pending_user("member@example.com", "Ab12cd")
-    reissue_url = f"/admin/accounts/user/{user.pk}/onboarding-reissue/"
+    reissue_url = _reissue_url(user)
     # GET: confirmation page, no secret.
     page = admin_client.get(reissue_url)
     assert page.status_code == 200
@@ -513,7 +620,9 @@ def test_reissue_rotates_credential_and_sends_once(
     assert "NEW temporary six-character password" in html
     assert "Ab12cd" not in html
 
-    # POST: rotate + exactly one send of the new credential.
+    # POST: rotate + exactly one send of the new credential. The account
+    # is active (accepted delivery) until the rotation commits; the
+    # accepted send activates it for the NEW generation.
     monkey_value("Zz98ab")
     with django_capture_on_commit_callbacks(execute=True):
         response = admin_client.post(reissue_url)
@@ -537,7 +646,7 @@ def test_reissue_rotates_credential_and_sends_once(
 @pytest.mark.django_db
 def test_reissue_requires_change_permission(admin_client: Client, email_enabled: None) -> None:
     user = _pending_user("member@example.com", "Ab12cd")
-    reissue_url = f"/admin/accounts/user/{user.pk}/onboarding-reissue/"
+    reissue_url = _reissue_url(user)
     staff_only = User.objects.create_user(
         email="staff-only@example.com",
         password="staff-pass-058",
@@ -555,7 +664,7 @@ def test_reissue_requires_change_permission(admin_client: Client, email_enabled:
 @pytest.mark.django_db
 def test_reissue_refused_for_non_pending_account(admin_client: Client, email_enabled: None) -> None:
     normal = User.objects.create_user(email="normal@example.com", password="NormalPass123")
-    reissue_url = f"/admin/accounts/user/{normal.pk}/onboarding-reissue/"
+    reissue_url = _reissue_url(normal)
     response = admin_client.get(reissue_url)
     assert response.status_code == 302
     assert response["Location"] == f"/admin/accounts/user/{normal.pk}/change/"
@@ -566,7 +675,7 @@ def test_reissue_refused_for_non_pending_account(admin_client: Client, email_ena
 
 
 @pytest.mark.django_db
-def test_reissue_failure_keeps_inactive_and_allows_retry(
+def test_reissue_failure_keeps_inactive_denied_and_allows_retry(
     admin_client: Client,
     monkey_value: Any,
     django_capture_on_commit_callbacks: Any,
@@ -580,26 +689,132 @@ def test_reissue_failure_keeps_inactive_and_allows_retry(
         EMAIL_BACKEND=ZERO_ACCEPT_BACKEND,
     ):
         user = _pending_user("member@example.com", "Ab12cd")
-        reissue_url = f"/admin/accounts/user/{user.pk}/onboarding-reissue/"
+        reissue_url = _reissue_url(user)
         monkey_value("Mn56yz")
         with django_capture_on_commit_callbacks(execute=True):
             response = admin_client.post(reissue_url)
         assert response.status_code == 302
         user.refresh_from_db()
+        # The new failed delivery leaves the account INACTIVE: even the
+        # freshly issued credential cannot establish a session.
         assert user.is_active is False
+        assert user.check_password("Mn56yz")
+        assert authenticate(username=user.email, password="Mn56yz") is None
         assert backend.calls == 1  # no automatic retry
         change_page = admin_client.get(response["Location"])
         html = change_page.content.decode()
         assert "could not be confirmed as delivered" in html
         assert "reissue again" in html
-        # Recovery: an explicit second reissue rotates again.
+        # Recovery: an explicit second reissue rotates again; the failed
+        # delivery keeps the account inactive.
         monkey_value("Qr78kt")
         with django_capture_on_commit_callbacks(execute=True):
             admin_client.post(reissue_url)
         user.refresh_from_db()
+        assert user.is_active is False
         assert user.check_password("Qr78kt")
         assert not user.check_password("Mn56yz")
         assert backend.calls == 2
+
+
+# --- stale / superseded callbacks (exact-generation activation) -----------------
+
+
+@pytest.mark.django_db
+def test_stale_callback_after_reissue_does_not_send_activate_or_claim(
+    admin_client: Client,
+    email_enabled: None,
+    fixed_generator: None,
+    monkey_value: Any,
+    django_capture_on_commit_callbacks: Any,
+) -> None:
+    """Out-of-order delivery: the original add's post-commit send runs
+    only AFTER an explicit reissue rotated the credential. The stale
+    callback must not email the stale credential, must not touch the
+    newer generation and must not claim delivery."""
+    admin_client.get(ADD_URL)
+    # Capture the add's on_commit callback WITHOUT executing it.
+    with django_capture_on_commit_callbacks(execute=False) as stale:
+        response = admin_client.post(
+            ADD_URL,
+            {"email": "member@example.com", "password1": "Ab12cd", "password2": "Ab12cd"},
+        )
+    assert response.status_code == 302
+    assert len(stale) == 1
+    user = User.objects.get(email="member@example.com")
+    assert user.is_active is False
+    assert user.check_password("Ab12cd")
+
+    # The administrator reissues BEFORE the original delivery ran: the
+    # reissue's own send runs and activates the NEW generation.
+    monkey_value("Zz98ab")
+    with django_capture_on_commit_callbacks(execute=True):
+        admin_client.post(_reissue_url(user))
+    user.refresh_from_db()
+    assert user.check_password("Zz98ab")
+    assert user.is_active is True
+    assert len(mail.outbox) == 1  # only the reissue send
+    assert "Ab12cd" not in mail.outbox[0].body
+
+    # Now the stale callback runs: superseded -> no send, no state
+    # change, no delivery claim.
+    before = len(mail.outbox)
+    stale[0]()
+    user.refresh_from_db()
+    assert len(mail.outbox) == before
+    assert user.check_password("Zz98ab")
+    assert user.is_active is True
+    # The stale callback reported superseded, scoped to this account —
+    # it did not claim delivery for the newer credential.
+    session = admin_client.session
+    assert session[onboarding.DELIVERY_STATUS_SESSION_KEY][str(user.pk)] == "superseded"
+
+
+@pytest.mark.django_db
+def test_accepted_send_superseded_by_reissue_in_flight_does_not_activate(
+    admin_client: Client,
+    fixed_generator: None,
+    django_capture_on_commit_callbacks: Any,
+) -> None:
+    """The relay accepts the send, but a reissue lands between
+    acceptance and activation: the conditional exact-generation update
+    matches zero rows — no activation of the newer credential, no
+    delivery claim, old credential invalid."""
+    _MidSendReissueBackend.calls = 0
+    backend = _MidSendReissueBackend
+    with override_settings(
+        ACCOUNT_EMAIL_ENABLED=True,
+        PUBLIC_BASE_URL=BASE_URL,
+        DEFAULT_FROM_EMAIL=FROM_EMAIL,
+        EMAIL_BACKEND=MID_SEND_BACKEND,
+    ):
+        admin_client.get(ADD_URL)
+        with django_capture_on_commit_callbacks(execute=True):
+            admin_client.post(
+                ADD_URL,
+                {
+                    "email": "member@example.com",
+                    "password1": "Ab12cd",
+                    "password2": "Ab12cd",
+                },
+            )
+        assert backend.calls == 1
+        user = User.objects.get(email="member@example.com")
+        # The in-flight reissue rotated the credential; the accepted
+        # (stale) send did NOT activate the newer generation.
+        assert user.is_active is False
+        assert user.check_password("Rq67tv")
+        assert not user.check_password("Ab12cd")  # old credential invalid
+        assert authenticate(username=user.email, password="Rq67tv") is None
+        # The status is recorded as superseded, scoped to this account:
+        # the accepted (stale) send claimed nothing for the newer
+        # credential.
+        session = admin_client.session
+        statuses = session[onboarding.DELIVERY_STATUS_SESSION_KEY]
+        assert statuses[str(user.pk)] == "superseded"
+        # No delivery claim is rendered on the account page.
+        change_page = admin_client.get(f"/admin/accounts/user/{user.pk}/change/")
+        assert "login details were delivered by email" not in change_page.content.decode()
 
 
 # --- temporary lifecycle and enforcement --------------------------------------
@@ -607,7 +822,8 @@ def test_reissue_failure_keeps_inactive_and_allows_retry(
 
 @pytest.mark.django_db
 def test_expired_temporary_cannot_establish_member_session() -> None:
-    user = _pending_user("member@example.com", "Ab12cd", hours=-1)
+    # Accepted long ago (active), now expired.
+    user = _pending_user("member@example.com", "Ab12cd", hours=-1, active=True)
     assert authenticate(username=user.email, password="Ab12cd") is None
     client = Client()
     response = _login(client, user.email, "Ab12cd")
@@ -622,7 +838,7 @@ def test_expired_temporary_cannot_establish_admin_session() -> None:
     user = User.objects.create_user(
         email="staff-pending@example.com",
         password="Ab12cd",
-        is_active=False,
+        is_active=True,  # accepted delivery, now expired
         is_staff=True,
     )
     user.onboarding_password_expires_at = timezone.now() - timedelta(hours=1)
@@ -635,8 +851,28 @@ def test_expired_temporary_cannot_establish_admin_session() -> None:
 
 
 @pytest.mark.django_db
+def test_failed_delivery_inactive_cannot_establish_admin_session() -> None:
+    # A pending account whose delivery failed is inactive; even a staff
+    # account with the CORRECT unexpired credential is refused at the
+    # Administration login.
+    user = User.objects.create_user(
+        email="staff-undelivered@example.com",
+        password="Ab12cd",
+        is_active=False,
+        is_staff=True,
+    )
+    user.onboarding_password_expires_at = timezone.now() + timedelta(hours=24)
+    user.save(update_fields=["onboarding_password_expires_at"])
+    assert authenticate(username=user.email, password="Ab12cd") is None
+    client = Client()
+    response = client.post(ADMIN_LOGIN_URL, {"username": user.email, "password": "Ab12cd"})
+    assert response.status_code == 200
+    assert response.wsgi_request.user.is_anonymous
+
+
+@pytest.mark.django_db
 def test_within_expiry_login_restricted_to_password_page() -> None:
-    user = _pending_user("member@example.com", "Ab12cd")
+    user = _pending_user("member@example.com", "Ab12cd")  # accepted: active
     client = Client()
     response = _login(client, user.email, "Ab12cd")
     assert response.status_code == 302
@@ -653,20 +889,39 @@ def test_within_expiry_login_restricted_to_password_page() -> None:
     page = client.get(PW_URL)
     assert page.status_code == 200
     assert "temporary password" in page.content.decode()
-    # Necessary static/branding/health surfaces stay reachable.
+    # Necessary static/branding/health surfaces stay reachable —
+    # including the absolute "/static/" prefix.
     assert client.get("/health/live").status_code == 200
     assert client.get("/health/ready").status_code == 200
     branding = client.get("/branding/logo")
     assert branding.status_code in (200, 404)
+    static_js = client.get("/static/web/admin-form-guidance.js")
+    assert static_js.status_code == 200
+    # A path merely STARTING with "static" must still be gated.
+    fake = client.get("/staticlike/")
+    assert fake.status_code == 302
     # The session-authenticated API is not reachable.
     api = client.get("/api/v1/me/")
     assert api.status_code == 302
     assert api["Location"] == PW_URL
 
 
+def test_onboarding_allowed_path_allowlist() -> None:
+    assert onboarding.is_onboarding_allowed_path("/profile/password/")
+    assert onboarding.is_onboarding_allowed_path("/logout/")
+    assert onboarding.is_onboarding_allowed_path("/login/")
+    assert onboarding.is_onboarding_allowed_path("/health/live")
+    assert onboarding.is_onboarding_allowed_path("/health/ready")
+    assert onboarding.is_onboarding_allowed_path("/branding/logo")
+    assert onboarding.is_onboarding_allowed_path("/static/web/site.css")
+    assert not onboarding.is_onboarding_allowed_path("/staticlike/")
+    assert not onboarding.is_onboarding_allowed_path("/")
+    assert not onboarding.is_onboarding_allowed_path("/profile/")
+
+
 @pytest.mark.django_db
 def test_expired_session_is_terminated() -> None:
-    user = _pending_user("member@example.com", "Ab12cd")
+    user = _pending_user("member@example.com", "Ab12cd")  # accepted: active
     client = Client()
     assert _login(client, user.email, "Ab12cd").status_code == 302
     # The session outlives the credential: expiry arrives mid-session.
@@ -683,7 +938,7 @@ def test_expired_session_is_terminated() -> None:
 
 @pytest.mark.django_db
 def test_successful_change_clears_state_keeps_session_and_invalidates_others() -> None:
-    user = _pending_user("member@example.com", "Ab12cd")
+    user = _pending_user("member@example.com", "Ab12cd")  # accepted: active
     client = Client()
     other = Client()
     _login(client, user.email, "Ab12cd")
@@ -717,7 +972,7 @@ def test_successful_change_clears_state_keeps_session_and_invalidates_others() -
 
 @pytest.mark.django_db
 def test_forced_change_uses_normal_validators_no_weakened_path() -> None:
-    user = _pending_user("member@example.com", "Ab12cd")
+    user = _pending_user("member@example.com", "Ab12cd")  # accepted: active
     client = Client()
     _login(client, user.email, "Ab12cd")
     for weak in ["short", "password", "12345678"]:
@@ -732,7 +987,7 @@ def test_forced_change_uses_normal_validators_no_weakened_path() -> None:
         assert response.status_code == 200
     user.refresh_from_db()
     assert user.check_password("Ab12cd")  # unchanged
-    assert user.is_active is False  # still pending
+    assert user.is_active is True  # still pending (delivery was accepted)
 
 
 @pytest.mark.django_db
@@ -765,11 +1020,11 @@ def test_no_auto_grants_on_onboarding_creation(
 
 @pytest.mark.django_db
 def test_shared_login_abuse_budget_still_applies_to_onboarding_logins() -> None:
-    user = _pending_user("member@example.com", "Ab12cd")
+    user = _pending_user("member@example.com", "Ab12cd")  # accepted: active
     client = Client()
     statuses = [_login(client, user.email, "Ab12cd").status_code for _ in range(11)]
     # The existing per-identity login budget (10/window) trips.
     assert 429 in statuses
     assert all(status in (200, 302, 429) for status in statuses)
     user.refresh_from_db()
-    assert user.is_active is False  # never activated by failed logins
+    assert user.is_active is True  # unchanged by repeated logins
