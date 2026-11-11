@@ -72,7 +72,8 @@ days and durations from one minute to 48 hours. It adds no lead time, advance
 cancellation cutoff, required purpose or operating-hour window. Limits also
 apply per account across its assets and tokens: 50 upcoming bookings, and fewer
 than eight existing blocking records may intersect a proposed booking.
-Staff can configure different policies. Exact asset policy takes priority,
+Operators holding the manage-booking-policies capability can configure different policies.
+Exact asset policy takes priority,
 then parent machine, then global fallback; missing or ambiguous policy fails
 closed. See [Installation](../INSTALL.md) for initialization and upgrade behavior.
 
