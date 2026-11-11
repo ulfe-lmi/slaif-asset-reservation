@@ -98,7 +98,12 @@ the account commits, through the configured SMTP transport; the account
 stays inactive and cannot sign in (member or Administration) until the
 relay accepts the send, and there is no automatic retry (the
 administrator reissues explicitly, which rotates the previous credential
-and leaves the account inactive while the new delivery is pending).
+and leaves the account inactive while the new delivery is pending). While
+account email is disabled the reissue route refuses GET and POST before
+any mutation — no rotation, no expiry change, no audit entry, no send —
+and the change page offers no reissue action, so a disabled transport can
+never invalidate a still-working temporary password without a way to
+deliver the replacement.
 Activation is exact-generation: the send may only activate the account
 while it still holds the very credential that was sent, so a reissue
 supersedes a scheduled or in-flight send and a stale accepted send can

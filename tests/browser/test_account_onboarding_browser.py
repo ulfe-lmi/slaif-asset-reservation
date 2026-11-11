@@ -11,8 +11,10 @@ uses the normal validators, keeps the current session and invalidates
 the old credential; the explicit reissue control rotates the credential
 with exactly one new send; a FAILED synthetic delivery leaves the
 account inactive — the correct credential cannot establish a session —
-and only the accepted reissue delivery activates it. Screenshots are
-limited to privacy-safe surfaces (three in this file).
+and only the accepted reissue delivery activates it; a DISABLED
+account-email transport offers no reissue action on the change page
+(state-specific text, setup guidance). Screenshots are
+limited to privacy-safe surfaces (five in this file).
 """
 
 from __future__ import annotations
@@ -151,7 +153,7 @@ def test_browser_admin_add_onboarding_flow(
 
     # Change page: success status plus the onboarding block with the
     # reissue control. Privacy-safe: no credential is rendered.
-    assert "The account was created and its login details were delivered by email." in (
+    assert "The account was created and its login details were accepted by the email relay." in (
         page.content()
     )
     assert "Onboarding in progress" in page.content()
@@ -254,7 +256,7 @@ def test_browser_admin_reissue_flow(
     # still pending its forced change.
     assert pending.is_active is True
     assert pending.onboarding_password_expires_at is not None
-    assert "The new onboarding login details were delivered by email." in page.content()
+    assert "The new onboarding login details were accepted by the email relay." in page.content()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -314,7 +316,7 @@ def test_browser_admin_add_failed_delivery_then_reissue(
     assert len(new_password) == 6 and new_password != prefill
     assert user.check_password(new_password)
     assert user.is_active is True
-    assert "The new onboarding login details were delivered by email." in page.content()
+    assert "The new onboarding login details were accepted by the email relay." in page.content()
 
     # After the accepted delivery the member signs in and is forced to
     # change the credential; the old one is dead.
@@ -326,3 +328,62 @@ def test_browser_admin_add_failed_delivery_then_reissue(
     _member_login(page, live_server, "onb-browser-failed@example.com", prefill)
     page.wait_for_url(f"{live_server.url}/login/")
     assert "Enter a valid email address and password." in page.content()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_browser_disabled_reissue_ui(
+    page: Page,
+    live_server,
+    output_path,
+    admin_user: User,
+    settings,
+) -> None:
+    # A failed-delivery pending account (inactive, cannot sign in) while
+    # account email is DISABLED: the change page explains the state and
+    # offers NO reissue action; nothing is sent.
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    settings.PUBLIC_BASE_URL = BASE_URL
+    settings.DEFAULT_FROM_EMAIL = FROM_EMAIL
+
+    user = User.objects.create_user(
+        email="onb-browser-disabled@example.com",
+        password="Qw12er",
+        is_active=False,
+    )
+    user.onboarding_password_expires_at = timezone.now() + timedelta(hours=24)
+    user.save(update_fields=["onboarding_password_expires_at"])
+
+    page.set_viewport_size(DESKTOP)
+    _admin_login(page, live_server, admin_user)
+
+    with override_settings(ACCOUNT_EMAIL_ENABLED=False):
+        page.goto(f"{live_server.url}/admin/accounts/user/{user.pk}/change/")
+        content = page.content()
+        # State-specific truth: inactive pending cannot sign in yet.
+        assert "cannot sign in yet" in content
+        assert "It signs in with the temporary password" not in content
+        # No working reissue action; the setup guidance is present.
+        assert page.locator("a", has_text="Reissue onboarding login details").count() == 0
+        assert "account email is not configured" in content
+        assert "Qw12er" not in content
+        _assert_no_horizontal_overflow(page)
+        _assert_no_framework_branding(page)
+        _capture(page, output_path, "admin-onboarding-disabled-reissue-1440")
+
+        # Mobile 390: the same surface holds.
+        page.set_viewport_size(MOBILE)
+        page.goto(f"{live_server.url}/admin/accounts/user/{user.pk}/change/")
+        assert "cannot sign in yet" in page.content()
+        assert page.locator("a", has_text="Reissue onboarding login details").count() == 0
+        _assert_no_horizontal_overflow(page)
+        _capture(page, output_path, "admin-onboarding-disabled-reissue-390")
+
+    # The reissue route itself refuses without mutation.
+    with override_settings(ACCOUNT_EMAIL_ENABLED=False):
+        stored_hash = user.password
+        page.goto(f"{live_server.url}/admin/accounts/user/{user.pk}/onboarding-reissue/")
+        page.wait_for_url(f"{live_server.url}/admin/accounts/user/{user.pk}/change/")
+        assert "Account email is not configured" in page.content()
+        user.refresh_from_db()
+        assert user.password == stored_hash
+        assert user.is_active is False

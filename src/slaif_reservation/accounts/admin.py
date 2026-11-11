@@ -445,6 +445,11 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 context["onboarding_pending"] = onboarding.is_pending_onboarding(obj)
                 context["onboarding_expires_at"] = obj.onboarding_password_expires_at
                 context["onboarding_can_reissue"] = self.has_change_permission(request, obj)
+                # The reissue control is offered only while the account
+                # email transport is configured; the page text is
+                # state-specific (active vs inactive pending account).
+                context["onboarding_email_enabled"] = settings.ACCOUNT_EMAIL_ENABLED
+                context["onboarding_active"] = bool(obj.is_active)
                 # The nonsecret delivery outcome from this administrator's
                 # last send (persisted by the post-commit delivery step)
                 # warns while the account is still pending. It is scoped
@@ -480,6 +485,10 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
         the previous hash and expiry, and registers exactly one post-commit
         send. Restricted to accounts still in onboarding state; the admin
         must hold the model change permission; the secret is never shown.
+        While account email is disabled the route refuses (GET and POST)
+        before any mutation: no rotation, no expiry change, no audit entry
+        and no send — a disabled transport must never invalidate a
+        possibly working temporary password.
         """
         user = self.get_object(request, str(pk))
         if user is None:
@@ -495,6 +504,21 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 request,
                 "This account is not in onboarding state, so there is no "
                 "temporary credential to reissue.",
+            )
+            return HttpResponseRedirect(change_url)
+        if not settings.ACCOUNT_EMAIL_ENABLED:
+            # No mail transport, no reissue: reissuing would rotate the
+            # credential (invalidating a possibly working password and
+            # making the account inactive again) with no way to deliver
+            # the replacement. Refuse on BOTH GET and POST, before any
+            # mutation: no rotation, no expiry change, no audit entry,
+            # no send registration.
+            messages.error(
+                request,
+                "Account email is not configured, so the login details "
+                "cannot be sent and the onboarding credential cannot be "
+                "reissued. Configure the account email transport first, "
+                "then reissue.",
             )
             return HttpResponseRedirect(change_url)
         if request.method == "POST":

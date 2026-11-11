@@ -1101,18 +1101,24 @@ def test_admin_user_add_temporary_prefill_guidance(
 
 @pytest.mark.django_db
 def test_admin_user_change_onboarding_pending_block(
-    client: Client, admin_user: User, member_user: User
+    client: Client,
+    admin_user: User,
+    member_user: User,
+    settings: Any,
 ) -> None:
-    """058-a: the change page shows the onboarding status block and the
-    reissue control only for accounts pending their first forced change,
-    plus the nonsecret delivery-failure status when the last send was not
-    confirmed."""
+    """058-a/058-c: the change page shows the onboarding status block and
+    the reissue control (only while account email is configured) for
+    accounts pending their first forced change, with state-specific text
+    (an inactive pending account cannot sign in until relay acceptance)
+    and the account-scoped nonsecret delivery-failure status when the
+    last send was not confirmed; a legacy account-unscoped status string
+    is ignored."""
     client.force_login(admin_user)
     # Non-pending account: no onboarding block at all.
     plain = client.get(f"/admin/accounts/user/{member_user.pk}/change/").content.decode()
     assert "Onboarding in progress" not in plain
     assert "onboarding-reissue/" not in plain
-    # Pending account: block, expiry line and reissue control.
+    # Pending INACTIVE account (failed/undelivered delivery).
     pending = User.objects.create_user(
         email="onb-pending-guidance@example.com",
         password="Ab12cd",
@@ -1120,6 +1126,28 @@ def test_admin_user_change_onboarding_pending_block(
     )
     pending.onboarding_password_expires_at = timezone.now() + timedelta(hours=24)
     pending.save(update_fields=["onboarding_password_expires_at"])
+    # 058-c: while account email is disabled (the test default) the page
+    # explains the state, offers NO reissue action, and ignores a legacy
+    # account-unscoped status string.
+    html_disabled = client.get(f"/admin/accounts/user/{pending.pk}/change/").content.decode()
+    _assert_no_dangling_aria(html_disabled)
+    assert "Onboarding in progress" in html_disabled
+    assert "cannot sign in yet" in html_disabled
+    assert "Reissue is unavailable" in html_disabled
+    assert "account email is not configured" in html_disabled
+    assert f"/admin/accounts/user/{pending.pk}/onboarding-reissue/" not in html_disabled
+    session = client.session
+    session[onboarding.DELIVERY_STATUS_SESSION_KEY] = "undelivered"
+    session.save()
+    assert "could not be confirmed as delivered" not in (
+        client.get(f"/admin/accounts/user/{pending.pk}/change/").content.decode()
+    )
+    # 058-a: with account email enabled the block carries the expiry line
+    # and the reissue control, and the delivery-failure status shows for
+    # the matching account only.
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    settings.PUBLIC_BASE_URL = "https://reservation.example.test"
+    settings.DEFAULT_FROM_EMAIL = "no-reply@example.test"
     html = client.get(f"/admin/accounts/user/{pending.pk}/change/").content.decode()
     _assert_no_dangling_aria(html)
     assert "Onboarding in progress" in html
@@ -1128,9 +1156,9 @@ def test_admin_user_change_onboarding_pending_block(
     assert "Reissue onboarding login details" in html
     assert "Ab12cd" not in html
     # Nonsecret delivery-failure status (set by the post-commit delivery
-    # step in the creating administrator's session).
-    session = client.session
-    session[onboarding.DELIVERY_STATUS_SESSION_KEY] = "undelivered"
+    # step in the creating administrator's session), scoped to the
+    # specific account.
+    session[onboarding.DELIVERY_STATUS_SESSION_KEY] = {str(pending.pk): "undelivered"}
     session.save()
     html_failed = client.get(f"/admin/accounts/user/{pending.pk}/change/").content.decode()
     assert "could not be confirmed as delivered" in html_failed
@@ -1138,7 +1166,9 @@ def test_admin_user_change_onboarding_pending_block(
 
 
 @pytest.mark.django_db
-def test_admin_user_onboarding_reissue_page_guidance(client: Client, admin_user: User) -> None:
+def test_admin_user_onboarding_reissue_page_guidance(
+    client: Client, admin_user: User, settings: Any
+) -> None:
     """058-a: the reissue confirmation page explains rotation and
     ambiguous delivery, carries a CSRF-checked confirm form, and never
     shows the temporary password."""
@@ -1150,6 +1180,11 @@ def test_admin_user_onboarding_reissue_page_guidance(client: Client, admin_user:
     pending.onboarding_password_expires_at = timezone.now() + timedelta(hours=24)
     pending.save(update_fields=["onboarding_password_expires_at"])
     client.force_login(admin_user)
+    # 058-c: the confirmation page renders only while account email is
+    # configured; with it disabled the route refuses before rendering.
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    settings.PUBLIC_BASE_URL = "https://reservation.example.test"
+    settings.DEFAULT_FROM_EMAIL = "no-reply@example.test"
     response = client.get(f"/admin/accounts/user/{pending.pk}/onboarding-reissue/")
     html = response.content.decode()
     assert response.status_code == 200

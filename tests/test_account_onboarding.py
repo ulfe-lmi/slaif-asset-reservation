@@ -19,7 +19,10 @@ credential invalidation), the onboarding session-gate path allowlist
 (including the "/static/" prefix), privacy (no plaintext in
 DB/LogEntry/session/rendered pages), the unchanged createsuperuser
 baseline, retained permission boundaries and the shared login abuse
-budget. All mail is synthetic (locmem or in-test backends); no real
+budget, the disabled-SMTP reissue guard (refused before any mutation for
+accepted-active and failed-inactive pending accounts, with the change page
+offering no reissue action) and the ignored legacy unscoped delivery
+status. All mail is synthetic (locmem or in-test backends); no real
 relay or recipient is used.
 """
 
@@ -35,10 +38,12 @@ from typing import Any
 import pytest
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth import authenticate
+from django.contrib.messages.middleware import MessageMiddleware
+from django.contrib.sessions.backends.db import SessionStore
 from django.core import mail
 from django.core.management import call_command
 from django.core.signing import Signer, TimestampSigner, b62_encode
-from django.test import Client, override_settings
+from django.test import Client, RequestFactory, override_settings
 from django.utils import timezone
 
 from slaif_reservation.accounts import onboarding
@@ -715,6 +720,225 @@ def test_reissue_failure_keeps_inactive_denied_and_allows_retry(
         assert user.check_password("Qr78kt")
         assert not user.check_password("Mn56yz")
         assert backend.calls == 2
+
+
+# --- disabled-SMTP reissue guard (058-c) ------------------------------------
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("active", [True, False], ids=["accepted-active", "failed-inactive"])
+def test_reissue_refused_when_email_disabled_no_mutation(
+    admin_client: Client,
+    monkey_value: Any,
+    django_capture_on_commit_callbacks: Any,
+    active: bool,
+) -> None:
+    """Account email disabled: reissue GET/POST refuse AFTER the permission
+    check and BEFORE any mutation — for both an active (accepted-delivery)
+    pending account and an inactive (failed-delivery) pending account."""
+    user = _pending_user("member@example.com", "Ab12cd", active=active)
+    stored_hash = user.password
+    stored_expiry = user.onboarding_password_expires_at
+    reissue_url = _reissue_url(user)
+    change_url = f"/admin/accounts/user/{user.pk}/change/"
+    monkey_value("Zz98ab")  # any generation would be refused
+
+    with override_settings(ACCOUNT_EMAIL_ENABLED=False):
+        # GET: no confirmation page, redirect back, nothing sent.
+        get_response = admin_client.get(reissue_url)
+        assert get_response.status_code == 302
+        assert get_response["Location"] == change_url
+        assert mail.outbox == []
+        # POST (forged/direct): refused the same way, no mutation.
+        with django_capture_on_commit_callbacks(execute=True):
+            post_response = admin_client.post(reissue_url)
+        assert post_response.status_code == 302
+        assert post_response["Location"] == change_url
+        user.refresh_from_db()
+        assert user.password == stored_hash  # no rotation
+        assert user.onboarding_password_expires_at == stored_expiry
+        assert user.is_active is active  # state untouched
+        assert mail.outbox == []  # no send registered or made
+        assert LogEntry.objects.filter(object_id=str(user.pk)).count() == 0
+        # The refusal message is nonsecret and points at the setup.
+        change_page = admin_client.get(change_url)
+        html = change_page.content.decode()
+        assert "Account email is not configured" in html
+        assert "Ab12cd" not in html and "Zz98ab" not in html
+        # No working reissue action is presented while disabled.
+        assert "onboarding-reissue/" not in html
+        assert "Reissue onboarding login details" not in html
+
+
+@pytest.mark.django_db
+def test_reissue_disabled_guard_keeps_permission_and_csrf_boundaries(
+    admin_user: User,
+    admin_client: Client,
+) -> None:
+    user = _pending_user("member@example.com", "Ab12cd", active=False)
+    reissue_url = _reissue_url(user)
+    with override_settings(ACCOUNT_EMAIL_ENABLED=False):
+        # A staff user WITHOUT the model change permission is still 403.
+        staff_only = User.objects.create_user(
+            email="staff-only-disabled@example.com",
+            password="staff-pass-058c",
+            is_staff=True,
+        )
+        plain_client = Client()
+        plain_client.force_login(staff_only)
+        assert plain_client.get(reissue_url).status_code == 403
+        assert plain_client.post(reissue_url).status_code == 403
+        # CSRF is still enforced on the POST path.
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(admin_user)
+        assert csrf_client.post(reissue_url).status_code == 403
+        user.refresh_from_db()
+        assert user.check_password("Ab12cd")
+        assert mail.outbox == []
+
+
+@pytest.mark.django_db
+def test_reissue_refused_while_disabled_then_enabled_rotates_once_and_sends_once(
+    admin_client: Client,
+    monkey_value: Any,
+    django_capture_on_commit_callbacks: Any,
+) -> None:
+    user = _pending_user("member@example.com", "Ab12cd")  # accepted/active
+    reissue_url = _reissue_url(user)
+    monkey_value("Zz98ab")
+    with override_settings(ACCOUNT_EMAIL_ENABLED=False):
+        admin_client.post(reissue_url)
+        user.refresh_from_db()
+        assert user.check_password("Ab12cd")  # still untouched
+        assert mail.outbox == []
+    # Re-enabled: the same explicit reissue rotates ONCE and sends ONCE.
+    with override_settings(
+        ACCOUNT_EMAIL_ENABLED=True,
+        PUBLIC_BASE_URL=BASE_URL,
+        DEFAULT_FROM_EMAIL=FROM_EMAIL,
+    ):
+        with django_capture_on_commit_callbacks(execute=True):
+            response = admin_client.post(reissue_url)
+    assert response.status_code == 302
+    user.refresh_from_db()
+    assert user.check_password("Zz98ab")
+    assert not user.check_password("Ab12cd")
+    assert user.is_active is True
+    assert len(mail.outbox) == 1
+    assert "Zz98ab" in mail.outbox[0].body
+    # The explicit delivery outcome is persisted as "delivered" (the
+    # message-framework success line is asserted at the boundary in
+    # test_success_message_reports_relay_acceptance, because in the
+    # non-transactional harness the on-commit callback runs after the
+    # response cycle and the session-backed message is not re-saved).
+    statuses = admin_client.session[onboarding.DELIVERY_STATUS_SESSION_KEY]
+    assert statuses[str(user.pk)] == "delivered"
+
+
+@pytest.mark.django_db
+def test_success_message_reports_relay_acceptance(
+    django_capture_on_commit_callbacks: Any,
+    settings: Any,
+) -> None:
+    """The success status produced by an accepted send reports RELAY
+    ACCEPTANCE, never inbox delivery — at the exact boundary where the
+    message is created (direct call; the message-framework line only
+    survives a full request/response cycle in transactional runs)."""
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    settings.PUBLIC_BASE_URL = BASE_URL
+    settings.DEFAULT_FROM_EMAIL = FROM_EMAIL
+
+    # Reissue success line.
+    user = _pending_user("member@example.com", "Ab12cd", active=False)
+    request = RequestFactory().post(f"/admin/accounts/user/{user.pk}/onboarding-reissue/")
+    request.session = SessionStore()
+    MessageMiddleware(lambda r: None).process_request(request)
+    onboarding.deliver_onboarding_email(
+        user_pk=user.pk,
+        temporary_password="Ab12cd",
+        request=request,
+        sent_hash=user.password,
+        sent_expires_at=user.onboarding_password_expires_at,
+        reissue=True,
+    )
+    lines = [str(m) for m in request._messages]
+    assert (
+        "The new onboarding login details were accepted by the email relay. "
+        "The previous temporary password no longer works." in lines
+    )
+    assert all("delivered by email" not in m for m in lines)
+
+    # Add success line.
+    user2 = _pending_user("member2@example.com", "Zz98ab", active=False)
+    request2 = RequestFactory().post(ADD_URL)
+    request2.session = SessionStore()
+    MessageMiddleware(lambda r: None).process_request(request2)
+    onboarding.deliver_onboarding_email(
+        user_pk=user2.pk,
+        temporary_password="Zz98ab",
+        request=request2,
+        sent_hash=user2.password,
+        sent_expires_at=user2.onboarding_password_expires_at,
+    )
+    lines2 = [str(m) for m in request2._messages]
+    assert (
+        "The account was created and its login details were accepted by the email relay." in lines2
+    )
+    assert all("delivered by email" not in m for m in lines2)
+
+
+@pytest.mark.django_db
+def test_change_page_state_specific_text(
+    admin_client: Client,
+    email_enabled: None,
+) -> None:
+    # Inactive pending (failed/undelivered): says it CANNOT sign in until
+    # relay acceptance; no false "it signs in" wording.
+    inactive = _pending_user("inactive@example.com", "Ab12cd", active=False)
+    html = admin_client.get(f"/admin/accounts/user/{inactive.pk}/change/").content.decode()
+    assert "cannot sign in yet" in html
+    assert "accepted by the email relay" in html
+    assert "It signs in with the temporary password" not in html
+    # Active pending (accepted delivery): explains the forced change, with
+    # no false inactive warning.
+    active = _pending_user("active@example.com", "Zz98ab", active=True)
+    html = admin_client.get(f"/admin/accounts/user/{active.pk}/change/").content.decode()
+    assert "It signs in with the temporary password" in html
+    assert "cannot sign in yet" not in html
+    assert "could not be confirmed as delivered" not in html
+
+
+@pytest.mark.django_db
+def test_delivery_status_ignores_legacy_unscoped_string(
+    admin_client: Client, email_enabled: None
+) -> None:
+    user = _pending_user("member@example.com", "Ab12cd", active=False)
+    other = _pending_user("other@example.com", "Zz98ab", active=False)
+    change_url = f"/admin/accounts/user/{user.pk}/change/"
+    other_url = f"/admin/accounts/user/{other.pk}/change/"
+    # A legacy account-unscoped status string is ignored for EVERY
+    # account: it must not show a warning on any pending account page.
+    session = admin_client.session
+    session[onboarding.DELIVERY_STATUS_SESSION_KEY] = "undelivered"
+    session.save()
+    request = RequestFactory().get("/admin/accounts/user/change/")
+    request.session = session
+    assert onboarding.delivery_status_for(request, user.pk) is None
+    assert onboarding.delivery_status_for(request, other.pk) is None
+    assert (
+        "could not be confirmed as delivered" not in admin_client.get(change_url).content.decode()
+    )
+    assert "could not be confirmed as delivered" not in admin_client.get(other_url).content.decode()
+    # The current per-account mapping still scopes the warning: it appears
+    # ONLY on the matching account's page.
+    session[onboarding.DELIVERY_STATUS_SESSION_KEY] = {str(other.pk): "undelivered"}
+    session.save()
+    assert onboarding.delivery_status_for(request, other.pk) == "undelivered"
+    assert onboarding.delivery_status_for(request, user.pk) is None
+    assert "could not be confirmed as delivered" in admin_client.get(other_url).content.decode()
+    assert (
+        "could not be confirmed as delivered" not in admin_client.get(change_url).content.decode()
+    )
 
 
 # --- stale / superseded callbacks (exact-generation activation) -----------------

@@ -290,8 +290,10 @@ def _set_delivery_status(request: Any, user_pk: Any, status: str) -> None:
 def delivery_status_for(request: Any, user_pk: Any) -> str | None:
     """The creating administrator's last recorded status for this account.
 
-    Accepts the current per-account mapping as well as the legacy
-    account-unscoped single value written by earlier versions.
+    The session value is the per-account mapping (``{str(pk): status}``).
+    Anything else — in particular an account-unscoped single status
+    string — is IGNORED, so one account's outcome can never be applied
+    to (or displayed on) another account's page.
     """
     session = getattr(request, "session", None)
     if session is None:
@@ -300,7 +302,7 @@ def delivery_status_for(request: Any, user_pk: Any) -> str | None:
     if isinstance(raw, dict):
         value = raw.get(str(user_pk))
         return value if isinstance(value, str) else None
-    return raw if isinstance(raw, str) else None
+    return None
 
 
 def deliver_onboarding_email(
@@ -364,13 +366,15 @@ def deliver_onboarding_email(
             if reissue:
                 messages.success(
                     request,
-                    "The new onboarding login details were delivered by email. "
-                    "The previous temporary password no longer works.",
+                    "The new onboarding login details were accepted by the "
+                    "email relay. The previous temporary password no longer "
+                    "works.",
                 )
             else:
                 messages.success(
                     request,
-                    "The account was created and its login details were delivered by email.",
+                    "The account was created and its login details were "
+                    "accepted by the email relay.",
                 )
         else:
             # The send was accepted, but the account's credential changed

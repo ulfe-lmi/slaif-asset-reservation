@@ -168,10 +168,17 @@ and every submission is refused until the transport is configured. The
 user change page shows the onboarding status — including a delivery-failure
 warning for that specific account — with the temporary password expiry and
 an explicit **Reissue onboarding login details** action that rotates the
-previous temporary password and sends the new details once. The temporary
-password is never displayed outside the non-cacheable add-user form
-prefill (and the one login-details email): no other administration page,
-log or audit record contains it.
+previous temporary password and sends the new details once. The page text
+matches the account state: an inactive pending account is described as
+unable to sign in until its login-details email is accepted by the email
+relay, while an active pending account is described as signing in with the
+temporary password and forced to change it; statuses report relay
+acceptance, never inbox delivery. While account email is disabled, no
+reissue action is offered (the route refuses before any mutation) and the
+page tells the administrator to configure the account email transport
+first. The temporary password is never displayed outside the non-cacheable
+add-user form prefill (and the one login-details email): no other
+administration page, log or audit record contains it.
 
 Policies, reservations, blackouts, audit events and API tokens are protected
 read-only records in administration. Their guidance identifies the supported
