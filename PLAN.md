@@ -60,7 +60,8 @@ Preserve the modular Django monolith, Python3.13, Django5.2/DRF3.18, PostgreSQL1
 server-rendered templates, Gunicorn/WhiteNoise, local OpenAPI UI assets and Docker Compose.
 Business services own policy, locking, lifecycle and audited writes; adapters own input and output.
 PostgreSQL GiST range exclusion remains the final same-asset conflict arbiter. The full canonical
-architecture and SAR requirement index are in ARCHITECTURE.md (SAR index, SAR-001 through SAR-038).
+architecture and the current SAR requirement index are in ARCHITECTURE.md (its full current SAR
+index).
 No model-backed decision-making enters the product runtime merely because its development is agentic.
 
 Keep opaque UUID identities, half-open UTC effective-end semantics, explicit timezone display,
@@ -76,12 +77,21 @@ The original ambition included professional external hosting and broader resourc
 accepted work orders explicitly retained broad internal-alpha human access and deferred project/
 membership/resource restrictions. Preserve the ambition as deferred, not secretly implemented or
 silently deleted. As of 2026-10-04 the attributable human selected Internet-reachable
-authenticated service development as the current target (P-06, M-INTERNET-UX-PILOT);
-projects/memberships/resource restrictions remain deferred and real Internet exposure
-remains a human D2 decision. Current alpha scope excludes OIDC/password reset/email/notifications, dedicated
-resource-manager delegation, token lifecycle or management REST APIs, service-account/admin token
-issuance, monitoring stack, background scheduler, full operating-hours rules, physical probe,
-atomic capability allocation, execution gateway and real SmartScheduling migration/cutover.
+authenticated service development as the current target (P-06, M-INTERNET-UX-PILOT); at that
+selection projects/memberships/resource restrictions were deferred and real Internet exposure
+remained a human D2 decision. The selection-era exclusions stated on that date (OIDC/password
+reset/email/notifications, dedicated resource-manager delegation, token lifecycle or management
+REST APIs, service-account/admin token issuance, monitoring stack, background scheduler, full
+operating-hours rules, physical probe, atomic capability allocation, execution gateway and real
+SmartScheduling migration/cutover) are preserved as dated selection context, not current claims.
+
+Later human-selected targets (ARCHITECTURE.md A-16 and A-17) have since implemented exact-asset
+group booking eligibility, explicit management and read-all capabilities, configured
+administrator onboarding email and logged-in own-password change. Still deferred and separate
+from those implemented facets: projects/organizational memberships and delegated group
+ownership, OIDC and public forgotten-password reset, general notifications, and real Internet
+exposure/deployment (human D2). Current gates are documented in
+[Authorization](docs/authorization.md).
 
 A first external or institutional pilot still needs an actual approved host/network/TLS/identity/
 operator/resource-policy/backup decision. The historical runbooks are not deployment authorization.

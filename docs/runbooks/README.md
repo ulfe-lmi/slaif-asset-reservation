@@ -4,7 +4,9 @@ Runbooks for the internal-alpha operational and pilot-preparation stage:
 
 - [First internal-alpha deployment](first-internal-alpha-deployment.md)
 - [Internal-alpha pilot readiness](internal-alpha-pilot-readiness.md)
-- [Internal-alpha pilot preparation](internal-alpha-pilot-preparation.md)
+- [Internal-alpha pilot preparation](internal-alpha-pilot-preparation.md) —
+  historical/superseded planning pack, not current operator guidance; current
+  installation and operation live in [INSTALL](../INSTALL.md).
 - [Backup and restore](backup-and-restore.md)
 - [Migration and rollback](migration-and-rollback.md)
 - [Leaked API token response](leaked-api-token.md)

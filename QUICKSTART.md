@@ -132,10 +132,13 @@ The command is interactive: it prompts for `Email`, then `Password`
 3. After login, the member UI offers `/` (dashboard), `/assets/` and
    `/assets/<uuid>/` (inventory with advisory availability),
    `/assets/<uuid>/reserve/`, `/reservations/` (cancel/release),
-   `/tokens/` (API tokens, one-time display) and `/profile/` (display name
-   and timezone). Staff-only areas: `/manage/` (policies, blackouts,
-   cross-user reservations, audit) and `/admin/`. Service accounts cannot
-   log in to the human UI.
+   `/tokens/` (API tokens, one-time display), `/profile/` (display name and
+   timezone) and `/profile/password/` (change your own password). Management
+   area: `/manage/` (policies, blackouts, cross-user reservations, audit)
+   admits any signed-in active non-service-account human holding the
+   matching documented management capability, including non-staff accounts.
+   `/admin/` requires staff admission plus the relevant model permissions.
+   Service accounts cannot log in to the human UI.
 
 ## 7. The default policy (fresh installs)
 
