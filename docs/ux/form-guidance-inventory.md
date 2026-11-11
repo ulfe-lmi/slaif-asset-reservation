@@ -159,11 +159,12 @@ The `assets` app's staff REST endpoints (`assets/api.py`,
 blanket unreachable-REST claim): `config.urls` includes `api.urls`, which
 expands `*asset_api_urls.urlpatterns`, so `/api/v1/assets/` (asset list) and
 `/api/v1/assets/<uuid>/` (detail) are live staff-session endpoints —
-`SessionAuthentication` + `IsAdminUser`, with the bearer `assets:read`
-scope still reserved (no token authentication is offered there). The rendered
-guidance suite pins this via the real URL resolver plus live HTTP
-(anonymous and non-staff get 403, staff session gets the inventory JSON); it
-adds and removes no routes.
+`SessionAuthentication` + `IsActiveStaffHuman` (an active
+non-service-account human staff session), with the bearer `assets:read`
+scope still reserved (no token authentication is offered there). The
+rendered guidance suite pins this via the real URL resolver plus live HTTP
+(anonymous and non-staff get 403, staff session gets the inventory JSON);
+it adds and removes no routes.
 
 ## 5. Out of scope (unchanged)
 
