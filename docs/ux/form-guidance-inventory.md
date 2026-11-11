@@ -64,7 +64,7 @@ Existing permission, admission and crypto rules remain unchanged. The member dur
 | Browsable API token input | `/api/` (DRF Browsable API) | yes | standard auth input | self-evident API-surface input; API contract doc is the guidance; unchanged (API surface, not a member/staff/admin form) |
 | Logout / pagination / table links | various | buttons/links | — | self-evident; unchanged |
 
-## 2. Staff surfaces (management UI, `/manage/`)
+## 2. Management surfaces (capability-gated management UI, `/manage/`)
 
 **Admission (corrected 063-a):** every `/manage/` route is capability-gated
 by `management_required`: an active non-service-account human holding at
@@ -95,8 +95,8 @@ is denied at `/manage/`.
 | Overlap confirm | `confirm_overlaps` | yes | label "Create despite overlapping reservations" | help: creating never cancels/releases overlapping reservations; it only blocks new bookings |
 | Policy deactivation | `policy_detail.html` | button | bare button | warning: stops applying to new bookings immediately, existing bookings unchanged, fail-closed if it was the only match |
 | Blackout deactivation | `blackout_detail.html` | button | bare button | warning: new overlapping bookings allowed again immediately, history preserved |
-| Staff cancel reason | `ManagementCancellationForm.reason` | yes | label "Reason" | help: optional, recorded and visible to staff; cancel warning |
-| Staff release | `reservation_detail.html` | button | bare button | warning: ends the reservation now, original end preserved in history |
+| Management cancel reason | `ManagementCancellationForm.reason` | yes | label "Reason" | help: optional, recorded and visible to authorized management; cancel warning |
+| Management release | `reservation_detail.html` | button | bare button | warning: ends the reservation now, original end preserved in history |
 | Reservation filter `asset` | `ReservationFilterForm.asset` | yes (rendered raw) | bare label | help: narrow to one asset |
 | Reservation filter `q` | `q` | yes | bare label | help: matches owner email/name or asset slug/name |
 | Reservation filter `status` | `status` | yes | bare label | help: confirmed / cancelled / released |
@@ -226,9 +226,11 @@ adds and removes no routes.
   evidence; keyboard access, no horizontal overflow; privacy-safe
   screenshots (no tokens/passwords/verifiers/CSRF/cookies/HAR/traces);
   `test_browser_admin_onboarding_form_guidance` (render-only, no screenshots):
-  the add page's prefilled temporary-credential help bound at 1440/390, the
-  pending status block and the reissue confirmation page, with no credential
-  material rendered; `tests/browser/test_member_password_change_browser.py`
+  the Admin Add page intentionally renders the generated six-character
+  credential in both password controls (the controlled prefill) with its
+  bound help at 1440/390 and is deliberately not screenshotted; the later
+  pending status block and the reissue confirmation page render no credential
+  material; `tests/browser/test_member_password_change_browser.py`
   covers the member `/profile/password/` page (guided fields with bound
   help, wrong-old-password validation, current-session continuity, privacy-safe
   screenshots member-password-change-1440/-390) and
