@@ -25,9 +25,11 @@ Remote users use the HTTPS hostname configured through INSTALL, not port 8000.
   design: creation, verification, revocation and rotation.
 - [human-ui.md](human-ui.md) — browser workflows: member navigation, core
   screens, accessibility baseline.
-- [domain-model.md](domain-model.md) — entities, reservation lifecycle,
-  policy resolution, and time semantics (UTC, half-open effective-end
-  history).
+- [ARCHITECTURE.md A-05 / A-06](../ARCHITECTURE.md#a-05-data-ownership-and-lifecycle)
+  — the current data model: entities, ownership and lifecycle, policy
+  resolution, reservation flows, and time semantics (UTC, DST, half-open
+  effective-end history); booking eligibility and authorization:
+  [authorization.md](authorization.md).
 
 ## Operators
 
@@ -112,6 +114,10 @@ Specialist and historical material, not installation instructions:
 - [project-handoff.md](project-handoff.md) — historical strategic snapshot
   (see its header); live state is GitHub `main` plus `oap/`.
 - [work-orders/](work-orders/) — historical accepted work-order baselines.
+- [domain-model.md](domain-model.md) — historical/superseded pre-implementation
+  design sketch (proposed PROJECT/MEMBERSHIP/AVAILABILITY_RULE, staff-only
+  assumptions); the current model is in
+  [ARCHITECTURE.md A-05 / A-06](../ARCHITECTURE.md#a-05-data-ownership-and-lifecycle).
 - [bootstrap/](bootstrap/) — immutable conversion snapshots (inputs,
   previous bytes) and [BOOTSTRAP-SOURCES.md](BOOTSTRAP-SOURCES.md) with the
   conversion provenance and drift record.

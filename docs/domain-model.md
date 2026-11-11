@@ -1,5 +1,25 @@
 # Domain Model
 
+> **HISTORICAL / SUPERSEDED — read the current architecture first (added 063-a,
+> 2026-11-11).** This page is the pre-implementation design sketch from the
+> original work-order era, preserved verbatim for specialist/history reference.
+> Its status line below ("design contract; field names may be refined...") is
+> superseded, and several of its proposals were not implemented as written:
+> the `PROJECT`/`MEMBERSHIP` and `AVAILABILITY_RULE` entities and
+> project/group policy targeting are deferred, and the staff-only /
+> no-group assumptions were replaced by the implemented
+> capability-and-group authorization. The current, implemented model and
+> rules live in:
+>
+> - [ARCHITECTURE.md — A-05. Data ownership and lifecycle](../ARCHITECTURE.md#a-05-data-ownership-and-lifecycle) —
+>   current entities, ownership, lifecycle and time semantics;
+> - [ARCHITECTURE.md — A-06. Transactional reservation flows](../ARCHITECTURE.md#a-06-transactional-reservation-flows) —
+>   create/cancel/release, concurrency and locking;
+> - [ARCHITECTURE.md — A-16. Selected group authorization extension](../ARCHITECTURE.md#a-16-selected-group-authorization-extension-2026-10-17) —
+>   the implemented group/permission-based authorization;
+> - [authorization.md](authorization.md) — the authorization guide (capabilities,
+>   exact-asset booking eligibility, cross-user read).
+
 **Status:** design contract; field names may be refined by an ADR-backed implementation PR
 
 ## 1. Modeling principles

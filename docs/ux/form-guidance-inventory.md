@@ -1,7 +1,12 @@
 # Form and choice guidance inventory
 
 **Order:** 037-a (SAR-044), accuracy-closed in 037-b, administration
-guidance closed in 037-c; the user external identifier row added in 048-a.
+guidance closed in 037-c; the user external identifier row added in 048-a;
+corrected and extended in 063-a (2026-11-11): member own-password-change
+rows, Admin onboarding add/reissue/activation-lock rows (source-verified
+against the 056-a/058-a/058-c implementation) and the capability-gated
+`/manage/` admission correction. The 037/048/049 rows below remain dated
+provenance for those rounds.
 This inventory maps every
 ACTUAL runtime control (bound form fields, model-generated
 admin add/change/password/group fields, dynamically renamed fields, and raw
@@ -32,6 +37,11 @@ Existing permission, admission and crypto rules remain unchanged. The member dur
 | Password | `/login/`, `HumanAuthenticationForm.password` | yes | label only | self-evident (standard password entry under a generic-denial form); unchanged |
 | Display name | `/profile/`, `ProfileForm.display_name` | yes | label only | help: shown to staff in management views, blank shows email only |
 | Timezone | `/profile/`, `ProfileForm.timezone` | yes | unassociated `<p class="help">` | help: required IANA name, drives all entered/shown times, blank/unknown rejected; `aria-describedby` wired |
+| Change-your-password action | `/profile/`, `web/profile.html` | link | not present (route added 056-a) | nearby help: current session stays signed in; every other signed-in session for the account is signed out; routes to `/profile/password/` |
+| Current password | `/profile/password/`, `web/password_change.html`, `MemberPasswordChangeForm.old_password` | yes | not present (route added 056-a; row added 063-a) | label "Current password"; help: the password you currently use to sign in, checked server-side; `aria-describedby` wired (`id_old_password-help`) |
+| New password | `/profile/password/`, `MemberPasswordChangeForm.new_password1` | yes | not present | label "New password"; nearby help renders the normal validator list ("Your new password must satisfy the site password rules:" + the site rules incl. the existing minimum length — no weakened path); block-level help container `id_new_password1-help`; `aria-describedby` wired |
+| New password confirmation | `/profile/password/`, `MemberPasswordChangeForm.new_password2` | yes | not present | label "New password confirmation"; help: enter the same new password again; `aria-describedby` wired (`id_new_password2-help`) |
+| Onboarding note (conditional) | `/profile/password/`, pending first change | display | not present (added 058-a) | while an account is pending its first forced change, a note explains the temporary credential expires within 24 hours and cannot sign in again after the own password is chosen or on expiry; the onboarding session gate allows only this page, logout, login and static/branding/health, and terminates the session once the temporary credential expires |
 | Start | `/assets/<id>/reserve/`, `ReservationForm.start` | yes | label "Start" only | help: local date/time in the user's timezone, current lead-time/horizon range with native min/max guidance; checked again by the service |
 | Duration | `ReservationForm.duration` | yes | not present | 1/2/4-hour elapsed-time choices filtered for the effective policy, plus Custom end time; native radio group/legend and associated help; computed on the server after DST interpretation |
 | Start occurrence | `ReservationForm.start_fold` | yes | label "Start occurrence" | help: relevant on DST transition days; on fall-back the clock time repeats and Automatic is rejected — pick First (earlier) or Second (later) occurrence; a spring-forward gap time does not exist and is always rejected |
@@ -55,6 +65,16 @@ Existing permission, admission and crypto rules remain unchanged. The member dur
 | Logout / pagination / table links | various | buttons/links | — | self-evident; unchanged |
 
 ## 2. Staff surfaces (management UI, `/manage/`)
+
+**Admission (corrected 063-a):** every `/manage/` route is capability-gated
+by `management_required`: an active non-service-account human holding at
+least one of the documented reservations-namespace management capabilities
+is admitted to the dashboard (any of the nine — `reservations.book_assets`
+alone does not admit it), and each route names its own narrower
+capability set; a caller missing every named capability gets 403 before
+the view body runs. The staff flag alone confers NO management-area
+access: a real staff account without individual/group management grants
+is denied at `/manage/`.
 
 | Control | Route / template | Bound | State before 037-a | Guidance added |
 |---|---|---|---|---|
@@ -98,13 +118,16 @@ Existing permission, admission and crypto rules remain unchanged. The member dur
 |---|---|---|---|---|
 | Admin login email | `/admin/login/`, `SlaifAdminAuthenticationForm.username` | yes | label "Email" | help: the administration account email; `aria-describedby` wired |
 | Admin login password | same | yes | bare field | help: wrong/inactive/service-account identities get the same generic error |
-| User add: email / password1 / password2 / is_staff / is_superuser | `/admin/accounts/user/add/` | add form | bare fields | help on each: account email (admin-created); initial password set by the administrator (members have no self-service password change — the profile page edits display name and timezone only) + confirm; staff = /admin/ admission only — the staff flag alone confers NO management-area access, which requires the documented reservations-namespace application permissions; superuser = full rights (does not bypass the active-human/staff gate) |
+| User add: email / password1 / password2 / is_staff / is_superuser | `/admin/accounts/user/add/` | add form | bare fields | help on each: account email (admin-created); password1 carries the 058-a onboarding guidance — with account email enabled, a generated six-character temporary password is prefilled in BOTH password controls (fresh value per GET, page never cacheable) and the help explains the inactive-pending-onboarding path (login details sent to the member's email only after the account is saved, activation only once delivery is confirmed, own password required within 24 hours after first sign-in); with account email disabled, the help states that every submission is refused and NO account is created until the transport is configured; password2 = "Re-enter the same password to confirm it."; staff = /admin/ admission only — the staff flag alone confers NO management-area access, which requires the documented reservations-namespace application permissions; superuser = full rights (does not bypass the active-human/staff gate). Members change their own password at `/profile/password/` (section 1 rows) |
 | User change: email | `/admin/accounts/user/<id>/change/` | yes | bare | help: sign-in identifier, admin-created accounts |
 | User change: password | same | yes (read-only) | inherited hash summary (algorithm + masked salt/hash) + broken relative "Reset password" link | REPLACED: safe status only ("Password set" / "No password set" / unrecognized format) + real permitted action = per-user password-change form (`.../password/`, permission-checked, audited); no hash fragment rendered |
 | User change: display name / timezone | same | yes | bare | help: shown to staff / IANA name for web booking |
 | User change: is_service_account | same | yes | bare | help: machine account, cannot sign in to member site or administration |
 | User change: external identifier | same | yes | not present (added 048-a) | help: optional opaque external-system identifier (max 128 chars, case-sensitive; every character — spaces, case, leading zeroes — preserved exactly; the 128 limit covers the whole value); may represent an external account identifier (including a Linux UID) but is opaque: not UID-validated, not a credential, grants no machine access; populated values unique, exactly-empty clears to NULL (no blank-unique collisions), does not replace UUID/email/password/token identity |
 | User change: is_active / is_staff / is_superuser | same | yes | bare | precise flag effects incl. the staff flag admits /admin/ only with an active non-service-account session and the matching model permissions for per-model administration operations (staff status alone confers NO management-area access; /manage/ requires the documented reservations-namespace application permissions), and superuser does not bypass the active-human/staff admission gate |
+| User change: onboarding status block | `/admin/accounts/user/<id>/change/`, pending accounts only | display | not present (added 058-a; row added 063-a) | "Onboarding in progress" block: the account is pending its first forced password change, the current temporary password expiry, and a nonsecret delivery-failure warning ("reissue again") when this administrator's last send was not accepted; rendered only for still-pending accounts, never showing the credential |
+| User change: reissue onboarding login details | `/admin/accounts/user/<id>/onboarding-reissue/` (GET confirm, CSRF-checked POST) | button | not present (added 058-a; row added 063-a) | offered only for still-pending accounts, only to editors holding the model change permission, and only while account email is configured; GET explains a NEW temporary six-character password will be generated and the previous one invalidated (no credential material rendered); POST "Yes, reissue the onboarding login details" rotates the credential, logs the admin action and registers exactly one post-commit send; with account email disabled the route refuses on BOTH GET and POST before any mutation (no rotation, no expiry change, no audit entry, no send) |
+| User change: is_active while pending | `/admin/accounts/user/<id>/change/`, inactive pending account | read-only | bare switch (058-c; row added 063-a) | the switch renders read-only for an inactive account still pending onboarding, and the admin save path re-reads the persisted flag so a crafted `is_active=on` POST cannot activate it; reissue plus the onboarding activation flow are the activation paths; deactivation of already-active accounts and non-pending accounts are unaffected |
 | User change: groups / user_permissions | same | yes (filter_horizontal) | bare | help: grants combine additively across all groups and individual permissions; `reservations.book_assets` (directly or via a group) is what lets the account create new reservations and membership in a restricted asset's allowed groups is what lets it book that asset (booking enforcement is active); the nine management capabilities are enforced now: the view or manage capability for booking policies, maintenance blackouts, all reservations, audit history and audit export admits the account to the matching /manage/ pages and services, and cancel/release-others allow cross-user lifecycle operations on their own; they do not grant administration access, which follows the active staff flag, and they do not admit a session by themselves; after the admin select-filter JS initializes, BOTH generated list boxes of each selector bind the rendered field help (`aria-describedby`) via `web/admin-form-guidance.js` |
 | User password change form | `/admin/accounts/user/<id>/password/` | `SlaifAdminPasswordChangeForm` (subclass) | generic built-in `usable_password` help mentioned SSO/LDAP although no such backend is configured | `usable_password` (added dynamically only while the user has a usable password) carries product help: disabling loses the current password and blocks password sign-in; no alternate human login backend exists; the built-in warning is preserved verbatim; a presentation-only `RadioSelect` subclass keeps a bindable help id (`id_usable_password_0_helptext`) and BOTH rendered choices carry the matching `aria-describedby`, the field label binds the first choice and the second choice is keyboard-focusable (verified in the browser after widget initialization); password1/password2 keep the built-in rule list/confirm help with their `aria-describedby`; validators/hashing/conditional field/actions/permissions unchanged |
 | Group permissions | `/admin/auth/group/...` | Django `GroupAdmin` | bare multiselect | help: permissions granted through the group apply additively to each member; a group with `reservations.book_assets` lets its members create new reservations and membership in the group can satisfy a restricted asset's allowed-group requirement (booking enforcement is active); the nine management capabilities admit members to the matching /manage/ pages and services; they do not grant administration access (which follows the active staff flag) and are not project or membership authorization; after the admin select-filter JS initializes, BOTH generated list boxes bind the rendered field help via `web/admin-form-guidance.js` |
@@ -158,8 +181,9 @@ adds and removes no routes.
   not just any aria on the page — including BOTH rendered password-choice
   radios bound to `id_usable_password_0_helptext`, kept on the invalid-POST
   re-render); the rendered permission wording is pinned against the real
-  authorization (a real staff without individual/group permissions can
-  access the management area, while administration model operations retain
+  authorization (a real staff without individual/group management grants is
+  DENIED the management area — 403 from `management_required` before the
+  view body — while administration model operations retain
   model-permission enforcement and protected models stay protected); the
   staff asset REST endpoints are pinned as live routed staff-session
   endpoints (real resolver + HTTP) while the legacy `assets/views.py` HTML
@@ -173,7 +197,19 @@ adds and removes no routes.
   occurrence (two real instants) and nonexistent spring-forward negatives;
   admin password-change page GET/invalid-POST and enable/disable behavior;
   last_login/date_joined help; the 048-a external identifier help and its
-  bound association on the user change page. Validation negatives unchanged.
+  bound association on the user change page; `test_password_change_page_guidance`
+  (rendered GET of the member page with bound help on all three fields and the
+  normal validator list incl. the existing minimum length rendered nearby;
+  weak-password invalid POST keeps the bound help and leaves the stored hash
+  untouched); `test_admin_user_add_temporary_prefill_guidance` (add form
+  prefills the same fresh six-character value in both password controls,
+  fresh value per GET, `no-store`, bound temporary-credential/confirm help,
+  "sent to the member's email address only after the account is saved");
+  `test_admin_user_change_onboarding_pending_block` (onboarding block only
+  for pending accounts; NO reissue control while account email is disabled;
+  reissue control plus per-account delivery-failure warning when enabled);
+  `test_admin_user_onboarding_reissue_page_guidance` (reissue confirmation
+  page wording and bound controls). Validation negatives unchanged.
 - `tests/browser/test_form_guidance_browser.py`: Playwright seeded forms at
   1440/390 (reservation, token create, profile, policy, blackout, reservation/
   audit filters, and ALL admin surfaces: login, user add/change, password
@@ -188,7 +224,16 @@ adds and removes no routes.
   (mismatched) password POST keeping the rendered, bound help; long admin
   forms are captured full-page so below-fold guidance and actions are in the
   evidence; keyboard access, no horizontal overflow; privacy-safe
-  screenshots (no tokens/passwords/verifiers/CSRF/cookies/HAR/traces).
+  screenshots (no tokens/passwords/verifiers/CSRF/cookies/HAR/traces);
+  `test_browser_admin_onboarding_form_guidance` (render-only, no screenshots):
+  the add page's prefilled temporary-credential help bound at 1440/390, the
+  pending status block and the reissue confirmation page, with no credential
+  material rendered; `tests/browser/test_member_password_change_browser.py`
+  covers the member `/profile/password/` page (guided fields with bound
+  help, wrong-old-password validation, current-session continuity, privacy-safe
+  screenshots member-password-change-1440/-390) and
+  `tests/browser/test_account_onboarding_browser.py` covers the forced-change
+  gate redirecting an onboarding session to that page.
 - Existing negative suites (timezone/DST/duration/policy, roles, CSRF, scopes,
   protected admin, token secrecy) preserved unmodified where they assert
   behavior; label selectors adjusted semantically where text changed.

@@ -107,7 +107,7 @@ upgrades.
 | Installation and deployment (operator) | [INSTALL.md](INSTALL.md) |
 | API contract (`/api/v1/`) | [docs/api-contract.md](docs/api-contract.md) |
 | Human UI | [docs/human-ui.md](docs/human-ui.md) |
-| Domain model and time semantics | [docs/domain-model.md](docs/domain-model.md) |
+| Data model, lifecycle and time semantics (current) | [ARCHITECTURE.md A-05 / A-06](ARCHITECTURE.md#a-05-data-ownership-and-lifecycle) — entities, ownership, lifecycle, reservation flows and time semantics; authorization and booking eligibility: [docs/authorization.md](docs/authorization.md) |
 | Deployment reference | [docs/deployment.md](docs/deployment.md) |
 | Security model | [docs/security-model.md](docs/security-model.md) |
 | Appearance customization | [docs/branding.md](docs/branding.md) |
