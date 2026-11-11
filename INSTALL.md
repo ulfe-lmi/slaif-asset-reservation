@@ -138,6 +138,21 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run 
 and the fresh database's global `default` policy. Existing policies are preserved;
 [default values](#default-policy-and-inventory) are documented below.
 
+### Optional: account email transport (before user creation)
+
+Administrator account *delivery* — sending each new account one
+login-details email — arrives in the **next** implementation objective;
+this installation still creates administrators without sending email,
+and step 7 below is unchanged. The transport that delivery will use is
+already supported and **disabled by default**. If you expect to onboard
+accounts by email, configure it now in `deploy/env.production` from the
+commented opt-in block in `deploy/env.production.example`
+(`SLAIF_ACCOUNT_EMAIL_ENABLED`, `SLAIF_PUBLIC_BASE_URL`, `SLAIF_SMTP_*`).
+While disabled, the app starts without any `SLAIF_SMTP_*` value and sends
+nothing. When enabled, production validates the full transport contract
+fail-closed at settings load; the full transport/security reference is
+[Configuration](docs/deployment.md#4-configuration) in docs/deployment.md.
+
 ### 7. Create the first administrator and start the app — REQUIRED
 
 ```bash
@@ -261,6 +276,17 @@ from a protected secret store — never commit it, and keep it mode
   starting the application. Entries are explicit IP addresses or
   point-to-point networks (IPv4 `/31`, IPv6 `/127`); broad ranges are
   rejected.
+- Optional account email transport (used by the next implementation
+  objective for login-details delivery; nothing is sent today):
+  `SLAIF_ACCOUNT_EMAIL_ENABLED` (default `false` — the app starts and
+  sends nothing), `SLAIF_PUBLIC_BASE_URL`, `SLAIF_SMTP_HOST`,
+  `SLAIF_SMTP_PORT`, `SLAIF_SMTP_USERNAME`, `SLAIF_SMTP_PASSWORD`,
+  `SLAIF_SMTP_FROM`, `SLAIF_SMTP_USE_SSL`, `SLAIF_SMTP_STARTTLS`,
+  `SLAIF_SMTP_TIMEOUT_SECONDS`. Enabled production requires exactly one
+  TLS mode, a bounded 1-60 second timeout, and a canonical https base URL
+  whose host and origin are already in `SLAIF_ALLOWED_HOSTS` and
+  `SLAIF_CSRF_TRUSTED_ORIGINS`; full reference:
+  [docs/deployment.md — Configuration](docs/deployment.md#4-configuration).
 
 Do not weaken `SLAIF_SECURE_SSL_REDIRECT` or the trusted-peer list to
 make the healthcheck pass: the probe dials `127.0.0.1` from inside the
