@@ -135,8 +135,12 @@ upgrades.
   implemented yet; see
   [docs/authorization.md](docs/authorization.md). Create accounts and grants
   accordingly.
-- No OIDC, self-registration, password reset, email or notifications. Accounts are
-  administrator-created; service accounts cannot use the human login UI.
+- No OIDC, self-registration, public password reset or general
+  notifications. Accounts are administrator-created. When account email
+  is enabled, a member account created in Administration receives one
+  login-details email carrying a short-lived temporary password and must
+  choose its own password at first sign-in; service accounts cannot use
+  the human login UI.
 - Reservations grant entitlements; the service does not execute workloads,
   allocate hardware, enforce actual usage or integrate a scheduler/gateway.
 - Runtime and migrations share a privileged PostgreSQL role. Scheduled/off-host

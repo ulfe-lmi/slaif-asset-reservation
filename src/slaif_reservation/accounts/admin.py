@@ -1,22 +1,35 @@
 from __future__ import annotations
 
+import uuid
+from functools import partial
 from typing import Any
 
 from django import forms
-from django.contrib import admin
+from django.conf import settings
+from django.contrib import admin, messages
 from django.contrib.admin.widgets import AdminSplitDateTime
 from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import AdminPasswordChangeForm
 from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX, identify_hasher
 from django.contrib.auth.models import Group as AuthGroup
-from django.contrib.auth.password_validation import password_validators_help_text_html
+from django.core.exceptions import PermissionDenied
+from django.db import router, transaction
 from django.db.models import QuerySet
-from django.http import HttpRequest
-from django.urls import reverse
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
+from django.shortcuts import render
+from django.urls import path, reverse
+from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.debug import sensitive_post_parameters
 
+from slaif_reservation.accounts import onboarding
+from slaif_reservation.accounts.forms import SlaifUserCreationForm
 from slaif_reservation.accounts.models import ApiToken, User
+
+csrf_protect_m = method_decorator(csrf_protect)
+sensitive_post_parameters_m = method_decorator(sensitive_post_parameters())
 
 _USER_FIELD_HELP: dict[str, Any] = {
     "email": _(
@@ -228,6 +241,12 @@ class SlaifAdminPasswordChangeForm(AdminPasswordChangeForm):  # type: ignore[typ
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
     ordering = ["email"]
+    add_form = SlaifUserCreationForm
+    # Per-model templates so the onboarding guidance and the reissue
+    # control are presented on this product's own pages (they extend the
+    # product's global administration change-form overrides).
+    add_form_template = "admin/accounts/user/add_form.html"
+    change_form_template = "admin/accounts/user/change_form.html"
 
     @property
     def media(self) -> forms.Media:
@@ -328,27 +347,183 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 widget.attrs["aria-describedby"] = f"id_{name}_0_helptext"
                 date_field.widget = widget
         else:
-            if form.base_fields.get("password1"):
-                form.base_fields["password1"].help_text = (
-                    _(
-                        "Choose the initial password for this account. The "
-                        "member can later change their own password from "
-                        "the profile page; an administrator can also set or "
-                        "change it from this user page. It must satisfy the "
-                        "site password rules:"
-                    )
-                    + password_validators_help_text_html()
-                )
-            if form.base_fields.get("password2"):
-                form.base_fields["password2"].help_text = _(
+            form_class: Any = form
+            # The add form's own password guidance (temporary-credential
+            # vs regular initial password) is owned by
+            # SlaifUserCreationForm, which knows the account-email state.
+            if form_class.base_fields.get("password2"):
+                form_class.base_fields["password2"].help_text = _(
                     "Re-enter the same password to confirm it."
                 )
-            form.base_fields["is_staff"].help_text = _USER_FIELD_HELP["is_staff"]
-            form.base_fields["is_superuser"].help_text = _USER_FIELD_HELP["is_superuser"]
+            form_class.base_fields["is_staff"].help_text = _USER_FIELD_HELP["is_staff"]
+            form_class.base_fields["is_superuser"].help_text = _USER_FIELD_HELP["is_superuser"]
             _wire_user_field_help(
-                form, ("email", "password1", "password2", "is_staff", "is_superuser")
+                form_class,
+                ("email", "password1", "password2", "is_staff", "is_superuser"),
             )
+            # Finally bind the signed prefill proof (a digest only, never
+            # the credential) and the per-administrator-session nonce from
+            # the session, so a submitted six-character value can be proved
+            # to be the generated one without ever storing it in plaintext.
+            # No token was issued (email disabled, or the form was not
+            # opened first) -> nothing to verify; the normal validators
+            # apply to whatever is submitted.
+            nonce = request.session.get(onboarding.NONCE_SESSION_KEY)
+            proof = request.session.get(onboarding.PREFILL_PROOF_SESSION_KEY)
+            if nonce is not None or proof is not None:
+                form = partial(  # type: ignore[assignment]
+                    form_class,
+                    onboarding_nonce=nonce,
+                    onboarding_prefill_proof=proof,
+                )
         return form
+
+    def get_changeform_initial_data(self, request: HttpRequest) -> dict[str, Any]:
+        """Prefill the add form with a fresh generated temporary password.
+
+        Only while account email is enabled: the add form then carries the
+        generated six-character value in BOTH password controls plus a
+        short-lived signed digest (in the session, never rendered) bound to
+        this administrator's session. Each GET generates a fresh value.
+        """
+        if settings.ACCOUNT_EMAIL_ENABLED:
+            value = onboarding.generate_temporary_password()
+            nonce = onboarding.session_nonce(request.session)
+            request.session[onboarding.PREFILL_PROOF_SESSION_KEY] = onboarding.sign_prefill_proof(
+                value, nonce
+            )
+            return {"password1": value, "password2": value}
+        return {}
+
+    def save_model(self, request: HttpRequest, obj: Any, form: Any, change: bool) -> None:
+        if change:
+            super().save_model(request, obj, form, change)
+            return
+        generated = isinstance(form, SlaifUserCreationForm) and form.onboarding_generated
+        if not generated:
+            # Regular add (manually entered normal-length password or email
+            # disabled): exactly the pre-existing behavior, no onboarding
+            # state, no mail.
+            super().save_model(request, obj, form, change)
+            return
+        # Onboarding add: commit the account INACTIVE/PENDING with only the
+        # password hash and the nonsecret expiry metadata, then register
+        # exactly one post-commit send. Activation happens only when the
+        # SMTP backend reports acceptance (see onboarding module).
+        temporary = str(form.cleaned_data["password1"])
+        onboarding.start_onboarding(obj, temporary)
+        super().save_model(request, obj, form, change)
+        request.session.pop(onboarding.PREFILL_PROOF_SESSION_KEY, None)
+        transaction.on_commit(
+            partial(
+                onboarding.deliver_onboarding_email,
+                user_pk=obj.pk,
+                temporary_password=temporary,
+                request=request,
+            )
+        )
+
+    def render_change_form(
+        self, request: HttpRequest, context: Any, *args: Any, **kwargs: Any
+    ) -> HttpResponse:
+        if kwargs.get("add"):
+            # The add page explains the generated temporary credential.
+            context["onboarding_email_enabled"] = settings.ACCOUNT_EMAIL_ENABLED
+        else:
+            obj = kwargs.get("obj")
+            if obj is not None:
+                # The change page shows the onboarding status block and the
+                # reissue control only for accounts still pending their
+                # first forced change (and only to editors).
+                context["onboarding_pending"] = onboarding.is_pending_onboarding(obj)
+                context["onboarding_expires_at"] = obj.onboarding_password_expires_at
+                context["onboarding_can_reissue"] = self.has_change_permission(request, obj)
+                # The nonsecret delivery outcome from this administrator's
+                # last send (persisted by the post-commit delivery step)
+                # warns while the account is still pending.
+                context["onboarding_delivery_undelivered"] = (
+                    onboarding.is_pending_onboarding(obj)
+                    and request.session.get(onboarding.DELIVERY_STATUS_SESSION_KEY) == "undelivered"
+                )
+        response = super().render_change_form(request, context, *args, **kwargs)
+        if kwargs.get("add"):
+            # The add form carries (or re-renders) the generated temporary
+            # credential: it must never be cacheable.
+            response["Cache-Control"] = "no-store"
+        return response
+
+    def get_urls(self) -> list[Any]:
+        urls = [
+            path(
+                "<uuid:pk>/onboarding-reissue/",
+                self.admin_site.admin_view(self.onboarding_reissue),
+                name="accounts_user_onboarding_reissue",
+            ),
+        ]
+        return urls + super().get_urls()
+
+    @csrf_protect_m
+    def onboarding_reissue(self, request: HttpRequest, pk: uuid.UUID) -> HttpResponse:
+        """Explicit, permission-checked reissue of onboarding login details.
+
+        GET shows a confirmation page explaining rotation and ambiguous
+        delivery; POST (CSRF-checked) generates a NEW credential, invalidates
+        the previous hash and expiry, and registers exactly one post-commit
+        send. Restricted to accounts still in onboarding state; the admin
+        must hold the model change permission; the secret is never shown.
+        """
+        user = self.get_object(request, str(pk))
+        if user is None:
+            raise Http404(
+                _("%(name)s object with primary key %(key)r does not exist.")
+                % {"name": self.opts.verbose_name, "key": pk}
+            )
+        if not self.has_change_permission(request, user):
+            raise PermissionDenied
+        change_url = reverse("admin:accounts_user_change", args=[user.pk])
+        if not onboarding.is_pending_onboarding(user):
+            messages.error(
+                request,
+                "This account is not in onboarding state, so there is no "
+                "temporary credential to reissue.",
+            )
+            return HttpResponseRedirect(change_url)
+        if request.method == "POST":
+            value = onboarding.generate_temporary_password()
+            with transaction.atomic(using=router.db_for_write(self.model)):
+                onboarding.rotate_onboarding(user, value)
+                user.save()
+                self.log_change(
+                    request,
+                    user,
+                    "Reissued onboarding login details (previous temporary "
+                    "credential invalidated).",
+                )
+                transaction.on_commit(
+                    partial(
+                        onboarding.deliver_onboarding_email,
+                        user_pk=user.pk,
+                        temporary_password=value,
+                        request=request,
+                        reissue=True,
+                    )
+                )
+            return HttpResponseRedirect(change_url)
+        context = {
+            **self.admin_site.each_context(request),
+            "title": _("Reissue onboarding login details: %s") % user.email,
+            "user": user,
+            "opts": self.opts,
+            "original": user,
+            "expires_at": user.onboarding_password_expires_at,
+            "change_url": change_url,
+            "is_popup": False,
+            "add": False,
+            "has_change_permission": True,
+            "app_label": self.opts.app_label,
+        }
+        request.current_app = self.admin_site.name
+        return render(request, "admin/accounts/user/onboarding_reissue.html", context)
 
 
 if AuthGroup in admin.site._registry:

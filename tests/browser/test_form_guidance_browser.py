@@ -8,8 +8,11 @@ no one-time token page, no entered credentials, no CSRF/cookie material.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from django.contrib.auth.models import Permission
+from django.utils import timezone
 from playwright.sync_api import Page
 
 from slaif_reservation.accounts.authorization import MANAGEMENT_PERMISSIONS
@@ -627,6 +630,69 @@ def test_browser_admin_user_forms_guidance(
         "a disabled user cannot sign in until an administrator sets"
         in page.locator("#id_usable_password_0_helptext").inner_text()
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_browser_admin_onboarding_form_guidance(
+    page: Page,
+    live_server,
+    admin_user: User,
+    settings,
+) -> None:
+    """058-a: onboarding form guidance with account email enabled.
+
+    Rendering only (no submission) and no screenshots: the add page's
+    password controls visibly carry the generated temporary credential.
+    """
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    settings.PUBLIC_BASE_URL = "https://reservation.example.test"
+    settings.DEFAULT_FROM_EMAIL = "no-reply@example.test"
+
+    _admin_login(page, live_server, admin_user)
+
+    # Add page: the temporary-credential guidance is bound to the
+    # prefilled controls at 1440 and 390.
+    page.goto(f"{live_server.url}/admin/accounts/user/add/")
+    page.set_viewport_size(DESKTOP)
+    _assert_help_near_control(page, "#id_password1", "id_password1_helptext")
+    _assert_help_near_control(page, "#id_password2", "id_password2_helptext")
+    assert (
+        "temporary six-character password has been generated for you"
+        in page.locator("#id_password1_helptext").inner_text()
+    )
+    assert "You are creating a new member account" in page.content()
+    prefill = page.locator("#id_password1").input_value()
+    assert prefill == page.locator("#id_password2").input_value() and len(prefill) == 6
+    _assert_no_horizontal_overflow(page)
+    page.set_viewport_size(MOBILE)
+    _assert_help_near_control(page, "#id_password1", "id_password1_helptext")
+    _assert_no_horizontal_overflow(page)
+
+    # Pending status block and reissue confirmation page (no credential
+    # material anywhere) at 1440 and 390.
+    pending = User.objects.create_user(
+        email="onb-guidance-pending@example.com",
+        password="Mn56yz",
+        is_active=False,
+    )
+    pending.onboarding_password_expires_at = timezone.now() + timedelta(hours=24)
+    pending.save(update_fields=["onboarding_password_expires_at"])
+    page.set_viewport_size(DESKTOP)
+    page.goto(f"{live_server.url}/admin/accounts/user/{pending.pk}/change/")
+    assert "Onboarding in progress" in page.content()
+    assert "This account is pending its first forced password change" in page.content()
+    assert "The current temporary password expires at" in page.content()
+    assert "Reissue onboarding login details" in page.content()
+    assert "Mn56yz" not in page.content()
+    _assert_no_horizontal_overflow(page)
+    page.set_viewport_size(MOBILE)
+    _assert_no_horizontal_overflow(page)
+    page.set_viewport_size(DESKTOP)
+    page.goto(f"{live_server.url}/admin/accounts/user/{pending.pk}/onboarding-reissue/")
+    assert "A NEW temporary six-character password will be generated" in page.content()
+    assert "you can reissue again" in page.content()
+    assert "Mn56yz" not in page.content()
+    _assert_no_horizontal_overflow(page)
 
 
 @pytest.mark.django_db(transaction=True)

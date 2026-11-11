@@ -1,0 +1,18 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{# Product add-user page: the standard guidance plus the onboarding
+   explanation while account email is enabled. Structure and all
+   inherited behavior are unchanged. #}
+{% block form_top %}
+  {{ block.super }}
+  {% if not is_popup %}
+    <p>{% translate "After you’ve created a user, you’ll be able to edit more user options." %}</p>
+  {% endif %}
+  {% if onboarding_email_enabled %}
+    <div class="onboarding-note">
+      <p>{% translate "You are creating a new member account. A temporary six-character password has been generated for you and prefilled in both password fields above. It is sent to the member's email address only after the account is saved, and the account stays inactive until delivery is confirmed. The member must sign in with it and choose their own password within 24 hours, before any other work." %}</p>
+      <p>{% translate "If you prefer, clear both fields and enter a regular password that satisfies the site rules; that account is created normally without onboarding email." %}</p>
+    </div>
+  {% endif %}
+{% endblock %}

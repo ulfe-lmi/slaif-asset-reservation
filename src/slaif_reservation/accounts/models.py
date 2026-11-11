@@ -80,6 +80,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_service_account = models.BooleanField(default=False)
+    # Onboarding state (SAR-055/SAR-056): set to the temporary-credential
+    # expiry instant only while an administrator-created account is pending
+    # its first forced password change; NULL for every account that is not
+    # in onboarding (all pre-existing accounts stay NULL). Never a
+    # credential: only the password hash is stored.
+    onboarding_password_expires_at = models.DateTimeField(null=True, blank=True)
     external_identifier = models.CharField(
         max_length=128,
         null=True,

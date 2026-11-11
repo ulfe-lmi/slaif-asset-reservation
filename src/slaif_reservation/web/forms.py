@@ -9,9 +9,11 @@ from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm
 from django.contrib.auth.password_validation import password_validators_help_text_html
 from django.core.validators import MaxValueValidator
+from django.db import DEFAULT_DB_ALIAS
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from slaif_reservation.accounts import onboarding
 from slaif_reservation.accounts.authorization import (
     SCOPE_ISSUANCE_CAPABILITIES,
     issuable_token_scopes,
@@ -44,12 +46,30 @@ class HumanAuthenticationForm(AuthenticationForm):
     }
 
     def confirm_login_allowed(self, user: User) -> None:
-        if not user.is_active or user.is_service_account:
+        # Active non-service-account humans log in exactly as before.
+        # One narrow addition (SAR-055/056): an account still pending its
+        # first forced change is INACTIVE on purpose; it may authenticate
+        # with its temporary credential only while that credential is
+        # inside its 24-hour window (the session gate then allows only the
+        # password-change page). After expiry the backend refuses it and
+        # the generic non-disclosing error below applies.
+        if user.is_service_account:
             raise forms.ValidationError(
                 self.error_messages["invalid_login"],
                 code="invalid_login",
                 params={"username": self.username_field.verbose_name},
             )
+        if user.is_active:
+            return
+        if onboarding.is_pending_onboarding(user) and not onboarding.temporary_credential_expired(
+            user
+        ):
+            return
+        raise forms.ValidationError(
+            self.error_messages["invalid_login"],
+            code="invalid_login",
+            params={"username": self.username_field.verbose_name},
+        )
 
 
 class ProfileForm(forms.ModelForm):  # type: ignore[type-arg]
@@ -122,6 +142,22 @@ class MemberPasswordChangeForm(PasswordChangeForm):
         )
         self.fields["new_password2"].widget.attrs["autocomplete"] = "new-password"
         _wire_field_help(self, ("old_password", "new_password1", "new_password2"))
+
+    def save(self, commit: bool = True) -> User:
+        user: User = super().save(commit=commit)
+        # Forced first change (SAR-056): replacing the temporary credential
+        # with a normal-validator password clears the onboarding state and
+        # re-activates the account. The inherited save already rotated the
+        # password hash (invalidating every other session for the account)
+        # and the view refreshes the current session hash.
+        if onboarding.is_pending_onboarding(user):
+            onboarding.complete_onboarding(user)
+            if commit:
+                user.save(
+                    using=DEFAULT_DB_ALIAS,
+                    update_fields=["is_active", "onboarding_password_expires_at", "updated_at"],
+                )
+        return user
 
 
 _FOLD_CHOICES = [

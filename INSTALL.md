@@ -138,20 +138,28 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run 
 and the fresh database's global `default` policy. Existing policies are preserved;
 [default values](#default-policy-and-inventory) are documented below.
 
-### Optional: account email transport (before user creation)
+### Optional: account email transport (before member creation)
 
-Administrator account *delivery* — sending each new account one
-login-details email — arrives in the **next** implementation objective;
-this installation still creates administrators without sending email,
-and step 7 below is unchanged. The transport that delivery will use is
-already supported and **disabled by default**. If you expect to onboard
-accounts by email, configure it now in `deploy/env.production` from the
-commented opt-in block in `deploy/env.production.example`
-(`SLAIF_ACCOUNT_EMAIL_ENABLED`, `SLAIF_PUBLIC_BASE_URL`, `SLAIF_SMTP_*`).
-While disabled, the app starts without any `SLAIF_SMTP_*` value and sends
-nothing. When enabled, production validates the full transport contract
-fail-closed at settings load; the full transport/security reference is
+Creating a human member account in Administration generates a fresh
+six-character temporary password, prefills it in both password controls,
+and — when account email is enabled — sends that account exactly one
+plain-text login-details email after the account is saved. The account
+is activated only when the SMTP backend confirms acceptance (there is no
+automatic retry), and the member must choose their own password at first
+sign-in, within 24 hours. The transport is **disabled by default**; while
+disabled the add form behaves as a normal initial-password form and no
+email is sent. If you expect to onboard members by email, configure the
+transport now in `deploy/env.production` from the commented opt-in block
+in `deploy/env.production.example` (`SLAIF_ACCOUNT_EMAIL_ENABLED`,
+`SLAIF_PUBLIC_BASE_URL`, `SLAIF_SMTP_*`). While disabled, the app starts
+without any `SLAIF_SMTP_*` value and sends nothing. When enabled,
+production validates the full transport contract fail-closed at settings
+load; the full transport/security reference is
 [Configuration](docs/deployment.md#4-configuration) in docs/deployment.md.
+
+The first administrator is still created with the `createsuperuser`
+command in step 7 (interactive, or `DJANGO_SUPERUSER_PASSWORD` for
+non-interactive runs); that CLI flow does not send email.
 
 ### 7. Create the first administrator and start the app — REQUIRED
 
@@ -276,8 +284,8 @@ from a protected secret store — never commit it, and keep it mode
   starting the application. Entries are explicit IP addresses or
   point-to-point networks (IPv4 `/31`, IPv6 `/127`); broad ranges are
   rejected.
-- Optional account email transport (used by the next implementation
-  objective for login-details delivery; nothing is sent today):
+- Optional account email transport (one login-details email per
+  administrator-created member account; nothing is sent while disabled):
   `SLAIF_ACCOUNT_EMAIL_ENABLED` (default `false` — the app starts and
   sends nothing), `SLAIF_PUBLIC_BASE_URL`, `SLAIF_SMTP_HOST`,
   `SLAIF_SMTP_PORT`, `SLAIF_SMTP_USERNAME`, `SLAIF_SMTP_PASSWORD`,
