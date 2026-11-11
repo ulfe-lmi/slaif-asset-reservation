@@ -8,11 +8,19 @@ interface.
 
 Open `/` and choose **Log in**. An administrator must first create your account;
 your email address is the login identifier. There is no self-registration,
-institutional single sign-on or public password-reset/email workflow. After
-signing in you can change your own password from the profile page; an
+institutional single sign-on or public password-reset/recovery workflow.
+After signing in you can change your own password from the profile page; an
 administrator can also set or change it in Administration. There is no public
 reset or recovery flow. Service accounts cannot use the human login or
 administration interface.
+
+New member accounts are usually created with a temporary password in a
+one-time login-details email. Signing in with it lands directly on the
+password-change page: choose your own password before doing anything else.
+Until then your session can open only the password-change page, logout,
+the login page and static/branding/health surfaces; the temporary password
+expires within 24 hours and cannot sign in again after expiry or after you
+choose your own password.
 
 The public **Administration** action opens `/admin/login/`. Administration
 requires an active human staff account and the applicable model permissions;
@@ -33,7 +41,7 @@ is temporarily unavailable. There is no permanent automatic account lockout.
 | Make a booking | Asset's **Reserve this asset** action | Requires your current booking capability and the asset's group eligibility; current policy, maintenance and PostgreSQL conflict checks decide acceptance. |
 | Cancel or release | Your reservation detail | Cancel upcoming bookings; release active bookings early. Both actions are explicit and audited. |
 | Set your display preferences | `/profile/` | Display name and a required valid IANA timezone, used when entering and displaying booking times. |
-| Change your password | `/profile/password/` | Requires your current password and a new one that passes the site password rules; your current session stays signed in and every other session for the account is signed out. |
+| Change your password | `/profile/password/` | Requires your current password and a new one that passes the site password rules; your current session stays signed in and every other session for the account is signed out. New accounts pending their first forced change are admitted here (and only here) with the temporary password. |
 | Connect an API agent | `/tokens/` | Create scoped, expiring tokens, inspect their prefix/status and revoke them. |
 
 Booking access is explicit: creating a reservation requires the
@@ -146,6 +154,31 @@ explain staff/superuser/service-account effects. Password state is a safe status
 the stored password verifier is never displayed. The password-change form
 explains that disabling password authentication loses the current password and
 that no alternate human login backend is provided.
+
+The user add form always prefills a freshly generated six-character
+temporary password in both password controls. While account email is
+enabled, keeping the prefill or entering your own regular password that
+satisfies the site rules creates the account inactive/pending and sends
+one login-details email after the account is saved (the account is
+activated only when the relay confirms acceptance of that exact
+credential; on failure or an unconfirmed result it stays inactive, the
+member cannot sign in yet, and no automatic retry is made). While account
+email is disabled, the prefill is still shown with clear setup guidance
+and every submission is refused until the transport is configured. The
+user change page shows the onboarding status — including a delivery-failure
+warning for that specific account — with the temporary password expiry and
+an explicit **Reissue onboarding login details** action that rotates the
+previous temporary password and sends the new details once. The page text
+matches the account state: an inactive pending account is described as
+unable to sign in until its login-details email is accepted by the email
+relay, while an active pending account is described as signing in with the
+temporary password and forced to change it; statuses report relay
+acceptance, never inbox delivery. While account email is disabled, no
+reissue action is offered (the route refuses before any mutation) and the
+page tells the administrator to configure the account email transport
+first. The temporary password is never displayed outside the non-cacheable
+add-user form prefill (and the one login-details email): no other
+administration page, log or audit record contains it.
 
 Policies, reservations, blackouts, audit events and API tokens are protected
 read-only records in administration. Their guidance identifies the supported

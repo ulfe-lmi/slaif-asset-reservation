@@ -1,0 +1,29 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% translate 'Administration' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' app_label=app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; <a href="{% url 'admin:accounts_user_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+&rsaquo; <a href="{{ change_url }}">{{ user.email }}</a>
+&rsaquo; {% translate "Reissue onboarding login details" %}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+<div class="onboarding-reissue">
+  <p>{% blocktranslate with email=user.email %}A NEW temporary six-character password will be generated for {{ email }}. The previous temporary password stops working immediately, and the new details are sent by email once, after the change is saved.{% endblocktranslate %}</p>
+  <p class="warning">{% translate "Email delivery can be ambiguous: if the relay does not confirm, the account stays inactive and you can reissue again. The temporary password is never shown here, in logs or in the audit record." %}</p>
+  <form method="post">
+    {% csrf_token %}
+    <p class="submit-row">
+      <button type="submit" class="default">{% translate "Yes, reissue the onboarding login details" %}</button>
+      <a href="{{ change_url }}" class="cancellink">{% translate "Cancel" %}</a>
+    </p>
+  </form>
+</div>
+{% endblock %}

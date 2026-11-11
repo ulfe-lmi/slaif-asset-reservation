@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 from html import unescape
+from typing import Any
 
 import pytest
 from django.contrib.auth.models import Permission
@@ -21,6 +22,7 @@ from django.test import Client
 from django.urls import resolve, reverse
 from django.utils import timezone
 
+from slaif_reservation.accounts import onboarding
 from slaif_reservation.accounts.authorization import MANAGEMENT_PERMISSIONS
 from slaif_reservation.accounts.exceptions import TOKEN_OWNER_INVALID, ApiTokenDomainError
 from slaif_reservation.accounts.models import ApiToken, User
@@ -1027,7 +1029,7 @@ def test_admin_user_add_guidance(client: Client, admin_user: User) -> None:
     _assert_guided(
         html,
         "id_password1_helptext",
-        "The member can later change their own password from the profile page",
+        "account email (SMTP) transport to be configured",
         control_id="id_password1",
     )
     _assert_guided(
@@ -1048,6 +1050,152 @@ def test_admin_user_add_guidance(client: Client, admin_user: User) -> None:
         "does not bypass the active-human/staff admission gate",
         control_id="id_is_superuser",
     )
+
+
+def _control_value(html: str, control_id: str) -> str:
+    match = re.search(rf'<input[^>]*id="{control_id}"[^>]*>', html)
+    assert match, f"missing control {control_id}"
+    value = re.search(r'value="([^"]*)"', match.group(0))
+    return value.group(1) if value else ""
+
+
+@pytest.mark.django_db
+def test_admin_user_add_temporary_prefill_guidance(
+    client: Client, admin_user: User, settings: Any
+) -> None:
+    """058-a: with account email enabled the add form prefills the fresh
+    generated six-character temporary credential in BOTH password
+    controls, explains the temporary-credential path, and is never
+    cacheable."""
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    settings.PUBLIC_BASE_URL = "https://reservation.example.test"
+    settings.DEFAULT_FROM_EMAIL = "no-reply@example.test"
+    client.force_login(admin_user)
+    response = client.get("/admin/accounts/user/add/")
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "no-store" in response["Cache-Control"]
+    _assert_no_dangling_aria(html)
+    value1 = _control_value(html, "id_password1")
+    value2 = _control_value(html, "id_password2")
+    assert value1 and value1 == value2
+    assert len(value1) == 6
+    assert any(ch.isalpha() for ch in value1) and any(ch.isdigit() for ch in value1)
+    _assert_guided(
+        html,
+        "id_password1_helptext",
+        "temporary six-character password has been generated for you and prefilled in both fields",
+        control_id="id_password1",
+    )
+    _assert_guided(
+        html,
+        "id_password2_helptext",
+        "Re-enter the same password to confirm it.",
+        control_id="id_password2",
+    )
+    assert "sent to the member's email address only after the account is saved" in unescape(html)
+    # Each GET of the add form generates a fresh value.
+    html_again = client.get("/admin/accounts/user/add/").content.decode()
+    assert _control_value(html_again, "id_password1") != value1
+
+
+@pytest.mark.django_db
+def test_admin_user_change_onboarding_pending_block(
+    client: Client,
+    admin_user: User,
+    member_user: User,
+    settings: Any,
+) -> None:
+    """058-a/058-c: the change page shows the onboarding status block and
+    the reissue control (only while account email is configured) for
+    accounts pending their first forced change, with state-specific text
+    (an inactive pending account cannot sign in until relay acceptance)
+    and the account-scoped nonsecret delivery-failure status when the
+    last send was not confirmed; a legacy account-unscoped status string
+    is ignored."""
+    client.force_login(admin_user)
+    # Non-pending account: no onboarding block at all.
+    plain = client.get(f"/admin/accounts/user/{member_user.pk}/change/").content.decode()
+    assert "Onboarding in progress" not in plain
+    assert "onboarding-reissue/" not in plain
+    # Pending INACTIVE account (failed/undelivered delivery).
+    pending = User.objects.create_user(
+        email="onb-pending-guidance@example.com",
+        password="Ab12cd",
+        is_active=False,
+    )
+    pending.onboarding_password_expires_at = timezone.now() + timedelta(hours=24)
+    pending.save(update_fields=["onboarding_password_expires_at"])
+    # 058-c: while account email is disabled (the test default) the page
+    # explains the state, offers NO reissue action, and ignores a legacy
+    # account-unscoped status string.
+    html_disabled = client.get(f"/admin/accounts/user/{pending.pk}/change/").content.decode()
+    _assert_no_dangling_aria(html_disabled)
+    assert "Onboarding in progress" in html_disabled
+    assert "cannot sign in yet" in html_disabled
+    assert "Reissue is unavailable" in html_disabled
+    assert "account email is not configured" in html_disabled
+    assert f"/admin/accounts/user/{pending.pk}/onboarding-reissue/" not in html_disabled
+    session = client.session
+    session[onboarding.DELIVERY_STATUS_SESSION_KEY] = "undelivered"
+    session.save()
+    assert "could not be confirmed as delivered" not in (
+        client.get(f"/admin/accounts/user/{pending.pk}/change/").content.decode()
+    )
+    # 058-a: with account email enabled the block carries the expiry line
+    # and the reissue control, and the delivery-failure status shows for
+    # the matching account only.
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    settings.PUBLIC_BASE_URL = "https://reservation.example.test"
+    settings.DEFAULT_FROM_EMAIL = "no-reply@example.test"
+    html = client.get(f"/admin/accounts/user/{pending.pk}/change/").content.decode()
+    _assert_no_dangling_aria(html)
+    assert "Onboarding in progress" in html
+    assert "The current temporary password expires at" in html
+    assert f"/admin/accounts/user/{pending.pk}/onboarding-reissue/" in html
+    assert "Reissue onboarding login details" in html
+    assert "Ab12cd" not in html
+    # Nonsecret delivery-failure status (set by the post-commit delivery
+    # step in the creating administrator's session), scoped to the
+    # specific account.
+    session[onboarding.DELIVERY_STATUS_SESSION_KEY] = {str(pending.pk): "undelivered"}
+    session.save()
+    html_failed = client.get(f"/admin/accounts/user/{pending.pk}/change/").content.decode()
+    assert "could not be confirmed as delivered" in html_failed
+    assert "reissue again" in html_failed
+
+
+@pytest.mark.django_db
+def test_admin_user_onboarding_reissue_page_guidance(
+    client: Client, admin_user: User, settings: Any
+) -> None:
+    """058-a: the reissue confirmation page explains rotation and
+    ambiguous delivery, carries a CSRF-checked confirm form, and never
+    shows the temporary password."""
+    pending = User.objects.create_user(
+        email="onb-reissue-guidance@example.com",
+        password="Mn56yz",
+        is_active=False,
+    )
+    pending.onboarding_password_expires_at = timezone.now() + timedelta(hours=24)
+    pending.save(update_fields=["onboarding_password_expires_at"])
+    client.force_login(admin_user)
+    # 058-c: the confirmation page renders only while account email is
+    # configured; with it disabled the route refuses before rendering.
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    settings.PUBLIC_BASE_URL = "https://reservation.example.test"
+    settings.DEFAULT_FROM_EMAIL = "no-reply@example.test"
+    response = client.get(f"/admin/accounts/user/{pending.pk}/onboarding-reissue/")
+    html = response.content.decode()
+    assert response.status_code == 200
+    _assert_no_dangling_aria(html)
+    assert "A NEW temporary six-character password will be generated" in unescape(html)
+    assert "stops working immediately" in unescape(html)
+    assert "you can reissue again" in unescape(html)
+    assert 'name="csrfmiddlewaretoken"' in html
+    assert "Yes, reissue the onboarding login details" in html
+    assert f'href="/admin/accounts/user/{pending.pk}/change/"' in html
+    assert "Mn56yz" not in html
 
 
 @pytest.mark.django_db

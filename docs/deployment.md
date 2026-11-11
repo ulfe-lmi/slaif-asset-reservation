@@ -127,9 +127,11 @@ HTTP-only rehearsal disables the redirect for local checks only.
 
 ### Account email transport (SAR-055)
 
-The administrator account *delivery* flow (sending each new account one
-login-details email) is the next implementation objective; this section
-documents the transport it will use, which is implemented now and
+Creating a human member account in Administration sends that account
+exactly one plain-text login-details email (canonical configured HTTPS
+login URL, the account identifier, and the short-lived temporary
+password) through this transport after the account is saved; the account
+is activated only on relay acceptance. The transport is implemented and
 disabled by default.
 
 - `SLAIF_ACCOUNT_EMAIL_ENABLED=false` (the default) selects Django's
@@ -154,8 +156,13 @@ disabled by default.
   production; and `SLAIF_PUBLIC_BASE_URL` must be a canonical https
   origin (no userinfo, path, query or fragment) whose host is listed in
   `SLAIF_ALLOWED_HOSTS` and whose origin is listed in
-  `SLAIF_CSRF_TRUSTED_ORIGINS`. Future login-details links derive only
+  `SLAIF_CSRF_TRUSTED_ORIGINS`. Login-details links derive only
   from this configured origin, never the request `Host` header.
+
+The one-time send has no automatic retry: if the relay does not confirm
+acceptance the account stays inactive and the administrator uses the
+explicit onboarding reissue action (which rotates the previous temporary
+credential). Development and tests use synthetic sinks only.
 - Local (non-production) settings accept the same keys for synthetic
   development against a loopback SMTP sink without TLS; no real relay or
   recipient is configured by default. Development and tests never use a

@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from django.contrib import messages
 from django.contrib.auth import SESSION_KEY, update_session_auth_hash
 from django.contrib.auth import logout as auth_logout
-from django.contrib.auth.views import LoginView, LogoutView
+from django.contrib.auth.views import LoginView, LogoutView, redirect_to_login
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import Page, Paginator
 from django.http import (
@@ -24,6 +24,7 @@ from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 
+from slaif_reservation.accounts import onboarding
 from slaif_reservation.accounts.exceptions import TOKEN_SCOPE_INVALID, ApiTokenDomainError
 from slaif_reservation.accounts.services import issue_api_token, revoke_api_token
 from slaif_reservation.accounts.tokens import OneTimeBearerToken
@@ -196,7 +197,6 @@ def profile(request: HttpRequest) -> HttpResponse:
 
 
 @sensitive_post_parameters("old_password", "new_password1", "new_password2")
-@active_human_required
 @sensitive_variables("form")
 def password_change(request: HttpRequest) -> HttpResponse:
     """Logged-in own-password change (SAR-054).
@@ -208,19 +208,40 @@ def password_change(request: HttpRequest) -> HttpResponse:
     POST are accepted, GET and error responses never render submitted
     values or stored hashes, and the submitted credential fields are
     marked sensitive for technical exception reporting.
+
+    Admission is the usual active-human boundary. An account pending its
+    first forced change is active (its delivery was accepted) and reaches
+    this page through that same boundary; the onboarding session gate
+    (SAR-056) allows it only this page, logout, login and
+    static/branding/health for all other routes, and terminates the
+    session after the temporary credential expires. Disallowed sessions
+    are terminated without redirect loops, exactly as before.
     """
     if request.method not in ("GET", "POST"):
         return HttpResponseNotAllowed(["GET", "POST"])
+    user = request.user
+    admitted = user.is_authenticated and is_active_human(user)
+    if not admitted:
+        if user.is_authenticated or SESSION_KEY in request.session:
+            auth_logout(request)
+        return redirect_to_login(request.get_full_path())
     if request.method == "POST":
-        form = MemberPasswordChangeForm(request.user, request.POST)
+        form = MemberPasswordChangeForm(user, request.POST)
         if form.is_valid():
             form.save()
             update_session_auth_hash(request, form.user)
             messages.success(request, _("Password changed."))
             return redirect("web:profile")
     else:
-        form = MemberPasswordChangeForm(request.user)
-    return render(request, "web/password_change.html", {"form": form})
+        form = MemberPasswordChangeForm(user)
+    return render(
+        request,
+        "web/password_change.html",
+        {
+            "form": form,
+            "is_pending": onboarding.is_pending_onboarding(user),
+        },
+    )
 
 
 @active_human_required

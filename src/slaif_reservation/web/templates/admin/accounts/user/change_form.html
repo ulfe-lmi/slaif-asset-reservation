@@ -1,0 +1,39 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{# Product change-user page: inherited structure plus the onboarding
+   status block and the explicit reissue control for accounts still
+   pending their first forced password change. #}
+{% block form_top %}
+  {{ block.super }}
+  {% if not add and not is_popup and onboarding_pending %}
+    <div class="onboarding-pending">
+      <h2>{% translate "Onboarding in progress" %}</h2>
+      {% if onboarding_active %}
+        <p>{% translate "This account is pending its first forced password change. It signs in with the temporary password, and until it chooses its own password it can only open the password-change page. The temporary password can establish a session only until it expires; after expiry — or after the forced change — it no longer works." %}</p>
+      {% else %}
+        <p>{% translate "This account is pending its first forced password change, but it cannot sign in yet: it stays inactive until the login-details email for its current temporary password is accepted by the email relay. Once accepted, the member signs in with that temporary password and is asked to choose its own; the temporary password can establish a session only until it expires, is reissued or is changed." %}</p>
+      {% endif %}
+      {% if onboarding_delivery_undelivered %}
+        <div class="messagelist">
+          {% if onboarding_email_enabled %}
+            <p class="warning">{% translate "The login-details email for this account could not be confirmed as delivered. The account stays inactive and cannot sign in yet; use the reissue action to send the details again (reissue again if delivery stays uncertain). Email delivery can be ambiguous, so do not assume the member has a working password." %}</p>
+          {% else %}
+            <p class="warning">{% translate "The login-details email for this account could not be confirmed as delivered, and account email is currently disabled, so the details cannot be reissued yet. The account stays inactive and cannot sign in; configure the account email transport first, then reissue." %}</p>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if onboarding_expires_at %}
+        <p>{% blocktranslate with expires_at=onboarding_expires_at %}The current temporary password expires at {{ expires_at }} (UTC).{% endblocktranslate %}</p>
+      {% endif %}
+      {% if onboarding_can_reissue %}
+        {% if onboarding_email_enabled %}
+          <p><a class="button" href="{% url 'admin:accounts_user_onboarding_reissue' original.pk %}">{% translate "Reissue onboarding login details…" %}</a></p>
+          <p class="hint">{% translate "Reissuing generates a NEW temporary password, invalidates the previous one immediately, and sends the details by email once. If an earlier delivery was uncertain, reissue again — do not assume the member has a working password." %}</p>
+        {% else %}
+          <p class="hint"><strong>{% translate "Reissue is unavailable:" %}</strong> {% translate "account email is not configured, so new login details could not be sent. Configure the account email transport (SMTP settings and the canonical base URL), then return here and reissue." %}</p>
+        {% endif %}
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}

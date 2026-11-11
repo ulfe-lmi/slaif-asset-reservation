@@ -45,6 +45,11 @@ MIDDLEWARE = [
     "slaif_reservation.config.abuse.AbuseControlMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Forced first password change for onboarding accounts (SAR-056):
+    # pending sessions reach only the password-change page, logout,
+    # login, health and static/branding until the temporary credential
+    # is replaced (or its session is terminated after expiry).
+    "slaif_reservation.accounts.middleware.OnboardingForcedChangeMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -76,6 +81,12 @@ DATABASES = {
 }
 
 AUTH_USER_MODEL = "accounts.User"
+# Onboarding expiry gate (SAR-055/056): the model backend subclass keeps
+# all existing permission semantics and only refuses new sessions with
+# an expired temporary credential.
+AUTHENTICATION_BACKENDS = [
+    "slaif_reservation.accounts.backends.SlaifOnboardingAuthenticationBackend",
+]
 LOGIN_URL = "/login/"
 CSRF_FAILURE_VIEW = "slaif_reservation.config.views.csrf_failure"
 LOGIN_REDIRECT_URL = "/"

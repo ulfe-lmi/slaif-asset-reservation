@@ -196,7 +196,13 @@ read-all dual gate documented above; the deferrals below remain deferred.
   `is_staff` alone no longer admits /manage/.
 - Administration (/admin/): staff admission with existing model
   permissions; protected records are read-only or service-backed. The user
-  change page now exposes the optional external identifier.
+  change page now exposes the optional external identifier. Member
+  accounts created through the user add form may carry onboarding state
+  (pending first forced password change with a short-lived temporary
+  password): while pending, that account's session reaches only the
+  password-change page, logout, login and static/branding/health, and an
+  expired temporary credential cannot establish a new session. Onboarding
+  grants no group, booking, management or API-token permission.
 - Bearer API: owner-only reservations:read/create/cancel/release plus
   availability:read; the explicit read-only cross-user
   `/api/v1/all-reservations/` list/detail (dual gate:
