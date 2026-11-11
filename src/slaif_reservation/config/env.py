@@ -342,7 +342,7 @@ def validate_canonical_service_url(raw_value: str) -> str:
         host = validate_allowed_host_entry(parsed.hostname)
     except ImproperlyConfigured:
         raise ImproperlyConfigured("SLAIF_PUBLIC_BASE_URL must use explicit valid hosts") from None
-    if parsed.username or parsed.password:
+    if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
         raise ImproperlyConfigured("SLAIF_PUBLIC_BASE_URL must not include userinfo")
     if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
         msg = "SLAIF_PUBLIC_BASE_URL must be a bare origin without path, query or fragment"

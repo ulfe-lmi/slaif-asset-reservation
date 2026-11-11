@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.core.validators import EmailValidator
 
 from slaif_reservation.config.env import (
     Env,
@@ -47,7 +48,10 @@ class AccountEmailSettings:
     host: str | None = None
     port: int | None = None
     host_user: str | None = None
-    host_password: str | None = None
+    # The value stays attribute-accessible for Django's SMTP backend mapping,
+    # but never appears in repr/str (or equality) so logs and diagnostics
+    # cannot echo the credential.
+    host_password: str | None = field(default=None, repr=False, compare=False)
     default_from_email: str | None = None
     use_ssl: bool = False
     use_tls: bool = False
@@ -80,7 +84,9 @@ def resolve_account_email_settings(
             email_backend=DISABLED_EMAIL_BACKEND,
         )
 
-    raw_base_url = (source.get("SLAIF_PUBLIC_BASE_URL") or "").strip()
+    # The raw configured value goes straight into canonical validation; the
+    # validator rejects surrounding whitespace instead of it being stripped.
+    raw_base_url = source.get("SLAIF_PUBLIC_BASE_URL") or ""
     if not raw_base_url:
         msg = "SLAIF_PUBLIC_BASE_URL is required when account email is enabled"
         raise ImproperlyConfigured(msg)
@@ -115,10 +121,20 @@ def resolve_account_email_settings(
         raise ImproperlyConfigured(msg)
     smtp_port = env_int_range("SLAIF_SMTP_PORT", default=0, minimum=1, maximum=65535, env=source)
 
-    raw_from = (source.get("SLAIF_SMTP_FROM") or "").strip()
+    raw_from = source.get("SLAIF_SMTP_FROM") or ""
     if not raw_from:
         msg = "SLAIF_SMTP_FROM is required when account email is enabled"
         raise ImproperlyConfigured(msg)
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in raw_from):
+        # Whitespace and CRLF/header-injection forms are rejected before the
+        # validator; the message stays category-only (no raw value echo).
+        msg = "SLAIF_SMTP_FROM must be a valid bare email address"
+        raise ImproperlyConfigured(msg)
+    try:
+        EmailValidator()(raw_from)
+    except ValidationError:
+        msg = "SLAIF_SMTP_FROM must be a valid bare email address"
+        raise ImproperlyConfigured(msg) from None
 
     host_user = source.get("SLAIF_SMTP_USERNAME")
     host_password = source.get("SLAIF_SMTP_PASSWORD")

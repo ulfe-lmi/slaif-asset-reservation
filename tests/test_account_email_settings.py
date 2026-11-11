@@ -15,6 +15,16 @@ Order 057-a scope (SAR-055, no account-creation email in this objective):
   with no real recipient or relay; a disabled configuration sends
   nothing.
 
+Order 057-b corrections (same objective, fail-closed closure):
+- empty URL userinfo (``https://@host``) is rejected instead of being
+  normalized away, and surrounding base-URL whitespace is rejected by the
+  resolver instead of being silently stripped;
+- ``SLAIF_SMTP_FROM`` must be a valid bare email address (malformed,
+  whitespace and CRLF/header-injection forms are rejected with a
+  category-only message);
+- ``AccountEmailSettings`` never exposes the SMTP password through
+  repr/str/equality while keeping the value attribute-accessible.
+
 No user model or migration change; no real SMTP relay/recipient/credential
 is used or required.
 """
@@ -36,6 +46,7 @@ from django.test import override_settings
 from slaif_reservation.config.email import (
     DISABLED_EMAIL_BACKEND,
     SMTP_EMAIL_BACKEND,
+    AccountEmailSettings,
     resolve_account_email_settings,
 )
 from slaif_reservation.config.env import validate_canonical_service_url
@@ -78,6 +89,9 @@ def test_canonical_service_url_accepts_https_origins(raw: str, expected: str) ->
         "https://reservation.example.test/path",
         "https://reservation.example.test/?next=1",
         "https://reservation.example.test#anchor",
+        # Empty userinfo must be rejected, not normalized away.
+        "https://@reservation.example.test",
+        "https://:@reservation.example.test",
         "https://user:pass@reservation.example.test",
         "https://reservation.example.test:0",
         "https://reservation.example.test:99999",
@@ -190,12 +204,67 @@ def test_resolver_local_still_rejects_ambiguous_tls_modes() -> None:
         )
 
 
+# --- secret representation canaries (057-b) -------------------------------
+
+
+def _settings_with_secret(password: str) -> AccountEmailSettings:
+    return AccountEmailSettings(
+        enabled=True,
+        public_base_url=TEST_BASE_URL,
+        email_backend=SMTP_EMAIL_BACKEND,
+        host=TEST_SMTP_HOST,
+        port=587,
+        host_user=TEST_SMTP_USERNAME,
+        host_password=password,
+        default_from_email=TEST_SMTP_FROM,
+        use_ssl=False,
+        use_tls=True,
+        timeout=30,
+    )
+
+
+def test_account_email_settings_repr_and_str_exclude_smtp_secret() -> None:
+    settings_ = _settings_with_secret(TEST_SMTP_PASSWORD)
+
+    rendered = f"{repr(settings_)} {str(settings_)}"
+    assert TEST_SMTP_PASSWORD not in rendered
+    # A failed assertion on this object must not echo the secret either.
+    with pytest.raises(AssertionError) as excinfo:
+        assert settings_.port == 25, f"unexpected settings: {settings_!r}"
+    assert TEST_SMTP_PASSWORD not in str(excinfo.value)
+
+
+def test_account_email_settings_keeps_secret_attribute_accessible() -> None:
+    settings_ = _settings_with_secret(TEST_SMTP_PASSWORD)
+
+    # Django's SMTP backend mapping still receives the real value.
+    assert settings_.host_password == TEST_SMTP_PASSWORD
+    # Equality must not be driven by the excluded field.
+    other = _settings_with_secret("another-synthetic-secret")
+    assert settings_ == other
+
+
 FAILING_PRODUCTION_CASES: list[tuple[str, dict[str, str], str]] = [
     ("missing-host", {"SLAIF_SMTP_HOST": ""}, "SLAIF_SMTP_HOST is required"),
     (
         "missing-from",
         {"SLAIF_SMTP_FROM": ""},
         "SLAIF_SMTP_FROM is required",
+    ),
+    (
+        "from-malformed",
+        {"SLAIF_SMTP_FROM": "bad-address"},
+        "SLAIF_SMTP_FROM must be a valid bare email address",
+    ),
+    (
+        "from-surrounding-whitespace",
+        {"SLAIF_SMTP_FROM": " no-reply@example.test"},
+        "SLAIF_SMTP_FROM must be a valid bare email address",
+    ),
+    (
+        "from-header-injection",
+        {"SLAIF_SMTP_FROM": "no-reply@example.test\r\nBCC: other@example.test"},
+        "SLAIF_SMTP_FROM must be a valid bare email address",
     ),
     ("missing-port", {"SLAIF_SMTP_PORT": ""}, "SLAIF_SMTP_PORT is required"),
     (
@@ -217,6 +286,21 @@ FAILING_PRODUCTION_CASES: list[tuple[str, dict[str, str], str]] = [
         "base-url-userinfo",
         {"SLAIF_PUBLIC_BASE_URL": "https://user@reservation.example.test"},
         "must not include userinfo",
+    ),
+    (
+        "base-url-empty-userinfo",
+        {"SLAIF_PUBLIC_BASE_URL": "https://@reservation.example.test"},
+        "must not include userinfo",
+    ),
+    (
+        "base-url-surrounding-whitespace",
+        {"SLAIF_PUBLIC_BASE_URL": " https://reservation.example.test"},
+        "SLAIF_PUBLIC_BASE_URL must not include whitespace",
+    ),
+    (
+        "base-url-trailing-whitespace",
+        {"SLAIF_PUBLIC_BASE_URL": "https://reservation.example.test "},
+        "SLAIF_PUBLIC_BASE_URL must not include whitespace",
     ),
     (
         "base-url-host-not-allowed",
