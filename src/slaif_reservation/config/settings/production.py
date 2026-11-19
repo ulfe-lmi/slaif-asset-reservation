@@ -5,6 +5,7 @@ from __future__ import annotations
 from django.core.exceptions import ImproperlyConfigured
 
 from slaif_reservation.accounts.tokens import validate_api_token_pepper
+from slaif_reservation.config.email import resolve_account_email_settings
 from slaif_reservation.config.env import (
     env_bool,
     env_int_range,
@@ -98,6 +99,34 @@ if (SECURE_HSTS_INCLUDE_SUBDOMAINS or SECURE_HSTS_PRELOAD) and SECURE_HSTS_SECON
 TRUSTED_PROXY_PEERS = env_trusted_proxy_peers("SLAIF_TRUSTED_PROXY_PEERS")
 
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+
+# Account email transport (SAR-055): explicit operator opt-in, disabled
+# by default. A disabled install starts exactly as before with the dummy
+# backend, so no send can reach a relay. When enabled, the full
+# transport contract is validated fail-closed at settings load with
+# category-only messages: explicit host/port/sender, paired credentials,
+# exactly one TLS mode (plaintext SMTP never permitted), a bounded 1-60
+# second timeout, and a canonical https base URL whose host is listed in
+# SLAIF_ALLOWED_HOSTS and whose origin is in SLAIF_CSRF_TRUSTED_ORIGINS.
+# Importing settings never opens an SMTP connection; no queue, Celery or
+# Gateway dependency is introduced.
+_account_email = resolve_account_email_settings(
+    production=True,
+    allowed_hosts=ALLOWED_HOSTS,
+    csrf_trusted_origins=CSRF_TRUSTED_ORIGINS,
+)
+ACCOUNT_EMAIL_ENABLED = _account_email.enabled
+PUBLIC_BASE_URL = _account_email.public_base_url
+EMAIL_BACKEND = _account_email.email_backend
+if _account_email.enabled:
+    EMAIL_HOST = _account_email.host
+    EMAIL_PORT = _account_email.port
+    EMAIL_HOST_USER = _account_email.host_user
+    EMAIL_HOST_PASSWORD = _account_email.host_password
+    DEFAULT_FROM_EMAIL = _account_email.default_from_email
+    EMAIL_USE_SSL = _account_email.use_ssl
+    EMAIL_USE_TLS = _account_email.use_tls
+    EMAIL_TIMEOUT = _account_email.timeout
 
 API_DOCS_ENABLED = env_bool("SLAIF_ENABLE_API_DOCS", default=False)
 API_DOCS_PUBLIC = False

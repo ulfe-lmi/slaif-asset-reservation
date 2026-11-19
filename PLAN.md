@@ -56,11 +56,12 @@ required after separately authorized adoption.
 
 ## P-03. Architectural commitments
 
-Preserve the modular Django monolith, Python3.13, Django5.2/DRF3.17, PostgreSQL17, uv/uv.lock,
+Preserve the modular Django monolith, Python3.13, Django5.2/DRF3.18, PostgreSQL17, uv/uv.lock,
 server-rendered templates, Gunicorn/WhiteNoise, local OpenAPI UI assets and Docker Compose.
 Business services own policy, locking, lifecycle and audited writes; adapters own input and output.
 PostgreSQL GiST range exclusion remains the final same-asset conflict arbiter. The full canonical
-architecture and SAR requirement index are in ARCHITECTURE.md (SAR index, SAR-001 through SAR-038).
+architecture and the current SAR requirement index are in ARCHITECTURE.md (its full current SAR
+index).
 No model-backed decision-making enters the product runtime merely because its development is agentic.
 
 Keep opaque UUID identities, half-open UTC effective-end semantics, explicit timezone display,
@@ -76,12 +77,21 @@ The original ambition included professional external hosting and broader resourc
 accepted work orders explicitly retained broad internal-alpha human access and deferred project/
 membership/resource restrictions. Preserve the ambition as deferred, not secretly implemented or
 silently deleted. As of 2026-10-04 the attributable human selected Internet-reachable
-authenticated service development as the current target (P-06, M-INTERNET-UX-PILOT);
-projects/memberships/resource restrictions remain deferred and real Internet exposure
-remains a human D2 decision. Current alpha scope excludes OIDC/password reset/email/notifications, dedicated
-resource-manager delegation, token lifecycle or management REST APIs, service-account/admin token
-issuance, monitoring stack, background scheduler, full operating-hours rules, physical probe,
-atomic capability allocation, execution gateway and real SmartScheduling migration/cutover.
+authenticated service development as the current target (P-06, M-INTERNET-UX-PILOT); at that
+selection projects/memberships/resource restrictions were deferred and real Internet exposure
+remained a human D2 decision. The selection-era exclusions stated on that date (OIDC/password
+reset/email/notifications, dedicated resource-manager delegation, token lifecycle or management
+REST APIs, service-account/admin token issuance, monitoring stack, background scheduler, full
+operating-hours rules, physical probe, atomic capability allocation, execution gateway and real
+SmartScheduling migration/cutover) are preserved as dated selection context, not current claims.
+
+Later human-selected targets (ARCHITECTURE.md A-16 and A-17) have since implemented exact-asset
+group booking eligibility, explicit management and read-all capabilities, configured
+administrator onboarding email and logged-in own-password change. Still deferred and separate
+from those implemented facets: projects/organizational memberships and delegated group
+ownership, OIDC and public forgotten-password reset, general notifications, and real Internet
+exposure/deployment (human D2). Current gates are documented in
+[Authorization](docs/authorization.md).
 
 A first external or institutional pilot still needs an actual approved host/network/TLS/identity/
 operator/resource-policy/backup decision. The historical runbooks are not deployment authorization.
@@ -291,3 +301,78 @@ software-qualified baseline for the Internet/UX facets, and its prior evidence i
 historical context for this changed authorization target. Human milestone acceptance,
 release and all real infrastructure decisions remain separate and are not inferred from
 development evidence.
+
+## P-09. Selected account onboarding extension (2026-11-09)
+
+**Human provenance.** The attributable human selected M-ACCOUNT-ONBOARDING on
+2026-11-09 with exactly three product behaviors: (1) an administrator-created
+user receives an email with their login data; (2) a logged-in member can
+change their own password; (3) the administrator creation form is prefilled
+with a random six-character password. The selection was made together with an
+explicit instruction to first make the OAP plan and then implement; the
+planning is this P-09 plus the ARCHITECTURE.md A-17 contract, and implementation
+follows only under separately strategy-issued orders.
+
+**Selection-era contradiction, recorded honestly.** At the 2026-11-09
+target selection there was no member password-change route: the profile page
+edited display name and timezone only, and the Administration user page help
+stated that members could not change their own password. The normal password
+policy is the standard validator set (including `MinimumLengthValidator`,
+whose default minimum is eight characters), applied to every normal password
+creation or change. The selected six-character initial password therefore
+conflicted with that normal baseline; it is admitted ONLY as a generated
+temporary onboarding credential with the bounded mitigations below, never as
+a weakening of the normal validators.
+
+**Bounded mitigations (selected, not optional).** A CSPRNG temporary
+password; maximum 24-hour validity, after which it cannot establish a new
+login; forced first change to the normal validators before any member,
+management, Administration or session-API work; the account becomes active
+only after the external SMTP relay accepts the single onboarding email; no
+automated retry of an ambiguous SMTP send — manual reissue only, rotating the
+previous secret; no plaintext persistence; no email bodies or credentials in
+logs; links derived from a canonical configured HTTPS base URL, never from
+the request Host; production-enabled external SMTP requires TLS and a bounded
+timeout. The strongest objection is recorded and remains visible: emailing
+even a temporary credential exposes it to mailbox and relay compromise; the
+mitigations reduce but do not eliminate that risk, and this is not a
+password-setup link and not MFA.
+
+**Selected target, no infrastructure authorization.** This selection
+narrows the P-04/SAR-036 deferral ONLY for administrator-created onboarding
+email and logged-in own-password change. General OIDC, public
+forgotten-password reset, public self-registration and general
+notifications remain deferred. The selection authorizes bounded development
+and independent qualification only: development may use synthetic SMTP only;
+no real relay, recipient, credential, identity administration,
+host/exposure/DNS/TLS/firewall, production database, deployment or
+release is authorized by it.
+
+**Development purposes — scope map (055–059, as selected).** The private
+strategic sequence is recorded here as the selected scope map, as it stood at
+the 2026-11-09 selection. Each purpose requires its own strategy-issued order
+with live authority, exact scope, base and PR; numbering is a private
+orientation, not an active backlog. At that selection, purposes 056–059 were
+DRAFT: no issue, PR, SHA or result for them existed or was claimed, and none
+was executable until strategy issued its order.
+
+| # | Purpose (derived from A-17) | Stable rows | Depends on |
+|---|---|---|---|
+| 055 | Selected M-ACCOUNT-ONBOARDING contract: canonical A-17 and SAR-054–SAR-056, this P-09, compact projection recomposition, semantic projection review (delivered by order 055-a, issue #114) | SAR-054, SAR-055, SAR-056 | — (this order) |
+| 056 | Logged-in own-password change: current-password required, CSRF, active non-service human, normal validators including the existing minimum, current-session continuity, other-session invalidation, no bearer mutation | SAR-054 | 055 |
+| 057 | Operator SMTP onboarding and failure boundary: operator-enabled SMTP with canonical HTTPS base URL; inactive commit first, exactly one login-details email, activate only after SMTP acceptance; nonsecret status; manual reissue rotating the previous credential; no ambiguous-send auto-retry | SAR-055 | 055 |
+| 058 | Six-character temporary admin creation and forced change: add-form prepopulation of both controls with one new CSPRNG six-character value, narrow temporary-only length exception, expiry within 24h, forced change to normal validators before any other work, existing accounts unchanged | SAR-056 | 056, 057 |
+| 059 | Integration and qualification: full focused positive/negative/browser evidence, standard five exact-head checks, and a fresh independent ICA over the full current architecture at the exact merged revision before any milestone-closure claim | all rows | 056, 057, 058 |
+
+**Status.** The selected logged-in own-password change (SAR-054, delivered
+by order 056-a, issue #116 / PR #117), operator SMTP onboarding with the
+failure boundary (SAR-055, order 057-a, issue #118 / PR #119) and the
+six-character temporary Admin onboarding credential with forced change
+(SAR-056, order 058-a, issue #120 / PR #121) have landed in merged main;
+integration and qualification evidence was published by order 059-a
+(issue #122 / PR #123). Their exact evidence lives in those merged PRs and
+in the OAP reports under `oap/reports/`. A fresh independent ICA at the
+exact merged revision, and human acceptance, release and real-infrastructure
+decisions (including any real SMTP relay or deployment), remain separate from
+this documentation; no M-ACCOUNT-ONBOARDING milestone-closure claim is made
+here. The milestone history in P-06 is otherwise unchanged.

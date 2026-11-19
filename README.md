@@ -84,7 +84,7 @@ upgrades.
 
 ## Supported runtime
 
-- **Python 3.13**, **Django 5.2** (locked 5.2.17), **DRF** (locked 3.17.2),
+- **Python 3.13**, **Django 5.2** (locked 5.2.17), **DRF** (locked 3.18.3),
   **PostgreSQL 17**; dependencies locked in `uv.lock`.
 - **Docker Compose** on a single Linux host (`linux/amd64` is the supported
   and verified architecture): loopback-only development Compose, and a
@@ -107,7 +107,7 @@ upgrades.
 | Installation and deployment (operator) | [INSTALL.md](INSTALL.md) |
 | API contract (`/api/v1/`) | [docs/api-contract.md](docs/api-contract.md) |
 | Human UI | [docs/human-ui.md](docs/human-ui.md) |
-| Domain model and time semantics | [docs/domain-model.md](docs/domain-model.md) |
+| Data model, lifecycle and time semantics (current) | [ARCHITECTURE.md A-05 / A-06](ARCHITECTURE.md#a-05-data-ownership-and-lifecycle) — entities, ownership, lifecycle, reservation flows and time semantics; authorization and booking eligibility: [docs/authorization.md](docs/authorization.md) |
 | Deployment reference | [docs/deployment.md](docs/deployment.md) |
 | Security model | [docs/security-model.md](docs/security-model.md) |
 | Appearance customization | [docs/branding.md](docs/branding.md) |
@@ -135,8 +135,12 @@ upgrades.
   implemented yet; see
   [docs/authorization.md](docs/authorization.md). Create accounts and grants
   accordingly.
-- No OIDC, self-registration, password reset, email or notifications. Accounts are
-  administrator-created; service accounts cannot use the human login UI.
+- No OIDC, self-registration, public password reset or general
+  notifications. Accounts are administrator-created. When account email
+  is enabled, a member account created in Administration receives one
+  login-details email carrying a short-lived temporary password and must
+  choose its own password at first sign-in; service accounts cannot use
+  the human login UI.
 - Reservations grant entitlements; the service does not execute workloads,
   allocate hardware, enforce actual usage or integrate a scheduler/gateway.
 - Runtime and migrations share a privileged PostgreSQL role. Scheduled/off-host

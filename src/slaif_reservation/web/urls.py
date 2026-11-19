@@ -11,6 +11,7 @@ urlpatterns = [
     path("login/", views.HumanLoginView.as_view(), name="login"),
     path("logout/", views.HumanLogoutView.as_view(), name="logout"),
     path("profile/", views.profile, name="profile"),
+    path("profile/password/", views.password_change, name="password-change"),
     path("tokens/", views.token_list, name="token-list"),
     path("tokens/new/", views.token_create, name="token-create"),
     path("tokens/<uuid:token_id>/revoke/", views.revoke_own_token, name="token-revoke"),

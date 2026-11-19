@@ -1,5 +1,17 @@
 # Runbook: Internal-Alpha Pilot Preparation Pack
 
+> **HISTORICAL / SUPERSEDED — NOT a current operator document.** This pack
+> was written at the original internal-alpha planning date (created
+> 2026-07-02, first added in commit `5adb4cc`). Its statements that
+> account-creation email, OIDC, password reset, and project, membership, or
+> resource-restriction authorization are absent reflect that old planning
+> date; they are **not** current operator instructions. Do not use this pack
+> to configure or operate the current service. Current operator truth lives
+> in [INSTALL.md](../../INSTALL.md), [docs/deployment.md](../deployment.md),
+> [docs/authorization.md](../authorization.md), and the root
+> [ARCHITECTURE.md](../../ARCHITECTURE.md) (see A-16 and A-17). The body
+> below is preserved verbatim as historical provenance.
+
 This pack helps a human operator prepare the first controlled internal lab pilot. It does not
 deploy the system, approve production secrets, create real accounts, import private
 SmartScheduling data, or authorize DNS, TLS, certificates, production data, or cutover.

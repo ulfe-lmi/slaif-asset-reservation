@@ -138,6 +138,32 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml run 
 and the fresh database's global `default` policy. Existing policies are preserved;
 [default values](#default-policy-and-inventory) are documented below.
 
+### Optional: account email transport (before member creation)
+
+Creating a human member account in Administration prefills a fresh
+six-character temporary password in both password controls on every
+add-page load. When account email is enabled, the entered password — the
+generated prefill or a regular password you enter yourself — sends that
+account exactly one plain-text login-details email after the account is
+saved; the account stays inactive until the SMTP backend confirms
+acceptance (there is no automatic retry), the member cannot sign in until
+then, and the member must choose their own password at first sign-in,
+within 24 hours. The transport is **disabled by default**; while
+disabled every Administration add submission is refused without creating
+an account (the form still shows the prefill and the setup guidance) and
+no email is sent. If you expect to onboard members by email, configure
+the transport now in `deploy/env.production` from the commented opt-in
+block in `deploy/env.production.example` (`SLAIF_ACCOUNT_EMAIL_ENABLED`,
+`SLAIF_PUBLIC_BASE_URL`, `SLAIF_SMTP_*`). While disabled, the app starts
+without any `SLAIF_SMTP_*` value and sends nothing. When enabled,
+production validates the full transport contract fail-closed at settings
+load; the full transport/security reference is
+[Configuration](docs/deployment.md#4-configuration) in docs/deployment.md.
+
+The first administrator is still created with the `createsuperuser`
+command in step 7 (interactive, or `DJANGO_SUPERUSER_PASSWORD` for
+non-interactive runs); that CLI flow does not send email.
+
 ### 7. Create the first administrator and start the app — REQUIRED
 
 ```bash
@@ -261,6 +287,17 @@ from a protected secret store — never commit it, and keep it mode
   starting the application. Entries are explicit IP addresses or
   point-to-point networks (IPv4 `/31`, IPv6 `/127`); broad ranges are
   rejected.
+- Optional account email transport (one login-details email per
+  administrator-created member account; nothing is sent while disabled):
+  `SLAIF_ACCOUNT_EMAIL_ENABLED` (default `false` — the app starts and
+  sends nothing), `SLAIF_PUBLIC_BASE_URL`, `SLAIF_SMTP_HOST`,
+  `SLAIF_SMTP_PORT`, `SLAIF_SMTP_USERNAME`, `SLAIF_SMTP_PASSWORD`,
+  `SLAIF_SMTP_FROM`, `SLAIF_SMTP_USE_SSL`, `SLAIF_SMTP_STARTTLS`,
+  `SLAIF_SMTP_TIMEOUT_SECONDS`. Enabled production requires exactly one
+  TLS mode, a bounded 1-60 second timeout, and a canonical https base URL
+  whose host and origin are already in `SLAIF_ALLOWED_HOSTS` and
+  `SLAIF_CSRF_TRUSTED_ORIGINS`; full reference:
+  [docs/deployment.md — Configuration](docs/deployment.md#4-configuration).
 
 Do not weaken `SLAIF_SECURE_SSL_REDIRECT` or the trusted-peer list to
 make the healthcheck pass: the probe dials `127.0.0.1` from inside the
@@ -686,7 +723,10 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
   cookies and SSL redirect are on by default; HSTS stays disabled until the
   final HTTPS hostname is verified, then must be enabled explicitly.
 - Administrator-created local accounts support the authenticated pilot.
-  Institutional OIDC and password-reset/email workflows remain deferred.
+  A logged-in member can change their own password at any time; the
+  administrator-created onboarding login-details email is available when the
+  account email transport is configured. Public forgotten-password reset,
+  institutional OIDC and general notifications remain deferred.
 - Internet access uses the qualified HTTPS proxy boundary and shared PostgreSQL
   budgets for member/admin login and API traffic. Keep the application listener
   private; configure explicit proxy peers, overwrite forwarding headers, preserve
@@ -698,8 +738,10 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
 ### 12. Operating limits
 
 - No institutional OIDC or SSO; accounts are administrator-created only.
-- No password reset or email workflow; lost credentials require
-  administrator-level recovery.
+- No public forgotten-password reset or self-service recovery; a signed-in
+  member can change their own password, and an administrator-created account
+  receives a one-time onboarding login-details email only when the account
+  email transport is configured.
 - No notification system (no reservation emails or reminders).
 - No execution enforcement: the system grants reservation entitlement only;
   it does not run jobs or allocate/enforce GPU usage.
@@ -722,10 +764,16 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
   grants: to let a new account book,
   grant `reservations.book_assets` deliberately (directly or via an operator
   group) and, for restricted assets, add the account to an allowed group.
+  Cross-user reservation reading is implemented as a separate read-only
+  surface: the All reservations browser view requires the explicit
+  `reservations.view_all_reservations` permission, and the cross-user bearer
+  list/detail additionally requires the token's `reservations:read_all` scope
+  plus the token owner's current `view_all_reservations` permission. Both are
+  read-only; no cross-user mutation or general user-directory API is implied.
   Project/group resource authorization beyond booking (projects,
-  organizational memberships, cross-user read access) is not implemented yet;
-  account creation does not create project-scoped resource permissions. See
-  [docs/authorization.md](docs/authorization.md).
+  organizational memberships) and per-token asset restrictions are not
+  implemented yet; account creation does not create project-scoped resource
+  permissions. See [docs/authorization.md](docs/authorization.md).
 
 ### 13. Documentation map
 

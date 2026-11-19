@@ -10,9 +10,10 @@ Use this runbook after CI is green on the intended commit and before a human ope
 internal-alpha deployment. The rehearsal uses only synthetic local secrets and disposable database
 state.
 
-Use `docs/runbooks/internal-alpha-pilot-preparation.md` as the companion planning pack for pilot
-asset selection, operator checklists, placeholder-only communication templates, and participant
-limitations. This readiness gate remains the pass/fail rehearsal checklist.
+Use `docs/runbooks/internal-alpha-pilot-preparation.md` as a historical planning template for
+pilot asset selection, operator checklists, placeholder-only communication templates, and
+participant limitations; it is superseded and is not the current feature contract. This readiness
+gate remains the pass/fail rehearsal checklist.
 
 ## Required Pass Gates
 

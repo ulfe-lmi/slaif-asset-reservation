@@ -1,0 +1,23 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{# Product add-user page: the standard guidance plus the onboarding
+   explanation. The generated prefill is shown on every GET; while
+   account email is disabled the nearby guidance explains that
+   submissions are refused until the transport is configured.
+   Structure and all inherited behavior are unchanged. #}
+{% block form_top %}
+  {{ block.super }}
+  {% if not is_popup %}
+    <p>{% translate "After you’ve created a user, you’ll be able to edit more user options." %}</p>
+  {% endif %}
+  {% if onboarding_email_enabled %}
+    <div class="onboarding-note">
+      <p>{% translate "You are creating a new member account. A temporary six-character password has been generated for you and prefilled in both password fields above. Keep it as-is, or clear the fields and enter a regular password that satisfies the site rules: either way the account is created inactive, its login details are sent to the member's email address only after the account is saved, and the account is activated only once delivery is confirmed. The member must sign in with that password and choose their own password within 24 hours, before any other work." %}</p>
+    </div>
+  {% else %}
+    <div class="onboarding-note">
+      <p>{% translate "Creating user accounts requires the account email (SMTP) transport to be configured and enabled. Both password fields are prefilled with a generated six-character temporary password, but while account email is disabled every submission on this page is refused and no account is created. Configure the account email transport, reload this form, and create the account then." %}</p>
+    </div>
+  {% endif %}
+{% endblock %}

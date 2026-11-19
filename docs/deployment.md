@@ -108,7 +108,15 @@ Implemented variables:
 - `SLAIF_API_TOKEN_MAX_LIFETIME_DAYS`;
 - `SLAIF_LOGIN_IP_LIMIT`, `SLAIF_LOGIN_IDENTITY_LIMIT`, `SLAIF_LOGIN_WINDOW_SECONDS`;
 - `SLAIF_API_IP_LIMIT`, `SLAIF_API_OWNER_LIMIT`, `SLAIF_API_TOKEN_LIMIT`, `SLAIF_API_WINDOW_SECONDS`;
-- `SLAIF_BRANDING_DIR` (optional read-only appearance assets).
+- `SLAIF_BRANDING_DIR` (optional read-only appearance assets);
+- `SLAIF_ACCOUNT_EMAIL_ENABLED` (optional account email transport, default `false`);
+- `SLAIF_PUBLIC_BASE_URL` (canonical https service origin, required when enabled);
+- `SLAIF_SMTP_HOST`, `SLAIF_SMTP_PORT`, `SLAIF_SMTP_USERNAME`,
+  `SLAIF_SMTP_PASSWORD`, `SLAIF_SMTP_FROM` (required when enabled;
+  username and password must be set together);
+- `SLAIF_SMTP_USE_SSL` (implicit TLS), `SLAIF_SMTP_STARTTLS` (explicit
+  STARTTLS) — exactly one when enabled in production;
+- `SLAIF_SMTP_TIMEOUT_SECONDS` (bounded 1-60, default 30 when enabled).
 
 `SLAIF_SECURE_HSTS_SECONDS`, `SLAIF_SECURE_HSTS_INCLUDE_SUBDOMAINS`, and
 `SLAIF_SECURE_HSTS_PRELOAD` default to disabled in production settings. Enable them only after
@@ -116,6 +124,49 @@ the final HTTPS hostname, redirects, and subdomain ownership are verified. `SECU
 is enabled by default and must stay enabled for the Internet-facing contract;
 secure session/CSRF cookies are mandatory in production settings. The isolated
 HTTP-only rehearsal disables the redirect for local checks only.
+
+### Account email transport (SAR-055)
+
+Creating a human member account in Administration sends that account
+exactly one plain-text login-details email (canonical configured HTTPS
+login URL, the account identifier, and the short-lived temporary
+password) through this transport after the account is saved; the account
+is activated only on relay acceptance. The transport is implemented and
+disabled by default.
+
+- `SLAIF_ACCOUNT_EMAIL_ENABLED=false` (the default) selects Django's
+  dummy backend: installs without any `SLAIF_SMTP_*` value start exactly
+  as before and no send can reach a relay. Enabling it never requires a
+  restart beyond the normal configuration change; importing settings
+  never opens an SMTP connection.
+- When enabled, the operator values map to Django's built-in SMTP
+  backend: `SLAIF_SMTP_HOST`/`SLAIF_SMTP_PORT`/`SLAIF_SMTP_USERNAME`/
+  `SLAIF_SMTP_PASSWORD`/`SLAIF_SMTP_FROM` become `EMAIL_HOST`,
+  `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`,
+  `DEFAULT_FROM_EMAIL`; `SLAIF_SMTP_USE_SSL` becomes `EMAIL_USE_SSL`
+  (implicit TLS), `SLAIF_SMTP_STARTTLS` becomes `EMAIL_USE_TLS`
+  (explicit STARTTLS), and `SLAIF_SMTP_TIMEOUT_SECONDS` becomes
+  `EMAIL_TIMEOUT` (bounded 1-60 seconds, default 30). No queue, Celery,
+  Gateway or other mail dependency is introduced.
+- Production-enabled configuration is validated fail-closed at settings
+  load with category-only error messages (no raw values or credentials in
+  errors or logs): an explicit host, sender and port 1-65535; username
+  and password set together; exactly one of `SLAIF_SMTP_USE_SSL` /
+  `SLAIF_SMTP_STARTTLS` — plaintext SMTP is never permitted in
+  production; and `SLAIF_PUBLIC_BASE_URL` must be a canonical https
+  origin (no userinfo, path, query or fragment) whose host is listed in
+  `SLAIF_ALLOWED_HOSTS` and whose origin is listed in
+  `SLAIF_CSRF_TRUSTED_ORIGINS`. Login-details links derive only
+  from this configured origin, never the request `Host` header.
+
+The one-time send has no automatic retry: if the relay does not confirm
+acceptance the account stays inactive and the administrator uses the
+explicit onboarding reissue action (which rotates the previous temporary
+credential). Development and tests use synthetic sinks only.
+- Local (non-production) settings accept the same keys for synthetic
+  development against a loopback SMTP sink without TLS; no real relay or
+  recipient is configured by default. Development and tests never use a
+  real relay, recipient or credential.
 
 `SLAIF_TRUSTED_PROXY_PEERS` is required in production settings. It is the explicit list of
 reverse-proxy peer addresses (comma-separated) whose `X-Forwarded-Proto` and single-value
@@ -141,7 +192,7 @@ pepper invalidates all existing API tokens until a future key-ring/rotation desi
 
 Deferred variables:
 
-- canonical external URL, email relay, structured-log destination, OIDC, and backup destination.
+- structured-log destination, OIDC, and backup destination.
 Shared login/API budget configuration and failure/cleanup behavior are described in
 [Installation](../INSTALL.md#shared-authentication-and-api-budgets).
 
@@ -666,12 +717,17 @@ storage, restore drills, monitoring, incident response and privacy/retention pol
 The repository provides commands and rehearsals, not an installed operations stack.
 
 The database role is shared and privileged under the Compose defaults; role
-separation remains deferred. Authenticated humans have broad reservation access
-under policy rules; site groups do not implement project/membership or per-token
-asset restrictions. Institutional OIDC, password reset/email, notifications,
-workload execution/gateway/scheduler integration and private SmartScheduling
-cutover are outside the current service. Imported inventory is not evidence of
-hardware availability or verification.
+separation remains deferred. Creating a reservation requires the explicit
+`reservations.book_assets` grant, a group-restricted asset requires at least
+one allowed-group membership, and existing policy rules still apply; new
+accounts receive no automatic booking grant. Site groups do not implement
+project/membership or per-token asset restrictions. Institutional OIDC,
+public forgotten-password reset, general notifications, workload
+execution/gateway/scheduler integration and private SmartScheduling cutover
+are outside the current service; a logged-in member can change their own
+password at any time, and the administrator-created onboarding email is
+available when the account email transport is configured. Imported inventory
+is not evidence of hardware availability or verification.
 
 ### Shared abuse budgets
 
