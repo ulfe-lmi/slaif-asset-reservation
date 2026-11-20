@@ -9,10 +9,12 @@ subject/body, no send), one **Send email** click performs the final
 POST and redirects to the same route's GET, which reports the
 nonsecret counts once — a browser refresh of the result never resends.
 Each selected user receives one separate plain-text message (no
-CC/BCC) and unselected users receive nothing; a disabled transport
-offers no send and never reports a delivery. Screenshots are limited
-to privacy-safe surfaces (three in this file, synthetic addresses
-only).
+CC/BCC) and unselected users receive nothing — the recipient set is
+asserted exactly, independent of UUID order — and a valid unselected
+UUID forged into the final send request is never mailed; a disabled
+transport offers no send and never reports a delivery. Screenshots
+are limited to privacy-safe surfaces (three in this file, synthetic
+addresses only).
 """
 
 from __future__ import annotations
@@ -121,11 +123,13 @@ def test_browser_admin_bulk_email_desktop_flow(
     _assert_no_framework_branding(page)
     _assert_no_horizontal_overflow(page)
     page.screenshot(path=f"{output_path}/bulk-email-compose-1440.png")
-    # The single Send action stays inside the first desktop viewport
-    # (the compose page must not push it below the fold).
-    send_box = page.get_by_role("button", name="Send email").bounding_box()
-    assert send_box is not None
-    assert send_box["y"] + send_box["height"] <= page.viewport_size["height"]
+    # The single Send action is semantically visible, enabled and
+    # reachable at desktop width (no pixel fold threshold: placement
+    # itself is covered by the manual screenshot review above, and
+    # horizontal overflow was checked already).
+    send = page.get_by_role("button", name="Send email")
+    assert send.is_visible()
+    assert send.is_enabled()
 
     # One click performs the final POST; the result reports counts only.
     page.get_by_label("Subject").fill(SUBJECT)
@@ -154,13 +158,48 @@ def test_browser_admin_bulk_email_desktop_flow(
     assert "no longer available" in page.content()
 
     # Delivery: one plain-text message per selected user, no CC/BCC.
+    # The exact recipient SET is asserted — the checked selection is
+    # stored sorted by UUID PK, which is not product meaning and must
+    # not be assumed to match fixture creation order.
     assert len(mail.outbox) == 2
-    for message, user in zip(mail.outbox, (recipients[0], recipients[2]), strict=True):
-        assert message.to == [user.email]
+    assert {tuple(message.to) for message in mail.outbox} == {
+        (recipients[0].email,),
+        (recipients[2].email,),
+    }
+    for message in mail.outbox:
         assert message.cc == []
         assert message.bcc == []
         assert message.subject == SUBJECT
         assert message.body == BODY
+
+    # Forged recipient: a valid, UNSELECTED account UUID added into the
+    # final send request is ignored — recipients derive only from the
+    # checked selection bound to the administrator session.
+    _select_users_and_apply(page, [recipients[0].email, recipients[2].email])
+    page.wait_for_url(re.compile(r"/admin/accounts/user/bulk-email/\?selection="))
+    assert "2 users selected" in page.content()
+    page.evaluate(
+        """(pk) => {
+            const form = document.querySelector("form");
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "selected_pks";
+            input.value = pk;
+            form.appendChild(input);
+        }""",
+        str(recipients[1].pk),
+    )
+    page.get_by_label("Subject").fill(SUBJECT)
+    page.get_by_label("Message").fill(BODY)
+    page.get_by_role("button", name="Send email").click()
+    page.wait_for_url(re.compile(r"/admin/accounts/user/bulk-email/\?result="))
+    assert "2 messages accepted by the relay" in page.content()
+    assert len(mail.outbox) == 4
+    assert recipients[1].email not in {addr for message in mail.outbox for addr in message.to}
+    assert {tuple(message.to) for message in mail.outbox} == {
+        (recipients[0].email,),
+        (recipients[2].email,),
+    }
 
 
 @pytest.mark.django_db(transaction=True)

@@ -47,7 +47,8 @@
   </div>
   <form method="post">
     {% csrf_token %}
-    <input type="hidden" name="selected_pks" value="{{ selected_pks }}">
+    {# The recipient list is never submitted: the send derives its recipients only from the checked UUIDs bound to this session behind the selection nonce (067-a, SAR-058). #}
+    <input type="hidden" name="selection" value="{{ selection_nonce }}">
     <div class="form-row field-subject">
       {% if form.subject.errors %}
       <div class="errorlist">

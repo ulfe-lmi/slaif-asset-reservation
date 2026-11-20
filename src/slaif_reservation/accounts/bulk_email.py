@@ -9,6 +9,12 @@ address export.
 
 Boundaries:
 
+* the checked selection is bound to the administrator's session by a
+  random nonce created at action time: the compose GET and the final
+  send POST require that same-session nonce and derive the recipients
+  ONLY from the checked UUIDs stored in this session — a direct or
+  forged link, an added or swapped recipient field, or a stale,
+  foreign or replaced selection is refused and sends nothing;
 * one plain-text message per selected recipient — no CC/BCC, no visible
   recipient list, no HTML, attachments or template execution;
 * one request is bounded to at most ``MAX_BULK_RECIPIENTS`` recipients;
@@ -65,16 +71,11 @@ RESULT_PARAM = "result"
 #: Django session key for the one-shot, nonsecret send result.
 RESULT_SESSION_KEY = "bulk_email_result"
 
+#: Query parameter carrying the session-bound selection nonce.
+SELECTION_PARAM = "selection"
 
-def selected_pks(raw: str | None) -> list[str]:
-    """Split the raw comma-separated selection into tokens (no trimming).
-
-    Empty tokens (including a bare separator) are kept so the resolver
-    can refuse a malformed selection instead of silently dropping it.
-    """
-    if not raw:
-        return []
-    return raw.split(",")
+#: Django session key for the ONE pending checked-user selection.
+SELECTION_SESSION_KEY = "bulk_email_selection"
 
 
 def resolve_selected_users(tokens: Sequence[str]) -> list[User] | None:
@@ -190,6 +191,54 @@ def send_selected_user_emails(users: Sequence[User], subject: str, body: str) ->
         uncertain=uncertain,
         not_attempted=total - accepted - uncertain,
     )
+
+
+def new_selection_nonce() -> str:
+    """Random nonce binding one pending checked selection to the session.
+
+    It is not a secret grant: it only correlates the compose GET and the
+    final send POST with the exact checked UUIDs stored in this
+    administrator's own session. It carries no subject, body or address.
+    """
+    return secrets.token_urlsafe(32)
+
+
+def store_selection(request: HttpRequest, pks: Sequence[str]) -> str:
+    """Store the ONE pending checked selection in this session.
+
+    Only the random nonce and the checked account UUIDs are stored — no
+    addresses, subject or body. A new checked selection supersedes the
+    previous pending selection.
+    """
+    nonce = new_selection_nonce()
+    request.session[SELECTION_SESSION_KEY] = {"nonce": nonce, "pks": list(pks)}
+    return nonce
+
+
+def take_selection(request: HttpRequest, nonce: str | None) -> list[str] | None:
+    """Return the stored checked UUIDs when ``nonce`` binds to them.
+
+    Constant-time comparison. A missing, invalid, foreign or stale
+    nonce (including a superseded pending selection) returns ``None``
+    without revealing what is pending; the caller must then refuse and
+    send nothing.
+    """
+    stored = request.session.get(SELECTION_SESSION_KEY)
+    if not isinstance(stored, dict) or not isinstance(nonce, str) or not nonce:
+        return None
+    if not hmac.compare_digest(str(stored.get("nonce", "")), nonce):
+        return None
+    pks = stored.get("pks")
+    if not isinstance(pks, list) or not pks:
+        return None
+    if not all(isinstance(pk, str) and pk for pk in pks):
+        return None
+    return pks
+
+
+def discard_selection(request: HttpRequest) -> None:
+    """Clear the pending selection (stale, or consumed by one send)."""
+    request.session.pop(SELECTION_SESSION_KEY, None)
 
 
 def new_result_nonce() -> str:
