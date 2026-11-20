@@ -122,6 +122,29 @@ two prefilled password controls of the non-cacheable add-user form (the
 sole intentional browser rendering) and in the one-time login-details
 email.
 
+The same operator-enabled transport carries ONE bounded Administration
+mail action: an administrator selects checked users on the user list and
+sends each of them one plain-text message (SAR-058). The action requires
+the active non-service-account staff site admission plus the existing
+user-change model permission, is CSRF-protected and POST-only for the
+send, and is bounded to 200 recipients per request — an empty, stale,
+forged or larger selection (including select-across) sends nothing and is
+never silently truncated. The subject and body are bounded plain text
+(the subject must stay a single line, so it cannot inject mail headers).
+Each recipient receives a separate message with no CC/BCC or visible
+recipient list, and unselected users receive nothing. While the
+transport is disabled the compose surface offers no send and the POST
+refuses before any send; the dummy backend is never reported as
+delivery. A rejected or unconfirmed relay acceptance stops the batch
+without automatic retry and the page reports only nonsecret
+accepted/unconfirmed/not-attempted counts — never claiming all
+recipients were sent when only a subset was accepted. The subject, body
+and recipient addresses never enter URLs, application logs, exception
+screens, session state or the Admin action log, and the compose and
+result pages are uncacheable. This is not a campaign, queue, template
+engine or general notification system; relay acceptance is not proof of
+inbox delivery.
+
 Human login uses administrator-created email accounts, denies inactive and
 service accounts with a generic failure, preserves CSRF/session protections,
 and exposes logout only as POST. Member and Administration attempts share

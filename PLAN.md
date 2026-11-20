@@ -390,3 +390,19 @@ exact merged revision, and human acceptance, release and real-infrastructure
 decisions (including any real SMTP relay or deployment), remain separate from
 this documentation; no M-ACCOUNT-ONBOARDING milestone-closure claim is made
 here. The milestone history in P-06 is otherwise unchanged.
+
+**Human-selected amendment (2026-11-20, GitHub issue #137).** After the
+account-onboarding work merged, the attributable human selected ONE
+narrow Administration mail action: a user-list checkbox action that takes
+the checked accounts to a clear compose page showing exactly who is
+selected and sends one bounded plain-text message to each selected user
+with a single send click, through the existing operator-enabled SMTP
+transport (ARCHITECTURE.md A-19, SAR-058; the selected meaning is
+recorded here). It narrows the A-17/SAR-036 general-notifications
+deferral ONLY for administrator-initiated, selected-user, plain-text
+Administration mail: no campaign, queue, template engine,
+HTML/attachments, address export or external integration; the onboarding
+send/activation boundary (SAR-055) and every other A-17 behavior are
+unchanged. Implementation follows only under the separately
+strategy-issued order 066-a (issue #137); the remaining deferrals above
+are otherwise unchanged.

@@ -291,8 +291,10 @@ from a protected secret store — never commit it, and keep it mode
   starting the application. Entries are explicit IP addresses or
   point-to-point networks (IPv4 `/31`, IPv6 `/127`); broad ranges are
   rejected.
-- Optional account email transport (one login-details email per
-  administrator-created member account; nothing is sent while disabled):
+- Optional account email transport (the onboarding login-details email
+  per administrator-created member account, and the bounded
+  Administration selected-user plain-text email action; nothing is sent
+  while disabled):
   `SLAIF_ACCOUNT_EMAIL_ENABLED` (default `false` — the app starts and
   sends nothing), `SLAIF_PUBLIC_BASE_URL`, `SLAIF_SMTP_HOST`,
   `SLAIF_SMTP_PORT`, `SLAIF_SMTP_USERNAME`, `SLAIF_SMTP_PASSWORD`,
@@ -728,9 +730,12 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
   final HTTPS hostname is verified, then must be enabled explicitly.
 - Administrator-created local accounts support the authenticated pilot.
   A logged-in member can change their own password at any time; the
-  administrator-created onboarding login-details email is available when the
-  account email transport is configured. Public forgotten-password reset,
-  institutional OIDC and general notifications remain deferred.
+  administrator-created onboarding login-details email is available when
+  the account email transport is configured, and the same transport also
+  carries one bounded Administration selected-user plain-text email
+  action (checked users only, at most 200 per request, no automatic
+  retry). Public forgotten-password reset, institutional OIDC and general
+  notifications remain deferred.
 - Internet access uses the qualified HTTPS proxy boundary and shared PostgreSQL
   budgets for member/admin login and API traffic. Keep the application listener
   private; configure explicit proxy peers, overwrite forwarding headers, preserve
@@ -743,9 +748,10 @@ docker compose -p "$SAR_COMPOSE_PROJECT" -f compose.production.example.yaml rest
 
 - No institutional OIDC or SSO; accounts are administrator-created only.
 - No public forgotten-password reset or self-service recovery; a signed-in
-  member can change their own password, and an administrator-created account
+-  member can change their own password, and an administrator-created account
   receives a one-time onboarding login-details email only when the account
-  email transport is configured.
+  email transport is configured; the same transport additionally carries
+  the bounded Administration selected-user plain-text email action.
 - No notification system (no reservation emails or reminders).
 - No execution enforcement: the system grants reservation entitlement only;
   it does not run jobs or allocate/enforce GPU usage.
