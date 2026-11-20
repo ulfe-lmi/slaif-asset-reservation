@@ -9,7 +9,10 @@ CSRF/permission/method guards, subject/body validation including header
 injection, per-recipient privacy (one message each, no CC/BCC, not to
 unselected users, no content in URL/session/logs/action log), the
 disabled-transport fail-closed boundary, partial/ambiguous delivery with
-no automatic retry, and the uncacheable compose/result pages.
+no automatic retry, the POST/Redirect/GET one-shot result (the send
+redirects, the GET renders the counts, a refresh never resends and
+invalid or foreign nonces are refused safely), and the uncacheable
+compose/result pages.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from django.core import mail
 from django.test import Client, override_settings
 from django.urls import reverse
 
+from slaif_reservation.accounts import bulk_email
 from slaif_reservation.accounts.models import User
 
 COMPOSE_URL = "/admin/accounts/user/bulk-email/"
@@ -413,7 +417,10 @@ def test_final_post_refuses_empty_stale_forged_and_duplicate_selection(
 
     # A duplicated pk is collapsed to ONE message per account.
     response = _compose_post(client, [one.pk, one.pk, two.pk])
-    assert response.status_code == 200
+    assert response.status_code == 302
+    result = client.get(response.headers["Location"])
+    assert result.status_code == 200
+    assert "2 messages accepted by the relay" in result.content.decode()
     assert len(mail.outbox) == 2
     assert {m.to[0] for m in mail.outbox} == {one.email, two.email}
 
@@ -479,7 +486,26 @@ def test_final_post_sends_one_plain_text_message_per_recipient(
     client.force_login(admin_user)
     entries_before = LogEntry.objects.count()
     response = _compose_post(client, [u.pk for u in recipients])
-    assert response.status_code == 200
+    # POST/Redirect/GET: the POST redirects to the same route's GET;
+    # the result is rendered there, never as the POST response.
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert location.startswith(f"{COMPOSE_URL}?{bulk_email.RESULT_PARAM}=")
+    assert "selected_pks" not in location
+    for needle in (SUBJECT, BODY, *(u.email for u in recipients)):
+        assert needle not in location
+
+    # Only the random nonce and the nonsecret counts enter the session.
+    stored = client.session[bulk_email.RESULT_SESSION_KEY]
+    assert set(stored) == {"nonce", "accepted", "uncertain", "not_attempted"}
+    assert isinstance(stored["nonce"], str) and len(stored["nonce"]) >= 16
+    assert (stored["accepted"], stored["uncertain"], stored["not_attempted"]) == (3, 0, 0)
+    for value in client.session.values():
+        rendered = str(value)
+        assert SUBJECT not in rendered
+        assert BODY not in rendered
+        for user in recipients:
+            assert user.email not in rendered
 
     assert len(mail.outbox) == 3
     for message, user in zip(mail.outbox, recipients, strict=True):
@@ -492,8 +518,11 @@ def test_final_post_sends_one_plain_text_message_per_recipient(
     seen = {addr for m in mail.outbox for addr in (*m.to, *m.cc, *m.bcc)}
     assert len(seen) == 3
 
-    # The result page reports counts only, never content or addresses.
-    html = response.content.decode()
+    # The GET result page reports counts only, never content or
+    # addresses, and consumes the one-shot nonce.
+    result = client.get(location)
+    assert result.status_code == 200
+    html = result.content.decode()
     assert "3 messages accepted by the relay" in html
     assert "0 messages unconfirmed" in html
     assert "0 recipients not attempted" in html
@@ -501,18 +530,80 @@ def test_final_post_sends_one_plain_text_message_per_recipient(
     assert BODY not in html
     for user in recipients:
         assert user.email not in html
-    assert "no-store" in response.headers["Cache-Control"]
+    assert "no-store" in result.headers["Cache-Control"]
+    assert bulk_email.RESULT_SESSION_KEY not in client.session
 
     # No Admin action log entry (and no other LogEntry) records it.
     assert LogEntry.objects.count() == entries_before
 
-    # No content or recipient metadata in this administrator's session.
-    for value in client.session.values():
-        rendered = str(value)
-        assert SUBJECT not in rendered
-        assert BODY not in rendered
-        for user in recipients:
-            assert user.email not in rendered
+
+# --- POST/Redirect/GET one-shot result -------------------------------------
+
+
+@pytest.mark.django_db
+def test_result_get_refresh_never_resends(
+    client: Client, admin_user: User, recipients: list, settings
+) -> None:
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    client.force_login(admin_user)
+    response = _compose_post(client, [u.pk for u in recipients[:2]])
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert len(mail.outbox) == 2
+
+    # The first GET renders the result once.
+    first = client.get(location)
+    assert first.status_code == 200
+    assert "2 messages accepted by the relay" in first.content.decode()
+
+    # A browser refresh of the result URL is a safe refusal: it never
+    # resends and lands back on the user list with a notice.
+    refresh = client.get(location)
+    assert refresh.status_code == 302
+    assert refresh.headers["Location"] == CHANGELIST_URL
+    assert len(mail.outbox) == 2
+    landing = client.get(refresh.headers["Location"])
+    assert landing.status_code == 200
+    assert "no longer available" in landing.content.decode()
+
+
+@pytest.mark.django_db
+def test_result_get_refuses_invalid_and_foreign_nonces(
+    client: Client, admin_user: User, staff_change: User, recipients: list, settings
+) -> None:
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    client.force_login(admin_user)
+    response = _compose_post(client, [recipients[0].pk])
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert len(mail.outbox) == 1
+
+    # A different session opening the same result URL is refused: no
+    # counts are disclosed and nothing is sent.
+    other = Client()
+    other.force_login(staff_change)
+    foreign = other.get(location)
+    assert foreign.status_code == 302
+    assert foreign.headers["Location"] == CHANGELIST_URL
+    assert "1 message accepted" not in foreign.content.decode()
+    assert len(mail.outbox) == 1
+
+    # Invalid and empty nonces in the owner's own session are refused
+    # the same way, without revealing whether a result exists.
+    for nonce in ("deadbeef" * 8, ""):
+        invalid = client.get(COMPOSE_URL, {bulk_email.RESULT_PARAM: nonce})
+        assert invalid.status_code == 302, nonce
+        assert invalid.headers["Location"] == CHANGELIST_URL, nonce
+        assert len(mail.outbox) == 1, nonce
+
+    # The owner's own one-shot result is still shown exactly once.
+    mine = client.get(location)
+    assert mine.status_code == 200
+    assert "1 message accepted by the relay" in mine.content.decode()
+    again = client.get(location)
+    assert again.status_code == 302
+    assert again.headers["Location"] == CHANGELIST_URL
+    assert len(mail.outbox) == 1
 
 
 @pytest.mark.django_db
@@ -523,14 +614,23 @@ def test_final_post_leaves_no_content_in_urls_or_logs(
     caplog.set_level(logging.DEBUG)
     client.force_login(admin_user)
     response = _compose_post(client, [u.pk for u in recipients[:2]])
-    assert response.status_code == 200
-    # The POST (and the rendered result) address is a fixed route.
+    assert response.status_code == 302
+    # The POST address is a fixed route; the redirect carries only the
+    # one-shot nonce, never content or addresses.
     assert response.wsgi_request.get_full_path() == COMPOSE_URL
+    location = response.headers["Location"]
+    assert location.startswith(f"{COMPOSE_URL}?{bulk_email.RESULT_PARAM}=")
     for needle in (SUBJECT, BODY, recipients[0].email, recipients[1].email):
+        assert needle not in location
+    result = client.get(location)
+    assert result.status_code == 200
+    assert result.wsgi_request.get_full_path().split("?", 1)[0] == COMPOSE_URL
+    for needle in (SUBJECT, BODY, recipients[0].email, recipients[1].email):
+        assert needle not in result.wsgi_request.get_full_path()
         assert needle not in caplog.text
-    html = response.content.decode()
-    assert "?" not in response.wsgi_request.get_full_path()
-    assert "selected_pks" not in html or 'value=""' in html
+    html = result.content.decode()
+    assert "2 messages accepted by the relay" in html
+    assert "selected_pks" not in html
 
 
 # --- bounded failure semantics -------------------------------------------------
@@ -544,10 +644,10 @@ def test_zero_acceptance_stops_without_retry(
     _FakeBackend.zero_after = 1
     with override_settings(EMAIL_BACKEND="test_admin_bulk_email._FakeBackend"):
         client.force_login(admin_user)
-        response = _compose_post(client, [u.pk for u in recipients])
-    assert response.status_code == 200
+        post = _compose_post(client, [u.pk for u in recipients])
+    assert post.status_code == 302
     assert len(_FakeBackend.calls) == 1  # no automatic retry
-    html = response.content.decode()
+    html = client.get(post.headers["Location"]).content.decode()
     assert "0 messages accepted" in html
     assert "1 message unconfirmed" in html
     assert "2 recipients not attempted" in html
@@ -563,10 +663,10 @@ def test_exception_after_partial_acceptance_stops(
     _FakeBackend.fail_after = 3
     with override_settings(EMAIL_BACKEND="test_admin_bulk_email._FakeBackend"):
         client.force_login(admin_user)
-        response = _compose_post(client, [u.pk for u in recipients])
-    assert response.status_code == 200
+        post = _compose_post(client, [u.pk for u in recipients])
+    assert post.status_code == 302
     assert len(_FakeBackend.calls) == 3  # the failed send is not retried
-    html = response.content.decode()
+    html = client.get(post.headers["Location"]).content.decode()
     assert "2 messages accepted by the relay" in html
     assert "1 message unconfirmed" in html
     assert "0 recipients not attempted" in html
@@ -582,8 +682,9 @@ def test_all_accepted_reports_full_count(
 ) -> None:
     settings.ACCOUNT_EMAIL_ENABLED = True
     client.force_login(admin_user)
-    response = _compose_post(client, [u.pk for u in recipients])
-    html = response.content.decode()
+    post = _compose_post(client, [u.pk for u in recipients])
+    assert post.status_code == 302
+    html = client.get(post.headers["Location"]).content.decode()
     assert "3 messages accepted by the relay" in html
     assert "0 messages unconfirmed" in html
     assert "0 recipients not attempted" in html

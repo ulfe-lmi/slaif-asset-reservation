@@ -651,11 +651,17 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
         (active non-service-account human staff) plus the model change
         permission, checked on every method here. The GET renders the
         branded compose page (exact count and protected address list,
-        editable subject/body) and is never a mutation. The POST
+        editable subject/body) and is never a mutation; a GET carrying
+        the one-shot result nonce instead renders the send result once.
+        The POST
         revalidates the exact selected accounts (existing, unique,
         within the per-request bound), the enabled transport and the
-        bounded plain-text form before any send, then reports the
-        nonsecret accepted/uncertain/not-attempted counts. The subject,
+        bounded plain-text form before any send; after a send it stores
+        ONLY a random one-shot nonce plus the nonsecret
+        accepted/uncertain/not-attempted counts in this session and
+        redirects to this same route's GET, which shows the result
+        once — a browser refresh of the result can never resend, and
+        an invalid or foreign nonce is refused safely. The subject,
         body and addresses never enter the URL, session state,
         application logs, exception screens or the Admin action log,
         and every response is uncacheable.
@@ -664,32 +670,65 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
             raise PermissionDenied
 
         if request.method == "GET":
-            users = bulk_email.resolve_selected_users(
-                bulk_email.selected_pks(request.GET.get("pks"))
-            )
-            if users is None or len(users) > bulk_email.MAX_BULK_RECIPIENTS:
-                messages.error(
-                    request,
-                    "No email can be composed: no users were selected, or "
-                    "the selection is stale, invalid or larger than "
-                    f"{bulk_email.MAX_BULK_RECIPIENTS} users. Nothing was "
-                    "sent; select the users on the user list again.",
+            result_nonce = request.GET.get(bulk_email.RESULT_PARAM)
+            if result_nonce is not None:
+                # PRG result view: the one-shot send result is shown
+                # only to the session that performed the send. The
+                # nonce is consumed on display, so a refresh never
+                # resends and an invalid or foreign nonce is refused
+                # without revealing whether a result exists.
+                counts = bulk_email.take_result(request, result_nonce)
+                if counts is None:
+                    messages.error(
+                        request,
+                        "The send result is no longer available; each "
+                        "result is shown once and refreshing it never "
+                        "resends. To email users again, select them on "
+                        "the user list and compose a new message.",
+                    )
+                    refusal = HttpResponseRedirect(reverse("admin:accounts_user_changelist"))
+                    refusal["Cache-Control"] = "no-store"
+                    return refusal
+                context = {
+                    **self.admin_site.each_context(request),
+                    "title": _("Send a plain-text email to the selected users"),
+                    "opts": self.opts,
+                    "app_label": self.opts.app_label,
+                    "users": [],
+                    "selected_pks": "",
+                    "email_enabled": settings.ACCOUNT_EMAIL_ENABLED,
+                    "form": None,
+                    "result": counts,
+                }
+                request.current_app = self.admin_site.name
+                response = render(request, "admin/accounts/user/bulk_email.html", context)
+            else:
+                users = bulk_email.resolve_selected_users(
+                    bulk_email.selected_pks(request.GET.get("pks"))
                 )
-                return HttpResponseRedirect(reverse("admin:accounts_user_changelist"))
-            email_enabled = settings.ACCOUNT_EMAIL_ENABLED
-            context = {
-                **self.admin_site.each_context(request),
-                "title": _("Send a plain-text email to the selected users"),
-                "opts": self.opts,
-                "app_label": self.opts.app_label,
-                "users": users,
-                "selected_pks": ",".join(str(u.pk) for u in users),
-                "email_enabled": email_enabled,
-                "form": bulk_email.BulkEmailForm() if email_enabled else None,
-                "result": None,
-            }
-            request.current_app = self.admin_site.name
-            response = render(request, "admin/accounts/user/bulk_email.html", context)
+                if users is None or len(users) > bulk_email.MAX_BULK_RECIPIENTS:
+                    messages.error(
+                        request,
+                        "No email can be composed: no users were selected, or "
+                        "the selection is stale, invalid or larger than "
+                        f"{bulk_email.MAX_BULK_RECIPIENTS} users. Nothing was "
+                        "sent; select the users on the user list again.",
+                    )
+                    return HttpResponseRedirect(reverse("admin:accounts_user_changelist"))
+                email_enabled = settings.ACCOUNT_EMAIL_ENABLED
+                context = {
+                    **self.admin_site.each_context(request),
+                    "title": _("Send a plain-text email to the selected users"),
+                    "opts": self.opts,
+                    "app_label": self.opts.app_label,
+                    "users": users,
+                    "selected_pks": ",".join(str(u.pk) for u in users),
+                    "email_enabled": email_enabled,
+                    "form": bulk_email.BulkEmailForm() if email_enabled else None,
+                    "result": None,
+                }
+                request.current_app = self.admin_site.name
+                response = render(request, "admin/accounts/user/bulk_email.html", context)
         elif request.method == "POST":
             users = bulk_email.resolve_selected_users(
                 bulk_email.selected_pks(request.POST.get("selected_pks"))
@@ -732,19 +771,15 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 counts = bulk_email.send_selected_user_emails(
                     users, form.cleaned_data["subject"], form.cleaned_data["body"]
                 )
-                context = {
-                    **self.admin_site.each_context(request),
-                    "title": _("Send a plain-text email to the selected users"),
-                    "opts": self.opts,
-                    "app_label": self.opts.app_label,
-                    "users": users,
-                    "selected_pks": "",
-                    "email_enabled": True,
-                    "form": None,
-                    "result": counts,
-                }
-                request.current_app = self.admin_site.name
-                response = render(request, "admin/accounts/user/bulk_email.html", context)
+                # POST/Redirect/GET: the POST never renders the send
+                # result itself. Only the nonce and the nonsecret
+                # counts enter this session; the redirect target is
+                # the same route's GET, which shows the result once.
+                # A browser refresh of the result can never resend.
+                nonce = bulk_email.store_result(request, counts)
+                response = HttpResponseRedirect(
+                    f"{reverse('admin:accounts_user_bulk_email')}?{bulk_email.RESULT_PARAM}={nonce}"
+                )
         else:
             raise Http404
         response["Cache-Control"] = "no-store"

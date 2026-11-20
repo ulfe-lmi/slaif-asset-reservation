@@ -6,11 +6,13 @@ sink (never a real relay or recipient): the user-list checkbox action is
 visible to the change-permission holder, the selection opens the
 branded compose page (exact count, protected address list, editable
 subject/body, no send), one **Send email** click performs the final
-POST, the result reports nonsecret counts, each selected user receives
-one separate plain-text message (no CC/BCC) and unselected users
-receive nothing; a disabled transport offers no send and never reports
-a delivery. Screenshots are limited to privacy-safe surfaces (four in
-this file, synthetic addresses only).
+POST and redirects to the same route's GET, which reports the
+nonsecret counts once — a browser refresh of the result never resends.
+Each selected user receives one separate plain-text message (no
+CC/BCC) and unselected users receive nothing; a disabled transport
+offers no send and never reports a delivery. Screenshots are limited
+to privacy-safe surfaces (three in this file, synthetic addresses
+only).
 """
 
 from __future__ import annotations
@@ -129,6 +131,9 @@ def test_browser_admin_bulk_email_desktop_flow(
     page.get_by_label("Subject").fill(SUBJECT)
     page.get_by_label("Message").fill(BODY)
     page.get_by_role("button", name="Send email").click()
+    # The POST redirects to the same route's GET; the result is a
+    # one-shot GET, so reloading it can never resend the batch.
+    page.wait_for_url(re.compile(r"/admin/accounts/user/bulk-email/\?result="))
     result = page.content()
     assert "2 messages accepted by the relay" in result
     assert "0 messages unconfirmed" in result
@@ -138,6 +143,15 @@ def test_browser_admin_bulk_email_desktop_flow(
     for user in recipients:
         assert user.email not in result
     page.screenshot(path=f"{output_path}/bulk-email-result-1440.png")
+
+    # Refreshing the result page is safely refused (the one-shot nonce
+    # was already consumed): the browser returns to the user list and
+    # no further message is sent.
+    assert len(mail.outbox) == 2
+    page.reload()
+    page.wait_for_url(re.compile(r"/admin/accounts/user/$"))
+    assert len(mail.outbox) == 2
+    assert "no longer available" in page.content()
 
     # Delivery: one plain-text message per selected user, no CC/BCC.
     assert len(mail.outbox) == 2
@@ -180,10 +194,17 @@ def test_browser_admin_bulk_email_mobile_flow(
     page.get_by_label("Subject").fill(SUBJECT)
     page.get_by_label("Message").fill(BODY)
     page.get_by_role("button", name="Send email").click()
+    page.wait_for_url(re.compile(r"/admin/accounts/user/bulk-email/\?result="))
     assert "1 message accepted by the relay" in page.content()
     _assert_no_horizontal_overflow(page)
     assert len(mail.outbox) == 1
     assert mail.outbox[0].to == [recipients[0].email]
+
+    # The result refresh is refused and never resends (narrow width).
+    page.reload()
+    page.wait_for_url(re.compile(r"/admin/accounts/user/$"))
+    assert len(mail.outbox) == 1
+    assert "no longer available" in page.content()
 
 
 @pytest.mark.django_db(transaction=True)

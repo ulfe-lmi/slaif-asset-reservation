@@ -24,6 +24,11 @@ Boundaries:
   automatic retry; the result reports nonsecret
   accepted/uncertain/not-attempted counts only (never the subject,
   body or any address);
+* after a send, ONLY a random one-shot nonce plus the nonsecret counts
+  are stored in the administrator's session and the response redirects
+  to the same route's GET (POST/Redirect/GET): the GET shows the
+  result once, a browser refresh can never resend, and an invalid or
+  foreign nonce is refused without revealing whether a result exists;
 * the subject, body and recipient addresses never enter URLs, session
   state, application logs, exception screens or the Admin action log.
 
@@ -33,6 +38,8 @@ reservation, authorization and transport setting are unchanged.
 
 from __future__ import annotations
 
+import hmac
+import secrets
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -41,6 +48,7 @@ from typing import Any
 from django import forms
 from django.conf import settings
 from django.core import mail
+from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 
 from slaif_reservation.accounts.models import User
@@ -50,6 +58,12 @@ MAX_BULK_RECIPIENTS = 200
 
 SUBJECT_MAX_LENGTH = 200
 BODY_MAX_LENGTH = 10_000
+
+#: Query parameter carrying the one-shot result nonce on the GET route.
+RESULT_PARAM = "result"
+
+#: Django session key for the one-shot, nonsecret send result.
+RESULT_SESSION_KEY = "bulk_email_result"
 
 
 def selected_pks(raw: str | None) -> list[str]:
@@ -176,3 +190,50 @@ def send_selected_user_emails(users: Sequence[User], subject: str, body: str) ->
         uncertain=uncertain,
         not_attempted=total - accepted - uncertain,
     )
+
+
+def new_result_nonce() -> str:
+    """Random one-shot correlation nonce for a send result.
+
+    It is not a secret grant: it only correlates the redirect with the
+    counts stored in this administrator's own session and is valid
+    exactly once. It carries no subject, body or address.
+    """
+    return secrets.token_urlsafe(32)
+
+
+def store_result(request: HttpRequest, counts: BulkSendCounts) -> str:
+    """Store ONLY the nonce and the nonsecret counts in the session."""
+    nonce = new_result_nonce()
+    request.session[RESULT_SESSION_KEY] = {
+        "nonce": nonce,
+        "accepted": counts.accepted,
+        "uncertain": counts.uncertain,
+        "not_attempted": counts.not_attempted,
+    }
+    return nonce
+
+
+def take_result(request: HttpRequest, nonce: str | None) -> BulkSendCounts | None:
+    """Consume the one-shot send result from this session, if it matches.
+
+    Returns the counts and removes the stored result when ``nonce``
+    matches the session's nonce in constant time. A missing, invalid or
+    foreign nonce — or an already-consumed result — returns ``None``
+    without revealing whether a result was stored; the caller must then
+    refuse safely and send nothing.
+    """
+    stored = request.session.get(RESULT_SESSION_KEY)
+    if not isinstance(stored, dict) or not isinstance(nonce, str) or not nonce:
+        return None
+    if not hmac.compare_digest(str(stored.get("nonce", "")), nonce):
+        return None
+    del request.session[RESULT_SESSION_KEY]
+    try:
+        return BulkSendCounts(
+            accepted=int(stored["accepted"]),
+            uncertain=int(stored["uncertain"]),
+            not_attempted=int(stored["not_attempted"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
