@@ -294,6 +294,20 @@ languages, token/management admin or mutation bearer APIs, OIDC/password
 reset/notifications, monitoring stack, scheduler, automatic physical allocation, real
 migration/cutover and the execution gateway.
 
+**Human-selected amendment (2026-11-19/20, GitHub issue #135).** After the
+group-authorization work merged, the attributable human selected ONE narrow
+asset-level amendment to the exact-asset booking gate: an optional per-asset
+booking deny-list of existing permission groups whose members are denied NEW
+bookings on that exact asset, with deny winning over the allow-list and the
+exclusion also applying to otherwise unrestricted assets (ARCHITECTURE.md
+A-18, SAR-057; PLAN selected meaning recorded here). It supersedes A-16's
+"no explicit deny" prohibition for this one asset booking gate only: it is not
+a general deny policy, not a parallel membership system and no group-name
+constants; the shared predicate stays the single new-booking authority and all
+other A-16/A-17 behavior is unchanged. Implementation follows only under the
+separately strategy-issued order 065-a (issue #135); the remaining deferrals
+above are otherwise unchanged.
+
 **Milestone history preserved.** M-EXISTING, M-CONVERSION, M-LOCAL-PILOT-EVIDENCE,
 M-INTERNET-UX-PILOT and M-EXTERNAL-PILOT/M-RELEASE remain as recorded in P-06; their
 chronology, evidence and gates are unchanged. M-INTERNET-UX-PILOT remains the

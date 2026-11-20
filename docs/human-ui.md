@@ -47,9 +47,13 @@ is temporarily unavailable. There is no permanent automatic account lockout.
 Booking access is explicit: creating a reservation requires the
 `reservations.book_assets` capability (granted through your permission groups
 or individual permissions) and, for restricted assets, membership in at least
-one of that asset's allowed groups. Assets stay fully browsable whatever your
-eligibility: the list shows a **You can book** column per asset and the asset
-page shows the **Booking access** line with a reason when you cannot book.
+one of that asset's allowed groups; and an asset's optional booking
+deny-list can exclude specific groups from booking that exact asset even
+when they otherwise qualify. Assets stay fully browsable whatever your
+eligibility: the list shows a **You can book** column per asset (bookable,
+not bookable, or **Excluded** for that asset's deny-list) and the asset
+page shows the **Booking access** line with a reason when you cannot book,
+without naming any group.
 Denied reserve requests create nothing, and direct requests are denied, not
 only hidden buttons. Project and organizational authorization is not
 implemented yet; site permission groups are not project memberships.

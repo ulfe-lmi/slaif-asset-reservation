@@ -1,7 +1,9 @@
 # ARCHITECTURE-for-agents — executor projection
 
-Source: root ARCHITECTURE.md, 2026-11-09 edition (A-01..A-17, SAR-001..SAR-056); current
-full-source SHA-256 `f7b5c98876a40b052c2d2fe057e57281e917ac5a72508e98caca512c1f0d1286`. The
+Source: root ARCHITECTURE.md, 2026-11-20 edition (A-01..A-18, SAR-001..SAR-057); current
+full-source SHA-256 `69e3b5a5deb8ffd030974878ee6ad690bdc0e5507bdd71989ffeda969f34dcd9`. The
+2026-11-09 edition source SHA-256
+`f7b5c98876a40b052c2d2fe057e57281e917ac5a72508e98caca512c1f0d1286` (pre-065-a) and the
 2026-11-09 pre-055-b source SHA-256
 `5ad0ab631696213432c8f513a80b3481fa28a8b0ab89641195ad38725e07db38` (the OAP 055-b
 security-maintenance DRF evolution is the only full-source delta), the 2026-10-17 edition
@@ -12,15 +14,21 @@ historical provenance.
 Scope: preservation and bounded development of existing SLAIF Asset Reservation, including the
 selected M-INTERNET-UX-PILOT development target (A-15), the later-selected
 M-GROUP-AUTHORIZATION target (A-16) and the later-selected M-ACCOUNT-ONBOARDING target
-(A-17); real Internet exposure remains human D2.
+(A-17); the human-selected exact-asset booking deny-list amendment (A-18,
+2026-11-20, issue #135) extends only the A-16 booking gate; real Internet
+exposure remains human D2.
 SAR-039..SAR-047 rows carry their executor-relevant conditions directly; SAR-048..SAR-053 rows
 and the group-authorization clauses below carry the A-16 executor obligations directly;
 SAR-054..SAR-056 rows and the account-onboarding clauses below carry the A-17 executor
-obligations directly; root A-15, A-16 and A-17 are reference only (not mandatory reads). All
-six SAR-048..SAR-053 rows are initially UNPROVEN until a fresh ICA at the exact merged
-revision, and the three new SAR-054..SAR-056 rows are initially UNPROVEN for the same
-fresh-ICA rule. Not independent architecture or approval. Normal coding reads this file, not
-the full source. A genuine gap goes to strategy for a bounded correction/excerpt.
+obligations directly; the SAR-057 row and the booking-deny-list amendment
+clause below carry the A-18 executor obligations directly; root A-15, A-16,
+A-17 and A-18 are reference only (not mandatory reads). All six
+SAR-048..SAR-053 rows are initially UNPROVEN until a fresh ICA at the exact
+merged revision, the three new SAR-054..SAR-056 rows are initially UNPROVEN
+for the same fresh-ICA rule, and the new SAR-057 row is initially UNPROVEN
+for the same fresh-ICA rule. Not independent architecture or approval.
+Normal coding reads this file, not the full source. A genuine gap goes to
+strategy for a bounded correction/excerpt.
 
 Baseline (historical, 2026-09): private ulfe-lmi/slaif-asset-reservation; WO0001–0013 complete;
 main at the original projection observed 1fcc2c91d793556a91711365abef562604b62f84, and at this
@@ -126,6 +134,8 @@ UNPROVEN until a fresh ICA at the exact merged revision.
 
 **SAR-049 / Exact-asset booking eligibility:** Assets are explicitly unrestricted or group-restricted; a restricted asset requires membership in at least one allowed existing group; restricted with no allowed groups fails closed; only the booked asset is checked, never parent inheritance; all existing assets migrate unrestricted; browser and bearer creation share the authoritative check around the existing reservation service; token creation also requires its action scope and the owner's current capability/membership; policies/counters, UTC/DST, exclusion, locking and atomic audit unchanged; assets remain browsable and show eligibility without disclosing sensitive account/group metadata; access changes never rewrite existing bookings; owners keep list/inspect/cancel/release of accepted reservations after losing capability or membership.
 
+A-18 (selected amendment, 2026-11-20, issue #135) extends this gate with ONE narrow per-asset group booking deny-list (SAR-057): the shared predicate remains the single new-booking authority; everything else above is unchanged.
+
 **SAR-050 / Explicit cross-user browser visibility:** The separate All reservations browser view requires view_all_reservations and supports existing validated asset, status/lifecycle, time filters and pagination; authorized viewers inspect owner, asset, original times, effective end, status and lifecycle with mutation controls only for the corresponding capability; read-only viewers cannot cancel/release/edit by forged requests; owner pages remain private; policy/blackout/audit capabilities do not imply read-all; overlap previews without read-all show only the safe confirmation information needed for the blackout operation.
 
 **SAR-051 / Explicit read-all bearer authority:** New cross-user list/detail routes require BOTH the explicit reservations:read_all scope AND the owner's current view_all_reservations permission, rechecked per request; reservations:read remains owner-only even for staff/superusers; existing token scope records never change automatically; issuance refuses authority-exceeding read-all and create scopes; group/permission removal takes effect on subsequent requests with the same token, no process-global grant cache; no cross-user bearer mutation surface; minimal explicit cross-user representation (reservation/asset UUID and safe asset identity, owner UUID plus external_identifier null when unset, aware original start/end, effective_end, status/lifecycle, release/cancellation timestamps, unambiguous blocking/effective interval semantics) excluding owner email/display/profile/admin flags, passwords/verifiers/token secrets, private locators, unrelated metadata and private purpose/cancellation/blackout free text.
@@ -139,6 +149,8 @@ UNPROVEN until a fresh ICA at the exact merged revision.
 **SAR-055 / Operator SMTP onboarding and failure boundary:** SMTP is explicitly operator-enabled (standard Django email-backend settings plus a canonical configured HTTPS base URL); development uses synthetic SMTP only, never a real relay or recipient. Disabled/incomplete relay => admin add must not claim delivery and must not create an active short-password account. Enabled add: commit the account first inactive (pending onboarding), send exactly one login-details email (canonical HTTPS URL, account email identifier, temporary password), activate only after SMTP accepts; failure stays inactive with a nonsecret status; manual reissue rotates the previous credential; no ambiguous-send auto-retry; no plaintext persistence; no bodies/credentials in logs; links from the canonical URL, never Host; production-enabled relay requires TLS and bounded timeout; no queue/Celery/Gateway dependency; not a general mail system or notifications.
 
 **SAR-056 / Six-character temporary admin creation and forced change:** The admin add GET prepopulates BOTH password controls with the same new CSPRNG six-character value; only a generated initial temporary credential gets this narrow length exception — the normal validators are never globally weakened. It expires within 24h and cannot establish a NEW login after expiry; successful login is restricted to changing it to a normal-validator password before any member/management/Administration/session-API work. Existing accounts unchanged; human/password permissions, group grants, API token records and reservation domain services intact.
+
+**SAR-057 / Exact-asset group booking denylist:** Optional `Asset.excluded_booking_groups` M2M to the EXISTING `auth.Group`, blank/default-empty for all existing assets, one forward-only migration, no data backfill or other schema change. Membership in ANY excluded group denies NEW bookings on exactly that asset, restricted OR unrestricted, and the exclusion wins over the allowed list (dual membership denied). The one shared predicate remains the single new-booking authority (row-locked service, member browser direct GET/POST, bearer preflight BEFORE idempotent replay, legacy planner); staff/unrelated-admin/superuser never bypass a membership exclusion; exact asset only, no parent inheritance; same stable non-disclosing `403 booking_not_authorized` naming no group; member list/detail show a DISTINCT excluded state without group names/IDs or other member data while the asset stays browsable and non-excluded members stay bookable; changes take effect on the next request; existing reservations never rewritten, owner lifecycle retained; Admin field independently configurable with deny-precedence/exact-asset/no-other-access help.
 
 **Selected target qualification (A-15):** Real unit/integration tests, PostgreSQL concurrency/rollback, browser HTTP auth/CSRF/privacy, real Gunicorn positive plus old-sync negative, disposable Internet HTTPS proxy, shared abuse controls, production-settings negatives, container/Compose/health, fresh+upgrade policy init, default/custom branding; standard five exact-head checks plus links/pip audit; exact source/revision/evidence statuses, no mocked-boundary pass. Browser surfaces: anonymous landing/login/admin login; member dashboard/assets list+detail/availability/reservation create+list+detail/profile/token list+create; staff management/policy list+detail+form/blackout list+detail+form/reservations/audit list+detail+export controls; admin index/user list+change/asset list+change/relevant protected models. Real Playwright capture/view/iterate at ~1440/1024/768/390 desktop/mobile, default/custom, with STRATEGIC visual review mandatory; durable semantic assertions on overflow, actions, navigation, focus, labels, associated help, tables, forms, no framework text, no anonymous leak; privacy-safe screenshots (no tokens/passwords/verifiers/CSRF/cookies/raw traces/private data); no brittle pixel CI unless stability proven. Final fresh isolated full-architecture ICA over all SAR-001..SAR-047 at the exact merged revision runs AFTER implementation; the old internal audit is historical; findings require bounded repair then a FULL architecture-to-current-main re-audit, not closed-findings-only review. Human acceptance/release/D2 real resources remain separate. Product-first docs reconcile behavior without ledger or public-production claims.
 
@@ -315,6 +327,60 @@ group membership. A-17 is target design, not an implementation or ICA pass; a
 fresh exact-revision independent ICA precedes any later
 M-ACCOUNT-ONBOARDING milestone-closure claim, and human acceptance/release/D2
 real infrastructure remain separate.
+
+## Selected exact-asset booking deny-list amendment (A-18)
+
+Selected 2026-11-20 by the attributable human (GitHub issue #135) as ONE
+narrow amendment to the A-16 booking gate. This section carries the A-18
+executor obligations directly; it is a selected target. It supersedes
+A-16's "no explicit deny rules" statement for this one asset booking gate
+ONLY — it is not a general deny policy, not a parallel membership system
+and no group-name constants. Nothing here authorizes deployment, real
+exposure, DNS/TLS/firewall, identity/secret administration, execution or
+physical allocation. The facet remains UNPROVEN until a fresh independent
+ICA at the exact merged revision (SAR-057).
+
+**One optional deny-list field.** Add `Asset.excluded_booking_groups`, an
+M2M to the EXISTING `auth.Group` model, blank and default-empty for every
+existing asset, by ONE forward-only assets migration with no data backfill
+and no other Asset/reservation schema change. It is independently
+configurable from `booking_restricted` in Administration (with help stating
+deny precedence, exact-asset scope and that no other access is granted).
+
+**Deny-over-allow on the exact asset.** A new booking requires, in order:
+current active non-service-account human with `reservations.book_assets`;
+membership in NONE of the exact asset's excluded groups; and, only when
+`booking_restricted` is true, membership in at least one allowed group.
+Exclusion wins on dual membership and applies to unrestricted assets too.
+Staff, unrelated Administration permissions and trusted active superusers
+never bypass a membership exclusion. Only the booked asset is checked,
+never parent inheritance in either direction. The ONE shared predicate
+stays the single new-booking authority across browser, bearer and service;
+the row-locked `create_reservation` service remains the final write gate;
+the bearer preflight rechecks before any cached idempotent replay; the
+legacy-import planner reuses the same current predicate for future
+appointments (completed-past historical exception preserved).
+
+**Truthful privacy-safe member surface.** Keep every asset visible. The
+member asset list and detail show a DISTINCT excluded-but-not-bookable
+state (truthful, without exposing excluded group names/IDs or any other
+member data); a non-excluded member of the same asset keeps the plain
+bookable state. Preserve the stable non-disclosing `403
+booking_not_authorized` representation; no new cross-user or bearer
+mutation scope.
+
+**Churn and preservation.** Group-membership or exclusion changes take
+effect on the NEXT request; the exclusion never deletes or rewrites
+existing bookings and owners keep cancel/release of accepted reservations
+after losing eligibility. Prefetch both M2M sets on lists (no N+1).
+Evidence: focused positive/negative predicate/service/browser/API tests
+covering denied dual membership, unrestricted-asset exclusion,
+idempotent-replay recheck and UI privacy, real owned PostgreSQL
+migration/default-empty upgrade, Chromium desktop/mobile screenshots,
+unchanged conflicts/lifecycle/audit/idempotency, and the standard five
+exact-head checks; a fresh exact-revision independent ICA maps all
+applicable stable rows and is not strategic self-certification or real
+deployment authorization.
 
 ## Component routing
 

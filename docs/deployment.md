@@ -719,8 +719,11 @@ The repository provides commands and rehearsals, not an installed operations sta
 The database role is shared and privileged under the Compose defaults; role
 separation remains deferred. Creating a reservation requires the explicit
 `reservations.book_assets` grant, a group-restricted asset requires at least
-one allowed-group membership, and existing policy rules still apply; new
-accounts receive no automatic booking grant. Site groups do not implement
+one allowed-group membership, and an asset's optional booking deny-list
+denies members of its excluded groups from NEW bookings on that exact asset
+even when they otherwise qualify (exclusion wins over the allowed list);
+existing policy rules still apply and new accounts receive no automatic
+booking grant. Site groups do not implement
 project/membership or per-token asset restrictions. Institutional OIDC,
 public forgotten-password reset, general notifications, workload
 execution/gateway/scheduler integration and private SmartScheduling cutover

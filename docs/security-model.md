@@ -294,14 +294,17 @@ Django admin permission is not automatically equivalent to domain authorization 
 The current product uses explicit reservations-namespace application
 permissions on an active non-service-account human basis: creating a
 reservation requires the `reservations.book_assets` capability AND
-exact-asset group eligibility (every asset is explicitly unrestricted or
-group-restricted; a restricted asset requires membership in at least one
-of its allowed existing groups, and a restricted asset with no allowed
-groups fails closed - only the booked asset is ever checked). Owners keep
-listing, inspecting, cancelling and releasing their already-accepted
-reservations after losing booking capability or group membership, subject
-to the existing lifecycle and cutoff rules; access changes never rewrite
-existing bookings. Cross-user management actions (others' reservation
+exact-asset group eligibility, and is denied by the exact-asset booking
+deny-list (every asset is explicitly unrestricted or group-restricted; a
+restricted asset requires membership in at least one of its allowed existing
+groups, and a restricted asset with no allowed groups fails closed; each
+asset may additionally exclude existing groups from NEW bookings on that
+exact asset, and the exclusion wins over the allowed list - only the booked
+asset is ever checked). Owners keep listing, inspecting, cancelling and
+releasing their already-accepted reservations after losing booking
+capability or group membership, subject to the existing lifecycle and
+cutoff rules; access changes never rewrite existing bookings. Cross-user
+management actions (others' reservation
 lifecycle, policies, blackouts, audit browsing and export) require the
 explicit management capabilities documented in
 [docs/authorization.md](authorization.md#management-route-inventory-enforced);

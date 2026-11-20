@@ -183,6 +183,10 @@ def test_repeated_apply_preserves_configured_booking_access(tmp_path: Path) -> N
     target.booking_restricted = True
     target.save(update_fields=["booking_restricted", "updated_at"])
     target.allowed_booking_groups.add(group)
+    # SAR-057: the operator deny-list is bootstrap data the importer
+    # never owns either; a repeated apply must preserve it exactly.
+    excluded = Group.objects.create(name="bootstrap-excluded-group")
+    target.excluded_booking_groups.add(excluded)
 
     second = StringIO()
     call_command("import_bootstrap_assets", input=str(path), apply=True, stdout=second)
@@ -192,6 +196,7 @@ def test_repeated_apply_preserves_configured_booking_access(tmp_path: Path) -> N
     target.refresh_from_db()
     assert target.booking_restricted is True
     assert list(target.allowed_booking_groups.values_list("id", flat=True)) == [group.id]
+    assert list(target.excluded_booking_groups.values_list("id", flat=True)) == [excluded.id]
 
 
 @pytest.mark.django_db

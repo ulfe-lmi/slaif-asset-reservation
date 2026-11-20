@@ -65,13 +65,13 @@
       </tr>
     </thead>
     <tbody>
-      {% for asset, bookable in rows %}
+      {% for asset, bookable, state in rows %}
         <tr>
           <td><a href="{% url 'web:asset-detail' asset.id %}">{{ asset.name }}</a></td>
           <td>{{ asset.get_kind_display }}</td>
           <td>{% if asset.parent %}{{ asset.parent.name }}{% endif %}</td>
           <td>{{ asset.reservable|yesno:"yes,no" }}</td>
-          <td>{{ bookable|yesno:"yes,no" }}</td>
+          <td>{% if bookable %}{% trans "yes" %}{% elif state == "excluded_group" %}{% trans "Excluded" %}{% else %}{% trans "no" %}{% endif %}</td>
           <td>{% if asset.verification_required %}{% trans "unverified" %}{% else %}{% trans "verified" %}{% endif %}</td>
         </tr>
       {% empty %}
