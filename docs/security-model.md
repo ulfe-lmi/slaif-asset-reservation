@@ -131,6 +131,14 @@ send, and is bounded to 200 recipients per request — an empty, stale,
 forged or larger selection (including select-across) sends nothing and is
 never silently truncated. The subject and body are bounded plain text
 (the subject must stay a single line, so it cannot inject mail headers).
+The compose GET and the final send POST are bound to the administrator's
+own session by a random nonce created when the users are checked: the
+final recipients derive only from that stored checked selection (bounded
+account UUIDs and nothing else), never from a browser-supplied UUID list —
+a direct or forged link, an added or swapped recipient field, a foreign or
+stale nonce, a missing or superseded selection or a deleted selected
+account is refused before any send, and a new checked selection supersedes
+the pending one.
 Each recipient receives a separate message with no CC/BCC or visible
 recipient list, and unselected users receive nothing. While the
 transport is disabled the compose surface offers no send and the POST

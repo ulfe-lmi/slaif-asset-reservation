@@ -196,15 +196,19 @@ users with the checkboxes and choose **Send a plain-text email to the
 selected users**. The compose page shows exactly how many users are
 selected and their addresses, and the administrator edits a plain-text
 subject and message before a single **Send email** click sends the
-message. Each selected user receives the same message separately (no
-CC/BCC and no visible recipient list); nothing is sent until that single
-click, and the page explains that relay acceptance is not proof of inbox
-delivery, that a failure stops the send without any automatic retry and
-reports the accepted, unconfirmed and not-attempted counts, and that the
-action is limited to 200 selected users per request. While account email
-is not configured, the compose page shows a setup notice instead of a
-send control. The subject, message and addresses never appear in URLs,
-logs or audit records.
+message. The compose page and that single send are bound to the exact
+checked selection of this administrator session: if the selection was
+replaced by a newer one or becomes stale (for example, a selected account
+was deleted), the page asks the administrator to select the users again
+and sends nothing. Each selected user receives the same message
+separately (no CC/BCC and no visible recipient list); nothing is sent
+until that single click, and the page explains that relay acceptance is
+not proof of inbox delivery, that a failure stops the send without any
+automatic retry and reports the accepted, unconfirmed and not-attempted
+counts, and that the action is limited to 200 selected users per request.
+While account email is not configured, the compose page shows a setup
+notice instead of a send control. The subject, message and addresses
+never appear in URLs, logs or audit records.
 
 Policies, reservations, blackouts, audit events and API tokens are protected
 read-only records in administration. Their guidance identifies the supported

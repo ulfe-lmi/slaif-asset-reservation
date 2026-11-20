@@ -15,6 +15,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from html import unescape
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from django.contrib.auth.models import Permission
@@ -1213,9 +1214,21 @@ def test_admin_bulk_email_compose_guidance(client: Client, admin_user: User, set
         )
         for i in range(1, 3)
     ]
-    pks = ",".join(str(user.pk) for user in created)
     client.force_login(admin_user)
-    html = client.get(f"/admin/accounts/user/bulk-email/?pks={pks}").content.decode()
+    # The compose page is bound to the checked selection made through
+    # the user-list action (session nonce; the browser never supplies
+    # the recipient list).
+    action = client.post(
+        "/admin/accounts/user/",
+        {
+            "action": "email_selected_users",
+            "index": "0",
+            "_selected_action": [str(user.pk) for user in created],
+        },
+    )
+    assert action.status_code == 302
+    nonce = parse_qs(urlsplit(action.headers["Location"]).query)["selection"][0]
+    html = client.get(f"/admin/accounts/user/bulk-email/?selection={nonce}").content.decode()
     assert "2 users selected" in html
     assert "Each recipient receives this message separately as plain text" in unescape(html)
     _assert_no_dangling_aria(html)
@@ -1236,7 +1249,7 @@ def test_admin_bulk_email_compose_guidance(client: Client, admin_user: User, set
     # Invalid POST: the rendered, bound help is preserved with the errors.
     response = client.post(
         "/admin/accounts/user/bulk-email/",
-        {"selected_pks": pks, "subject": "", "body": ""},
+        {"selection": nonce, "subject": "", "body": ""},
     )
     assert response.status_code == 200
     html_post = response.content.decode()

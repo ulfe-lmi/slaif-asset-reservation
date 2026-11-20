@@ -619,10 +619,13 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
         """Selection step of the bounded two-step email flow.
 
         Validating the selection bounds (empty and over the per-request
-        cap, including a select-across selection) and redirecting to the
-        permission-checked compose page is ALL this step does: it never
-        sends. The compose GET renders only, and the single final send
-        is the POST on that page.
+        cap, including a select-across selection) and binding the exact
+        checked UUIDs to THIS administrator session behind a random
+        nonce is ALL this step does: it never sends. The compose GET
+        renders only, and the single final send is the POST on that
+        page. No subject, body or address enters the redirect or the
+        session; only the checked UUIDs and the nonce do. A new checked
+        selection supersedes the previous pending one.
         """
         count = queryset.count()
         if count == 0:
@@ -639,8 +642,11 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 "selection was not truncated and no message was sent.",
             )
             return HttpResponseRedirect(request.get_full_path())
-        pks = ",".join(str(pk) for pk in queryset.order_by("pk").values_list("pk", flat=True))
-        return HttpResponseRedirect(f"{reverse('admin:accounts_user_bulk_email')}?pks={pks}")
+        pks = [str(pk) for pk in queryset.order_by("pk").values_list("pk", flat=True)]
+        nonce = bulk_email.store_selection(request, pks)
+        return HttpResponseRedirect(
+            f"{reverse('admin:accounts_user_bulk_email')}?{bulk_email.SELECTION_PARAM}={nonce}"
+        )
 
     @sensitive_post_parameters_m
     def bulk_email_compose(self, request: HttpRequest) -> HttpResponse:
@@ -649,14 +655,22 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
 
         The route is admitted only by the administration site gate
         (active non-service-account human staff) plus the model change
-        permission, checked on every method here. The GET renders the
+        permission, checked on every method here. The compose GET and
+        the final send POST both require the random selection nonce
+        created when the administrator checked the users on the user
+        list, and resolve the recipients ONLY from the checked UUIDs
+        stored in this session — the browser never supplies the
+        recipient list. A direct link, a missing, foreign or stale
+        nonce, a superseded selection or a missing account is refused
+        with a reselect notice and sends nothing. The GET renders the
         branded compose page (exact count and protected address list,
         editable subject/body) and is never a mutation; a GET carrying
         the one-shot result nonce instead renders the send result once.
-        The POST
-        revalidates the exact selected accounts (existing, unique,
+        The POST revalidates the bound selection (existing, unique,
         within the per-request bound), the enabled transport and the
-        bounded plain-text form before any send; after a send it stores
+        bounded plain-text form before any send; a successful send
+        consumes the pending selection so a form resubmission can never
+        resend. After a send it stores
         ONLY a random one-shot nonce plus the nonsecret
         accepted/uncertain/not-attempted counts in this session and
         redirects to this same route's GET, which shows the result
@@ -695,7 +709,7 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                     "opts": self.opts,
                     "app_label": self.opts.app_label,
                     "users": [],
-                    "selected_pks": "",
+                    "selection_nonce": "",
                     "email_enabled": settings.ACCOUNT_EMAIL_ENABLED,
                     "form": None,
                     "result": counts,
@@ -703,16 +717,34 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 request.current_app = self.admin_site.name
                 response = render(request, "admin/accounts/user/bulk_email.html", context)
             else:
-                users = bulk_email.resolve_selected_users(
-                    bulk_email.selected_pks(request.GET.get("pks"))
+                selection_pks = bulk_email.take_selection(
+                    request, request.GET.get(bulk_email.SELECTION_PARAM)
                 )
-                if users is None or len(users) > bulk_email.MAX_BULK_RECIPIENTS:
+                users = (
+                    bulk_email.resolve_selected_users(selection_pks)
+                    if selection_pks is not None
+                    else None
+                )
+                if users is None:
+                    # A stored account no longer exists: the pending
+                    # selection is stale; clear it and refuse.
+                    if selection_pks is not None:
+                        bulk_email.discard_selection(request)
                     messages.error(
                         request,
-                        "No email can be composed: no users were selected, or "
-                        "the selection is stale, invalid or larger than "
-                        f"{bulk_email.MAX_BULK_RECIPIENTS} users. Nothing was "
-                        "sent; select the users on the user list again.",
+                        "No email can be composed: no users are selected, "
+                        "the selection is stale, or a newer selection has "
+                        "replaced it. Nothing was sent; select the users "
+                        "on the user list again.",
+                    )
+                    return HttpResponseRedirect(reverse("admin:accounts_user_changelist"))
+                if len(users) > bulk_email.MAX_BULK_RECIPIENTS:
+                    messages.error(
+                        request,
+                        "No email can be composed: the selection is larger "
+                        f"than {bulk_email.MAX_BULK_RECIPIENTS} users. "
+                        "Nothing was sent; select fewer users on the user "
+                        "list again.",
                     )
                     return HttpResponseRedirect(reverse("admin:accounts_user_changelist"))
                 email_enabled = settings.ACCOUNT_EMAIL_ENABLED
@@ -722,7 +754,7 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                     "opts": self.opts,
                     "app_label": self.opts.app_label,
                     "users": users,
-                    "selected_pks": ",".join(str(u.pk) for u in users),
+                    "selection_nonce": request.GET.get(bulk_email.SELECTION_PARAM),
                     "email_enabled": email_enabled,
                     "form": bulk_email.BulkEmailForm() if email_enabled else None,
                     "result": None,
@@ -730,14 +762,31 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 request.current_app = self.admin_site.name
                 response = render(request, "admin/accounts/user/bulk_email.html", context)
         elif request.method == "POST":
-            users = bulk_email.resolve_selected_users(
-                bulk_email.selected_pks(request.POST.get("selected_pks"))
+            selection_pks = bulk_email.take_selection(
+                request, request.POST.get(bulk_email.SELECTION_PARAM)
             )
-            if users is None or len(users) > bulk_email.MAX_BULK_RECIPIENTS:
+            users = (
+                bulk_email.resolve_selected_users(selection_pks)
+                if selection_pks is not None
+                else None
+            )
+            if users is None:
+                # A stored account no longer exists: the pending
+                # selection is stale; clear it and refuse.
+                if selection_pks is not None:
+                    bulk_email.discard_selection(request)
                 messages.error(
                     request,
-                    "No email was sent: the selection is empty, stale, "
-                    "invalid or larger than "
+                    "No email was sent: no users are selected, the "
+                    "selection is stale, or a newer selection has "
+                    "replaced it. Select the users on the user list "
+                    "again and compose a new message.",
+                )
+                return HttpResponseRedirect(reverse("admin:accounts_user_changelist"))
+            if len(users) > bulk_email.MAX_BULK_RECIPIENTS:
+                messages.error(
+                    request,
+                    "No email was sent: the selection is larger than "
                     f"{bulk_email.MAX_BULK_RECIPIENTS} users. Select the "
                     "users on the user list again and compose a new "
                     "message.",
@@ -760,7 +809,7 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                     "opts": self.opts,
                     "app_label": self.opts.app_label,
                     "users": users,
-                    "selected_pks": ",".join(str(u.pk) for u in users),
+                    "selection_nonce": request.POST.get(bulk_email.SELECTION_PARAM),
                     "email_enabled": True,
                     "form": form,
                     "result": None,
@@ -768,6 +817,10 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 request.current_app = self.admin_site.name
                 response = render(request, "admin/accounts/user/bulk_email.html", context)
             else:
+                # Consume the pending selection: one send per checked
+                # selection, so a form resubmission can never resend.
+                # A new send starts from a new checked selection.
+                bulk_email.discard_selection(request)
                 counts = bulk_email.send_selected_user_emails(
                     users, form.cleaned_data["subject"], form.cleaned_data["body"]
                 )
