@@ -392,6 +392,47 @@ def test_availability_api_rejects_invalid_parameters_with_problem_details(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "start_offset,end_offset,expected_status,expected_code",
+    [
+        (timedelta(minutes=-10), timedelta(hours=1), 201, None),
+        (timedelta(minutes=-10, microseconds=-1), timedelta(hours=1), 400, "reservation_in_past"),
+        (timedelta(minutes=-5), timedelta(0), 400, "invalid_time_range"),
+    ],
+)
+def test_api_booking_start_grace(
+    client, monkeypatch, start_offset, end_offset, expected_status, expected_code
+) -> None:
+    owner = user()
+    target = asset()
+    policy(target)
+    token, _row = bearer(owner, ["reservations:create"])
+    now = timezone.now()
+    monkeypatch.setattr("django.utils.timezone.now", lambda: now)
+    body = {
+        "asset_id": str(target.id),
+        "start_at": (now + start_offset).isoformat(),
+        "end_at": (now + end_offset).isoformat(),
+        "purpose": "",
+    }
+
+    response = client.post(
+        "/api/v1/reservations/",
+        body,
+        content_type="application/json",
+        HTTP_IDEMPOTENCY_KEY="start-grace-001",
+        **auth_header(token),
+    )
+
+    assert response.status_code == expected_status
+    assert Reservation.objects.count() == int(expected_status == 201)
+    if expected_code:
+        assert response.json()["code"] == expected_code
+    else:
+        assert Reservation.objects.get().start_at == now + start_offset
+
+
+@pytest.mark.django_db
 def test_reservation_create_is_idempotent_and_replays_without_duplicate_audit(client) -> None:
     owner = user()
     target = asset()

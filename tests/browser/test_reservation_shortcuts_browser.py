@@ -86,6 +86,27 @@ def login(page, live_server, member):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_browser_immediate_booking_survives_form_entry_delay(
+    page, live_server, clock, member, asset, policy, staff, monkeypatch
+):
+    update_policy(policy=policy, actor_user=staff, min_lead_minutes=0)
+    login(page, live_server, member)
+    page.goto(f"{live_server.url}/assets/{asset.id}/reserve/")
+    start = page.locator("#id_start")
+    expect(start).to_have_value("2026-10-24T13:45")
+    assert start.get_attribute("min") == "2026-10-24T13:36"
+    start.fill("2026-10-24T13:40")
+    assert start.evaluate("el => el.checkValidity()")
+    page.get_by_role("radio", name="1 hour", exact=True).check()
+    monkeypatch.setattr("django.utils.timezone.now", lambda: NOW + timedelta(minutes=2))
+    page.get_by_role("button", name="Create reservation").click()
+    page.wait_for_url("**/reservations/**/")
+    reservation = Reservation.objects.get(requested_by_user=member)
+    assert reservation.start_at == NOW.replace(hour=7, minute=55, second=0, microsecond=0)
+    assert reservation.end_at - reservation.start_at == timedelta(hours=1)
+
+
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("theme", ["default", "custom"])
 def test_quick_duration_browser_and_range(

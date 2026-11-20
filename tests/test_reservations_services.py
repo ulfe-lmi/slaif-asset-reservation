@@ -296,10 +296,87 @@ def test_lead_and_horizon_boundaries_use_absolute_instants_across_dst_change() -
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("minutes_ago", [0, 1, 5, 10])
+def test_immediate_booking_accepts_ten_minute_start_grace(minutes_ago: int) -> None:
+    principal = user()
+    gpu = asset()
+    policy()
+    now = timezone.now()
+    start = now - timedelta(minutes=minutes_ago)
+
+    result = services.create_reservation(
+        asset=gpu,
+        requested_by_user=principal,
+        start_at=start,
+        end_at=now + timedelta(hours=1),
+        purpose="",
+        now=now,
+    )
+
+    assert result.reservation.start_at == start
+    assert result.reservation.effective_end_at == now + timedelta(hours=1)
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("end_offset", [timedelta(0), timedelta(minutes=-1)])
+def test_start_grace_does_not_allow_entirely_past_bookings(end_offset: timedelta) -> None:
+    principal = user()
+    gpu = asset()
+    policy(min_duration_minutes=1)
+    now = timezone.now()
+
+    with assert_domain_error(INVALID_TIME_RANGE):
+        services.create_reservation(
+            asset=gpu,
+            requested_by_user=principal,
+            start_at=now - timedelta(minutes=5),
+            end_at=now + end_offset,
+            purpose="",
+            now=now,
+        )
+    assert Reservation.objects.count() == 0
+    assert AuditEvent.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_start_grace_still_checks_conflicts_in_elapsed_part() -> None:
+    principal = user()
+    gpu = asset()
+    policy()
+    now = timezone.now()
+    services.create_reservation(
+        asset=gpu,
+        requested_by_user=principal,
+        start_at=now - timedelta(minutes=10),
+        end_at=now + timedelta(minutes=10),
+        purpose="",
+        now=now - timedelta(minutes=10),
+    )
+    with assert_domain_error(RESERVATION_CONFLICT):
+        services.create_reservation(
+            asset=gpu,
+            requested_by_user=principal,
+            start_at=now - timedelta(minutes=5),
+            end_at=now + timedelta(hours=1),
+            purpose="",
+            now=now,
+        )
+    assert Reservation.objects.count() == 1
+    assert AuditEvent.objects.count() == 1
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "policy_overrides,start_offset,end_offset,purpose,code",
     [
-        ({}, timedelta(minutes=-1), timedelta(minutes=30), "x", RESERVATION_IN_PAST),
+        (
+            {},
+            timedelta(minutes=-10, microseconds=-1),
+            timedelta(minutes=30),
+            "x",
+            RESERVATION_IN_PAST,
+        ),
         (
             {"min_lead_minutes": 60},
             timedelta(minutes=59),

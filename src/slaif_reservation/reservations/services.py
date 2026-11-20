@@ -51,6 +51,7 @@ from slaif_reservation.reservations.models import (
 from slaif_reservation.reservations.time_utils import InstantError, require_aware_utc
 
 UserModel = get_user_model()
+BOOKING_START_GRACE = timedelta(minutes=10)
 
 
 @dataclass(frozen=True)
@@ -179,11 +180,20 @@ def lock_effective_policy(asset: Asset) -> ReservationPolicy:
     return _resolve_effective_policy(asset, for_update=True)
 
 
+def earliest_reservation_start(policy: ReservationPolicy, *, now: datetime) -> datetime:
+    """Allow form-entry delay when no advance notice is required."""
+    if policy.min_lead_minutes:
+        return now + timedelta(minutes=policy.min_lead_minutes)
+    return now - BOOKING_START_GRACE
+
+
 def _validate_time_range(start_at: datetime, end_at: datetime, now: datetime) -> timedelta:
     if end_at <= start_at:
         _raise(INVALID_TIME_RANGE, "Reservation end must be after start.")
-    if start_at < now:
-        _raise(RESERVATION_IN_PAST, "Reservations cannot start in the past.")
+    if start_at < now - BOOKING_START_GRACE:
+        _raise(RESERVATION_IN_PAST, "Reservations cannot start more than 10 minutes in the past.")
+    if end_at <= now:
+        _raise(INVALID_TIME_RANGE, "Reservation end must be in the future.")
     return end_at - start_at
 
 
@@ -202,7 +212,7 @@ def _enforce_policy(
         _raise(DURATION_TOO_SHORT, "Reservation duration is shorter than the policy minimum.")
     if duration_minutes > policy.max_duration_minutes:
         _raise(DURATION_TOO_LONG, "Reservation duration exceeds the policy maximum.")
-    if start_at < now + timedelta(minutes=policy.min_lead_minutes):
+    if start_at < earliest_reservation_start(policy, now=now):
         _raise(LEAD_TIME_VIOLATION, "Reservation starts before the policy lead time.")
     if start_at > now + timedelta(days=policy.booking_horizon_days):
         _raise(BOOKING_HORIZON_VIOLATION, "Reservation starts beyond the policy horizon.")
