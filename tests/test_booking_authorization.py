@@ -43,6 +43,7 @@ from slaif_reservation.accounts.models import User
 from slaif_reservation.accounts.services import issue_api_token
 from slaif_reservation.assets.authorization import (
     STATE_ELIGIBLE,
+    STATE_EXCLUDED_GROUP,
     STATE_NO_ALLOWED_GROUP,
     STATE_NO_BOOKING_PERMISSION,
     batch_asset_booking_states,
@@ -132,6 +133,17 @@ def union_booker(group_book: Group, group_a: Group) -> User:
         email="049a-union@example.com", password="not-a-secret", display_name="Union Booker"
     )
     user.groups.add(group_book, group_a)
+    return user
+
+
+@pytest.fixture
+def dual_booker(group_book: Group, group_a: Group, group_b: Group) -> User:
+    """SAR-057 denylist subject: capability + an allowed group (group_a)
+    PLUS membership in an excluded group (group_b). Exclusion must win."""
+    user = User.objects.create_user(
+        email="065a-dual@example.com", password="not-a-secret", display_name="Dual Booker"
+    )
+    user.groups.add(group_book, group_a, group_b)
     return user
 
 
@@ -242,6 +254,24 @@ def restricted_empty(global_policy) -> Asset:
     return make_asset("049a-restricted-empty", booking_restricted=True)
 
 
+@pytest.fixture
+def unrestricted_excluded(global_policy, group_b: Group) -> Asset:
+    """SAR-057: an OTHERWISE unrestricted asset carrying an exclusion."""
+    asset = make_asset("065a-unrestricted-excluded")
+    asset.excluded_booking_groups.add(group_b)
+    return asset
+
+
+@pytest.fixture
+def restricted_a_excluded(global_policy, group_a: Group, group_b: Group) -> Asset:
+    """SAR-057: restricted asset with allowed group_a AND excluded group_b,
+    so a dual member is allowed by one list and denied by the other."""
+    asset = make_asset("065a-restricted-a-excluded", booking_restricted=True)
+    asset.allowed_booking_groups.add(group_a)
+    asset.excluded_booking_groups.add(group_b)
+    return asset
+
+
 def future_window(hours: int = 2) -> tuple:
     start = (timezone.now() + timedelta(days=1, hours=hours)).replace(second=0, microsecond=0)
     return start, start + timedelta(hours=1)
@@ -267,6 +297,16 @@ def future_window(hours: int = 2) -> tuple:
         ("superuser_member", "restricted_a", True),
         ("direct_booker", "restricted_empty", False),
         ("group_booker", "restricted_empty", False),
+        # SAR-057 exact-asset denylist: exclusion denies even on an
+        # unrestricted asset, and denies dual members on a restricted one;
+        # non-excluded members of the same asset stay eligible.
+        ("direct_booker", "unrestricted_excluded", True),
+        ("group_booker", "unrestricted_excluded", True),
+        ("dual_booker", "unrestricted_excluded", False),
+        ("dual_booker", "restricted_a_excluded", False),
+        ("union_booker", "restricted_a_excluded", True),
+        ("superuser_member", "restricted_a_excluded", True),
+        ("superuser", "restricted_a_excluded", False),
     ],
 )
 def test_predicate_semantics(principal: str, asset: str, expected: bool, request) -> None:
@@ -298,6 +338,32 @@ def test_batch_states_use_prefetched_membership(
         unrestricted.id: STATE_ELIGIBLE,
         restricted_a.id: STATE_ELIGIBLE,
         restricted_empty.id: STATE_NO_ALLOWED_GROUP,
+    }
+
+
+def test_batch_states_excluded_beats_allow_and_unrestricted(
+    direct_booker, dual_booker, union_booker, unrestricted_excluded, restricted_a_excluded
+) -> None:
+    """SAR-057 states: the excluded state is distinct, wins over the
+    allowed group on a restricted asset, and applies on unrestricted
+    assets; non-excluded members keep the plain states. Both M2M sets
+    read from the prefetched caches (no N+1), as in the list selector."""
+    assets = list(
+        Asset.objects.filter(
+            id__in=[unrestricted_excluded.id, restricted_a_excluded.id]
+        ).prefetch_related("allowed_booking_groups", "excluded_booking_groups")
+    )
+    assert batch_asset_booking_states(direct_booker, assets) == {
+        unrestricted_excluded.id: STATE_ELIGIBLE,
+        restricted_a_excluded.id: STATE_NO_ALLOWED_GROUP,
+    }
+    assert batch_asset_booking_states(union_booker, assets) == {
+        unrestricted_excluded.id: STATE_ELIGIBLE,
+        restricted_a_excluded.id: STATE_ELIGIBLE,
+    }
+    assert batch_asset_booking_states(dual_booker, assets) == {
+        unrestricted_excluded.id: STATE_EXCLUDED_GROUP,
+        restricted_a_excluded.id: STATE_EXCLUDED_GROUP,
     }
 
 
@@ -521,6 +587,143 @@ def test_last_allowed_group_deletion_denies_new_keeps_existing(
     existing.refresh_from_db()
     assert existing.status == Reservation.STATUS_CONFIRMED
     assert existing.asset_id == restricted_empty.id
+
+
+def test_service_denies_excluded_on_unrestricted_asset(dual_booker, unrestricted_excluded) -> None:
+    """SAR-057 negative: membership in an excluded group denies a NEW
+    booking even though the asset is otherwise unrestricted and the
+    member holds the global capability."""
+    start, end = future_window()
+    with pytest.raises(
+        ReservationDomainError, check=lambda exc: exc.code == BOOKING_NOT_AUTHORIZED
+    ):
+        create_reservation(
+            asset=unrestricted_excluded,
+            requested_by_user=dual_booker,
+            start_at=start,
+            end_at=end,
+            purpose="",
+        )
+    assert Reservation.objects.count() == 0
+    assert AuditEvent.objects.count() == 0
+
+
+def test_service_denies_dual_membership_exclusion_wins(dual_booker, restricted_a_excluded) -> None:
+    """SAR-057 negative: dual membership (allowed group_a AND excluded
+    group_b) is denied — exclusion wins over the allowed list, and no
+    reservation or audit row is written."""
+    start, end = future_window()
+    with pytest.raises(
+        ReservationDomainError, check=lambda exc: exc.code == BOOKING_NOT_AUTHORIZED
+    ):
+        create_reservation(
+            asset=restricted_a_excluded,
+            requested_by_user=dual_booker,
+            start_at=start,
+            end_at=end,
+            purpose="",
+        )
+    assert Reservation.objects.count() == 0
+    assert AuditEvent.objects.count() == 0
+
+
+def test_service_allows_non_excluded_bookings_on_excluded_assets(
+    direct_booker, union_booker, unrestricted_excluded, restricted_a_excluded
+) -> None:
+    """SAR-057 positive: the exclusion is narrow — members NOT in the
+    excluded group keep booking the same assets (global capability on the
+    unrestricted one; allowed-only membership on the restricted one)."""
+    start, end = future_window()
+    result = create_reservation(
+        asset=unrestricted_excluded,
+        requested_by_user=direct_booker,
+        start_at=start,
+        end_at=end,
+        purpose="non-excluded member",
+    )
+    assert result.reservation.asset_id == unrestricted_excluded.id
+
+    start2, end2 = future_window(hours=3)
+    result2 = create_reservation(
+        asset=restricted_a_excluded,
+        requested_by_user=union_booker,
+        start_at=start2,
+        end_at=end2,
+        purpose="allowed only, not excluded",
+    )
+    assert result2.reservation.asset_id == restricted_a_excluded.id
+
+
+def test_service_exclusion_churn_applies_to_next_request_only(
+    union_booker, group_b, restricted_a, client
+) -> None:
+    """SAR-057 churn: adding/removing the exclusion (and the user's
+    membership in it) takes effect on the NEXT request; existing
+    reservations are never deleted or rewritten and the owner keeps
+    cancel/release after the loss."""
+    start, end = future_window()
+    existing = create_reservation(
+        asset=restricted_a,
+        requested_by_user=union_booker,
+        start_at=start,
+        end_at=end,
+        purpose="accepted before exclusion",
+    ).reservation
+
+    # Operator adds the exclusion; the member joins the excluded group.
+    restricted_a.excluded_booking_groups.add(group_b)
+    union_booker.groups.add(group_b)
+
+    start2, end2 = future_window(hours=3)
+    with pytest.raises(
+        ReservationDomainError, check=lambda exc: exc.code == BOOKING_NOT_AUTHORIZED
+    ):
+        create_reservation(
+            asset=restricted_a,
+            requested_by_user=union_booker,
+            start_at=start2,
+            end_at=end2,
+            purpose="too late",
+        )
+    existing.refresh_from_db()
+    assert existing.status == Reservation.STATUS_CONFIRMED
+    assert existing.asset_id == restricted_a.id
+
+    # Owner lifecycle survives the eligibility loss (upcoming => cancel).
+    client.force_login(union_booker)
+    cancel_response = client.post(
+        reverse("web:reservation-cancel", args=[existing.id]),
+        {"reason": "planning changed"},
+    )
+    assert cancel_response.status_code == 302
+    existing.refresh_from_db()
+    assert existing.status == Reservation.STATUS_CANCELLED
+
+    # Operator lifts the exclusion; the member stays in the group: the
+    # next request is allowed again on the same asset.
+    restricted_a.excluded_booking_groups.remove(group_b)
+    start3, end3 = future_window(hours=5)
+    result = create_reservation(
+        asset=restricted_a,
+        requested_by_user=union_booker,
+        start_at=start3,
+        end_at=end3,
+        purpose="exclusion lifted",
+    )
+    assert result.reservation.asset_id == restricted_a.id
+
+    # Leaving the excluded group (exclusion restored) also unlocks.
+    restricted_a.excluded_booking_groups.add(group_b)
+    union_booker.groups.remove(group_b)
+    start4, end4 = future_window(hours=7)
+    result2 = create_reservation(
+        asset=restricted_a,
+        requested_by_user=union_booker,
+        start_at=start4,
+        end_at=end4,
+        purpose="member left excluded group",
+    )
+    assert result2.reservation.asset_id == restricted_a.id
 
 
 @pytest.mark.parametrize(
@@ -801,6 +1004,74 @@ def test_browser_list_and_detail_show_eligibility_without_metadata(
 
     detail_ok = client.get(f"/assets/{unrestricted.id}/").content.decode()
     assert f'href="/assets/{unrestricted.id}/reserve/"' in detail_ok
+
+
+def test_browser_excluded_state_is_distinct_and_privacy_safe(
+    direct_booker, dual_booker, group_b, unrestricted_excluded, restricted_a_excluded, client
+) -> None:
+    """SAR-057 member UI: the excluded state is DISTINCT from "no allowed
+    group" and "no permission", truthfully worded, without leaking any
+    group name/ID; the asset stays fully browsable and the non-excluded
+    member sees the plain bookable state on the very same rows."""
+    client.force_login(dual_booker)
+    listing = client.get("/assets/").content.decode()
+    assert unrestricted_excluded.name in listing  # asset remains visible
+    assert restricted_a_excluded.name in listing
+    assert listing.count("You can book") == 1  # header only
+    rows = re.findall(r"<tr>.*?</tr>", listing, re.S)
+
+    def row_for(asset_id: str) -> str:
+        matches = [row for row in rows if f"/assets/{asset_id}/" in row]
+        assert len(matches) == 1
+        return matches[0]
+
+    for asset in (unrestricted_excluded, restricted_a_excluded):
+        excluded_row = row_for(str(asset.id))
+        assert "<td>Excluded</td>" in excluded_row  # distinct denylist state
+        assert "<td>yes</td>" in excluded_row  # the Reservable flag stays yes
+        assert "<td>no</td>" not in excluded_row
+    assert group_b.name not in listing  # no excluded-group identity leaks
+
+    detail = client.get(f"/assets/{unrestricted_excluded.id}/").content.decode()
+    assert f'href="/assets/{unrestricted_excluded.id}/reserve/"' not in detail
+    assert "Booking on this asset is excluded for your account." in detail
+    assert group_b.name not in detail
+
+    # A non-excluded member sees the plain state on the same assets.
+    client.force_login(direct_booker)
+    detail_ok = client.get(f"/assets/{unrestricted_excluded.id}/").content.decode()
+    assert f'href="/assets/{unrestricted_excluded.id}/reserve/"' in detail_ok
+    assert "You can book this asset." in detail_ok
+    assert "excluded for your account" not in detail_ok
+
+
+def test_browser_denies_excluded_direct_get_and_post(
+    dual_booker, group_b, unrestricted_excluded, client
+) -> None:
+    """SAR-057 direct requests: the reserve GET/POST are denied with the
+    truthful exclusion reason (never the group names), creating nothing."""
+    client.force_login(dual_booker)
+    get_response = client.get(f"/assets/{unrestricted_excluded.id}/reserve/")
+    assert get_response.status_code == 302
+    assert get_response.url == reverse("web:asset-detail", args=[unrestricted_excluded.id])
+
+    start, end = future_window()
+    post_response = client.post(
+        f"/assets/{unrestricted_excluded.id}/reserve/",
+        {
+            "start": _local(start, dual_booker),
+            "end": _local(end, dual_booker),
+            "duration": "custom",
+            "purpose": "forged",
+        },
+    )
+    assert post_response.status_code == 200
+    content = post_response.content.decode()
+    assert "excluded for your account" in content
+    assert group_b.name not in content
+    assert "booking permission" not in content  # the real reason is exclusion
+    assert Reservation.objects.count() == 0
+    assert AuditEvent.objects.count() == 0
 
 
 def test_browser_reservable_filter_is_an_asset_flag_filter(
@@ -1196,6 +1467,58 @@ def test_api_asset_allowlist_removal_denies_new_and_cached_then_replays(client) 
     _assert_original_replay(client, token, payload, "049a-aclloss-1", original)
 
 
+def test_api_denies_excluded_member_403(
+    dual_booker, unrestricted_excluded, restricted_a_excluded, client
+) -> None:
+    """SAR-057 bearer: an excluded member (dual membership included)
+    gets the SAME stable non-disclosing 403 booking_not_authorized
+    representation, on unrestricted and restricted assets alike, with
+    no record, no cached idempotency row and no group identity."""
+    token = _token(dual_booker, ["reservations:create"])
+    before_audit = AuditEvent.objects.count()
+    for asset in (unrestricted_excluded, restricted_a_excluded):
+        start, end = future_window()
+        denied = _post_create(
+            client,
+            token,
+            _create_payload(asset, start, end),
+            f"065a-deny-{asset.slug}",
+        )
+        _assert_denied_403(denied)
+    assert Reservation.objects.count() == 0
+    assert AuditEvent.objects.count() == before_audit  # denials write nothing
+
+
+def test_api_exclusion_added_after_success_denies_new_and_cached_then_replays(client) -> None:
+    """SAR-057 replay: an exclusion added AFTER a cached success (member
+    joins the newly excluded group) blocks NEW and cached create POSTs
+    with 403 booking_not_authorized; the operator lifting the exclusion
+    replays the ORIGINAL response, not a second booking."""
+    group_b = Group.objects.create(name="065a-excluded-group")
+    owner = User.objects.create_user(
+        email="065a-exclloss@example.com", password="not-a-secret", display_name="Excl Loss"
+    )
+    owner.user_permissions.add(book_permission())
+    asset = make_asset("065a-exclloss")  # unrestricted until the exclusion
+    token = _token(owner, ["reservations:create"])
+    start, end = future_window()
+    payload = _create_payload(asset, start, end)
+
+    original = _post_create(client, token, payload, "065a-exclloss-1")
+    assert original.status_code == 201
+
+    # Operator adds the exclusion and the member joins that group.
+    asset.excluded_booking_groups.add(group_b)
+    owner.groups.add(group_b)
+    _assert_denied_403(_post_create(client, token, payload, "065a-exclloss-2"))
+    _assert_denied_403(_post_create(client, token, payload, "065a-exclloss-1"))
+    assert Reservation.objects.count() == 1
+    assert AuditEvent.objects.filter(action=AuditEvent.ACTION_RESERVATION_CREATED).count() == 1
+
+    asset.excluded_booking_groups.remove(group_b)  # operator lifts it
+    _assert_original_replay(client, token, payload, "065a-exclloss-1", original)
+
+
 def test_api_missing_asset_404_callback_preserved_when_authorized(direct_booker, client) -> None:
     from slaif_reservation.api.models import IdempotencyRecord
 
@@ -1366,6 +1689,28 @@ def test_planner_future_authorized_remains_would_create(
     start, end = future_window()
     plan = _plan(tmp_path, owner=direct_booker, asset_obj=unrestricted, start=start, end=end)
     assert plan.counts["would_create"] == 1
+
+
+def test_planner_future_excluded_member_reuses_current_denylist(
+    tmp_path, dual_booker, union_booker, restricted_a_excluded
+) -> None:
+    """SAR-057 legacy planner: a FUTURE appointment for an excluded
+    (dual) member reuses the SAME current denylist predicate and is
+    reported booking_not_authorized; a non-excluded allowed member on
+    the same asset still plans as would-create. The completed-past
+    historical exception is unaffected (see sibling tests)."""
+    start, end = future_window()
+    denied = _plan(
+        tmp_path, owner=dual_booker, asset_obj=restricted_a_excluded, start=start, end=end
+    )
+    assert denied.counts["would_create"] == 0
+    assert denied.counts["error"] == 1
+    assert denied.records[0].messages[0].code == "booking_not_authorized"
+
+    allowed = _plan(
+        tmp_path, owner=union_booker, asset_obj=restricted_a_excluded, start=start, end=end
+    )
+    assert allowed.counts["would_create"] == 1
 
 
 def test_planner_past_completed_exception_preserved(tmp_path, no_grant, unrestricted) -> None:

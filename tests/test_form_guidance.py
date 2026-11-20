@@ -1576,6 +1576,11 @@ def test_admin_asset_forms_guidance(client: Client, admin_user: User) -> None:
         "Only 'Exclusive' is supported",
         control_id="id_booking_mode",
     )
+    # filter-horizontal selector: the rendered help div exists; the two
+    # generated list boxes are bound to it by web/admin-form-guidance.js
+    # (covered by the browser suite, as for the allow-list selector).
+    assert 'id="id_excluded_booking_groups_helptext"' in html
+    assert "exclusion wins over the allowed list" in unescape(html)
     _assert_guided(
         html,
         "id_location_helptext",

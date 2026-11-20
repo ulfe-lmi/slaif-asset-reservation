@@ -1,4 +1,5 @@
-"""One authoritative booking-eligibility check (order 049-a, SAR-049).
+"""One authoritative booking-eligibility check (order 049-a, SAR-049;
+exact-asset booking denylist per order 065-a, SAR-057).
 
 A new reservation requires BOTH:
 
@@ -12,13 +13,21 @@ A new reservation requires BOTH:
    assets require membership in at least one of the asset's allowed
    existing groups (restricted with an empty allow-list fails closed).
 
-Only the booked asset is ever checked: there is no parent-to-child
-access inheritance, no explicit deny and no group-name constants.  The
-predicate is stateless and evaluates the supplied user instance as-is,
-so fresh per-request (or row-locked) principals observe current grants;
-nothing is cached across calls.  Owner lifecycle operations
-(list/inspect/cancel/release of already accepted reservations) never
-pass through this check.
+On top of both, the exact-asset booking denylist (SAR-057): membership in
+ANY of the asset's ``excluded_booking_groups`` denies the NEW booking,
+before the allowed-group pass is considered. Exclusion wins over
+allowance (dual membership is denied), applies to unrestricted assets as
+well as restricted ones, and is checked on the exact asset only: there is
+still no parent-to-child access inheritance in either direction.
+
+Only the booked asset is ever checked: there is no parent-to-child access
+inheritance and no group-name constants (the excluded groups are operator
+configuration, not code).  The predicate is stateless and evaluates the
+supplied user instance as-is, so fresh per-request (or row-locked)
+principals observe current grants; nothing is cached across calls.  Owner
+lifecycle operations (list/inspect/cancel/release of already accepted
+reservations) never pass through this check: the denylist only affects NEW
+bookings, never existing records.
 """
 
 from __future__ import annotations
@@ -34,10 +43,14 @@ from slaif_reservation.accounts.authorization import (
 from .models import Asset
 
 #: Member-safe states; no group names or account metadata may leak through
-#: any surface that renders them.
+#: any surface that renders them. ``STATE_EXCLUDED_GROUP`` is the
+#: denylist state (SAR-057); it is distinct from "no allowed group" so
+#: member surfaces can explain the outcome truthfully without naming any
+#: group.
 STATE_ELIGIBLE = "eligible"
 STATE_NO_BOOKING_PERMISSION = "no_booking_permission"
 STATE_NO_ALLOWED_GROUP = "no_allowed_group"
+STATE_EXCLUDED_GROUP = "excluded_group"
 
 
 def user_group_ids(user: Any) -> frozenset[int]:
@@ -49,6 +62,10 @@ def _has_allowed_group(allowed_group_ids: frozenset[int], user_ids: frozenset[in
     return bool(allowed_group_ids & user_ids)
 
 
+def _is_excluded(excluded_group_ids: frozenset[int], user_ids: frozenset[int]) -> bool:
+    return bool(excluded_group_ids & user_ids)
+
+
 def user_can_book_asset(user: Any, asset: Asset | None) -> bool:
     """Whether an active human may create a NEW reservation for this asset.
 
@@ -56,13 +73,24 @@ def user_can_book_asset(user: Any, asset: Asset | None) -> bool:
     preflight before the asset's existence is known, preserving the
     existing missing-asset 404 callback).  The check reads the current
     permission rows and group memberships of ``user`` on every call.
+
+    Order of checks: global capability first; then the exact-asset
+    denylist (membership in any excluded group denies, on restricted OR
+    unrestricted assets, and beats any allowed-group membership); only
+    after that the restricted-asset allowed-group requirement.
     """
     if not has_reservation_permission(user, BOOKING_BASELINE_PERMISSION):
+        return False
+    if asset is None:
+        return True
+    user_ids = user_group_ids(user)
+    excluded = frozenset(asset.excluded_booking_groups.values_list("id", flat=True))
+    if _is_excluded(excluded, user_ids):
         return False
     if asset is None or not asset.booking_restricted:
         return True
     allowed = frozenset(asset.allowed_booking_groups.values_list("id", flat=True))
-    return _has_allowed_group(allowed, user_group_ids(user))
+    return _has_allowed_group(allowed, user_ids)
 
 
 def batch_asset_booking_states(
@@ -73,13 +101,15 @@ def batch_asset_booking_states(
 ) -> dict[Any, str]:
     """Member-safe booking states for many assets (one membership query).
 
-    One of ``STATE_ELIGIBLE``, ``STATE_NO_BOOKING_PERMISSION`` or
-    ``STATE_NO_ALLOWED_GROUP`` per asset; surfaces may render these states
-    without disclosing group names or account metadata.  Intended for
-    browsable lists: prefetch ``allowed_booking_groups`` on the asset
-    queryset first, then pass it through here.  ``.all()`` on each
-    prefetched M2M then reads from the prefetch cache, keeping the
-    per-row cost flat.
+    One of ``STATE_ELIGIBLE``, ``STATE_NO_BOOKING_PERMISSION``,
+    ``STATE_EXCLUDED_GROUP`` or ``STATE_NO_ALLOWED_GROUP`` per asset;
+    surfaces may render these states without disclosing group names or
+    account metadata.  The excluded state wins over the allowed-group
+    pass (dual membership is denied) and applies to unrestricted assets
+    too.  Intended for browsable lists: prefetch ``allowed_booking_groups``
+    AND ``excluded_booking_groups`` on the asset queryset first, then pass
+    it through here.  ``.all()`` on each prefetched M2M then reads from
+    the prefetch cache, keeping the per-row cost flat.
     """
     has_book = has_reservation_permission(user, BOOKING_BASELINE_PERMISSION)
     ids = group_ids if group_ids is not None else user_group_ids(user)
@@ -87,6 +117,10 @@ def batch_asset_booking_states(
     for asset in assets:
         if not has_book:
             state = STATE_NO_BOOKING_PERMISSION
+        elif _is_excluded(
+            frozenset(group.id for group in asset.excluded_booking_groups.all()), ids
+        ):
+            state = STATE_EXCLUDED_GROUP
         elif not asset.booking_restricted:
             state = STATE_ELIGIBLE
         else:

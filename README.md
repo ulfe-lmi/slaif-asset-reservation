@@ -128,7 +128,12 @@ upgrades.
   `reservations.book_assets` capability (granted through permission groups or
   individual permissions) and, for group-restricted assets, membership in at
   least one of that asset's allowed groups. A restricted asset with no allowed
-  groups denies everyone. Cross-user read is implemented as the explicit
+  groups denies everyone. Each asset also carries an optional booking
+  deny-list (`excluded_booking_groups`): a member of any excluded group is
+  denied NEW bookings on that exact asset even if they otherwise qualify,
+  and the exclusion wins over the allowed list. Assets start with an empty
+  deny-list, and the exclusion never rewrites existing bookings. Cross-user
+  read is implemented as the explicit
   read-only `all-reservations` bearer surface (`reservations:read_all` scope
   plus the owner's current view-all-reservations capability); projects,
   organizational memberships and delegated group authorization are not

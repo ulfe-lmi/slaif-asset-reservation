@@ -31,6 +31,7 @@ from slaif_reservation.accounts.tokens import OneTimeBearerToken
 from slaif_reservation.accounts.validators import validate_timezone_name
 from slaif_reservation.assets.authorization import (
     STATE_ELIGIBLE,
+    STATE_EXCLUDED_GROUP,
     STATE_NO_ALLOWED_GROUP,
     STATE_NO_BOOKING_PERMISSION,
     batch_asset_booking_states,
@@ -338,6 +339,8 @@ def _booking_note(state: str) -> str:
         return _(
             "Your account does not have the booking permission, so this asset cannot be reserved."
         )
+    if state == STATE_EXCLUDED_GROUP:
+        return _("Booking on this asset is excluded for your account.")
     return _(
         "This asset can only be booked by members of specific approved "
         "groups; your account is not currently one of them."
@@ -357,6 +360,8 @@ def _reserve_denial_reason(asset: Asset, state: str) -> str:
         return _(
             "Your account does not have the booking permission, so this asset cannot be reserved."
         )
+    if state == STATE_EXCLUDED_GROUP:
+        return _("Booking on this asset is excluded for your account.")
     if state == STATE_NO_ALLOWED_GROUP:
         return _(
             "This asset can only be booked by members of specific approved "
@@ -372,6 +377,8 @@ def _booking_access(state: str) -> str:
         return _("You can book this asset.")
     if state == STATE_NO_BOOKING_PERMISSION:
         return _("Your account does not have the booking permission.")
+    if state == STATE_EXCLUDED_GROUP:
+        return _("Booking on this asset is excluded for your account.")
     return _("Restricted to specific approved groups (your account is not currently one of them).")
 
 
@@ -395,7 +402,7 @@ def asset_list(request: HttpRequest) -> HttpResponse:
     context = member_asset_context(filters)
     assets = list(context.assets)
     states = batch_asset_booking_states(request.user, assets)
-    rows = [(asset, _is_bookable(asset, states[asset.id])) for asset in assets]
+    rows = [(asset, _is_bookable(asset, states[asset.id]), states[asset.id]) for asset in assets]
     return render(
         request,
         "web/asset_list.html",

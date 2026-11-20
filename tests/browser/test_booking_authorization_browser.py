@@ -109,6 +109,50 @@ def restricted_asset(bookers_group: object, machine: Asset) -> Asset:
     return asset
 
 
+EXCLUDED_GROUP_NAME = "Excluded lab"
+
+
+@pytest.fixture
+def excluded_group() -> object:
+    from django.contrib.auth.models import Group
+
+    return Group.objects.create(name=EXCLUDED_GROUP_NAME)
+
+
+@pytest.fixture
+def excluded_asset(excluded_group: object, machine: Asset) -> Asset:
+    """SAR-057: an otherwise unrestricted asset carrying a deny-list."""
+    asset = Asset.objects.create(
+        slug="booking-excluded",
+        name="Booking Excluded GPU",
+        kind=Asset.KIND_GPU,
+        parent=machine,
+        active=True,
+        reservable=True,
+        verification_required=False,
+    )
+    asset.excluded_booking_groups.add(excluded_group)
+    return asset
+
+
+@pytest.fixture
+def excluded_member(excluded_group: object, bookers_group: object) -> User:
+    """Capability + allowed-group + excluded-group membership: the
+    exclusion must win on the denied asset while the allow-list asset
+    stays bookable."""
+    user = User.objects.create_user(
+        email="booking-excluded@example.com",
+        password="not-a-secret",
+        display_name="Excluded Member",
+        timezone="Europe/Ljubljana",
+    )
+    user.user_permissions.add(
+        Permission.objects.get(codename="book_assets", content_type__app_label="reservations")
+    )
+    user.groups.add(excluded_group, bookers_group)
+    return user
+
+
 @pytest.fixture
 def global_policy() -> ReservationPolicy:
     return ReservationPolicy.objects.create(
@@ -311,6 +355,80 @@ def test_direct_requests_denied_for_ineligible(
     assert "not currently one of them" in body
     assert "Reservation created" not in body
     assert Reservation.objects.count() == 0
+
+
+# --- SAR-057 exact-asset booking denylist -------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_member_excluded_state_is_distinct_and_privacy_safe(
+    page: Page,
+    live_server,
+    output_path,
+    excluded_member: User,
+    member_user: User,
+    excluded_asset: Asset,
+    restricted_asset: Asset,
+    global_policy,
+) -> None:
+    _login(page, live_server, excluded_member)
+
+    # --- 1440 -----------------------------------------------------------------
+    page.goto(f"{live_server.url}/assets/")
+    page.set_viewport_size(DESKTOP)
+    # The asset stays fully browsable and shows the DISTINCT denylist
+    # state; the allowed asset for the same dual member stays "yes".
+    assert _row(page, excluded_asset.name).count() == 1
+    assert _bookable_cell(page, excluded_asset.name) == "Excluded"
+    assert _bookable_cell(page, restricted_asset.name) == "yes"
+    assert EXCLUDED_GROUP_NAME not in page.content()
+    assert GROUP_NAME not in page.content()
+    _assert_no_horizontal_overflow(page)
+
+    page.goto(f"{live_server.url}/assets/{excluded_asset.id}/")
+    assert "Booking on this asset is excluded for your account." in page.content()
+    assert page.get_by_role("link", name="Reserve this asset").count() == 0
+    assert EXCLUDED_GROUP_NAME not in page.content()
+    _assert_no_horizontal_overflow(page)
+    # Screenshot 1 of 2: privacy-safe (no group names, no member data).
+    page.screenshot(
+        path=f"{output_path}/booking-denylist-member-detail-1440.png",
+        full_page=True,
+    )
+
+    # Direct reserve GET is denied by redirect with the truthful reason.
+    page.goto(f"{live_server.url}/assets/{excluded_asset.id}/reserve/")
+    page.wait_for_url(f"**/assets/{excluded_asset.id}/")
+    assert "excluded for your account" in page.content()
+    assert "booking permission" not in page.content()
+    assert EXCLUDED_GROUP_NAME not in page.content()
+    assert Reservation.objects.count() == 0
+
+    # --- 390 ------------------------------------------------------------------
+    page.goto(f"{live_server.url}/assets/")
+    page.set_viewport_size(MOBILE)
+    assert _bookable_cell(page, excluded_asset.name) == "Excluded"
+    assert _bookable_cell(page, restricted_asset.name) == "yes"
+    _assert_no_horizontal_overflow(page)
+    # Screenshot 2 of 2: mobile list with the distinct state.
+    page.screenshot(path=f"{output_path}/booking-denylist-member-list-390.png", full_page=True)
+
+    # Positive control: the SAME asset is bookable for a non-excluded
+    # member (the exclusion is narrow and membership-specific).
+    # The login view redirects already-authenticated sessions away, so
+    # end this member's session first (POST-only logout with CSRF).
+    cookie = next(c for c in page.context.cookies() if c["name"] == "csrftoken")
+    logout_response = page.request.post(
+        f"{live_server.url}/logout/",
+        form={"csrfmiddlewaretoken": cookie["value"]},
+    )
+    assert logout_response.status in (200, 302)
+    _login(page, live_server, member_user)
+    page.goto(f"{live_server.url}/assets/")
+    assert _bookable_cell(page, excluded_asset.name) == "yes"
+    page.goto(f"{live_server.url}/assets/{excluded_asset.id}/")
+    assert "You can book this asset." in page.content()
+    assert page.get_by_role("link", name="Reserve this asset").count() == 1
 
 
 # --- admin surface ---------------------------------------------------------------

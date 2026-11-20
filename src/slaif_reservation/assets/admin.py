@@ -60,6 +60,7 @@ class AssetAdminForm(forms.ModelForm):  # type: ignore[type-arg]
             "verification_required",
             "booking_restricted",
             "allowed_booking_groups",
+            "excluded_booking_groups",
             "capabilities",
             "tags",
             "physical_locator",
@@ -130,6 +131,16 @@ class AssetAdminForm(forms.ModelForm):  # type: ignore[type-arg]
                     "operator configuration, not authorization constants. The "
                     "list is ignored while the asset is unrestricted."
                 ),
+                "excluded_booking_groups": _(
+                    "Existing permission groups whose members can NEVER book "
+                    "this asset, even while it is unrestricted and even if "
+                    "they also belong to one of the allowed groups above - "
+                    "exclusion wins over the allowed list. Only this exact "
+                    "asset is checked: the parent machine's exclusions never "
+                    "apply to it and vice versa. Selecting groups here grants "
+                    "no other access and changes no existing booking. Leave "
+                    "empty to exclude nobody."
+                ),
                 "verification_required": _(
                     "Displays 'unverified' to members until verified. A "
                     "display flag — no verification workflow is enforced yet."
@@ -187,7 +198,7 @@ class AssetAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
     ]
     search_fields = ["name", "slug", "legacy_id"]
     autocomplete_fields = ["parent", "tags"]
-    filter_horizontal = ["tags", "allowed_booking_groups"]
+    filter_horizontal = ["tags", "allowed_booking_groups", "excluded_booking_groups"]
     readonly_fields = ["legacy_source", "legacy_id", "legacy_metadata", "created_at", "updated_at"]
     fieldsets = [
         (
@@ -221,6 +232,7 @@ class AssetAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
                 "fields": [
                     "booking_restricted",
                     "allowed_booking_groups",
+                    "excluded_booking_groups",
                 ]
             },
         ),

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
@@ -30,6 +31,26 @@ def test_asset_tag_and_asset_use_uuid_identity() -> None:
     assert isinstance(tag.id, uuid.UUID)
     assert isinstance(asset.id, uuid.UUID)
     assert asset.timezone == "Europe/Ljubljana"
+
+
+@pytest.mark.django_db
+def test_booking_group_lists_default_empty_and_are_blank() -> None:
+    """SAR-057 model shape: a fresh asset starts with NO excluded groups
+    (and no allowed groups); the field is blank so an empty deny-list is
+    valid, and the reverse relation names are stable."""
+    asset = machine()
+    assert list(asset.excluded_booking_groups.all()) == []
+    assert list(asset.allowed_booking_groups.all()) == []
+    field = Asset._meta.get_field("excluded_booking_groups")
+    assert field.blank is True
+    assert field.related_query_name() == "excluded_booking_assets"
+
+    exclude = Group.objects.create(name="denylist-model-exclude")
+    allow = Group.objects.create(name="denylist-model-allow")
+    asset.excluded_booking_groups.add(exclude)
+    asset.allowed_booking_groups.add(allow)
+    assert exclude.excluded_booking_assets.filter(id=asset.id).exists()
+    assert allow.allowed_booking_assets.filter(id=asset.id).exists()
 
 
 @pytest.mark.django_db

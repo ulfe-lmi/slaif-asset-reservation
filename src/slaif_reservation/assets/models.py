@@ -82,6 +82,20 @@ class Asset(models.Model):
             "asset is unrestricted."
         ),
     )
+    excluded_booking_groups = models.ManyToManyField(
+        "auth.Group",
+        blank=True,
+        related_name="excluded_booking_assets",
+        help_text=(
+            "Existing permission groups whose members may never "
+            "book this asset. Exclusion wins over the allowed list "
+            "and applies to this exact asset whether it is "
+            "restricted or unrestricted; membership in an excluded "
+            "group denies booking even when the member also belongs "
+            "to an allowed group. Existing assets start with no "
+            "excluded groups."
+        ),
+    )
     capabilities = models.JSONField(default=dict, blank=True, validators=[validate_capabilities])
     verification_required = models.BooleanField(default=True)
     physical_locator = models.CharField(max_length=180, blank=True)

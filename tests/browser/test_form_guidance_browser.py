@@ -739,6 +739,13 @@ def test_browser_admin_group_and_asset_forms_guidance(
     _assert_select_filter_bound(
         page, "id_allowed_booking_groups", "id_allowed_booking_groups_helptext"
     )
+    _assert_select_filter_bound(
+        page, "id_excluded_booking_groups", "id_excluded_booking_groups_helptext"
+    )
+    assert (
+        "exclusion wins over the allowed list"
+        in page.locator("#id_excluded_booking_groups_helptext").inner_text()
+    )
     _assert_help_near_control(page, "#id_timezone", "id_timezone_helptext")
     _assert_help_near_control(page, "#id_physical_locator", "id_physical_locator_helptext")
     assert "a machine itself never has a parent" in page.locator("#id_parent_helptext").inner_text()

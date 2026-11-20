@@ -268,15 +268,18 @@ Requires bearer authentication, `reservations:create`, and `Idempotency-Key`. Re
 `start_at` and `end_at` must include an explicit UTC offset. Local wall time and DST fold fields are
 not accepted by the API. The view calls only `create_reservation(..., source="api")`.
 
-The owner's CURRENT `reservations.book_assets` capability and exact-asset group
-eligibility are rechecked on every creation request BEFORE any cached
-idempotent creation response is returned, and again inside the authoritative
-row-locked service for actual new writes. A missing or revoked capability or
-group membership returns `403 booking_not_authorized` even when the original
-accepted creation is still cached; restoring the grant makes the same-key
-replay return the original status, body and correlation. The existing
-missing-asset `404 asset_not_found` callback and its idempotent recording are
-unchanged.
+The owner's CURRENT `reservations.book_assets` capability, the exact-asset
+booking deny-list and exact-asset group eligibility are rechecked on every
+creation request BEFORE any cached idempotent creation response is returned,
+and again inside the authoritative row-locked service for actual new writes.
+A missing or revoked capability, membership in any of the asset's excluded
+groups (the exclusion wins over the allowed list and applies to unrestricted
+assets too), or missing allowed-group membership returns
+`403 booking_not_authorized` even when the original accepted creation is
+still cached; restoring the grant makes the same-key replay return the
+original status, body and correlation. The denial body never names any
+group. The existing missing-asset `404 asset_not_found` callback and its
+idempotent recording are unchanged.
 
 Success returns `201`, `Location`, reservation representation, and `correlation_id`.
 

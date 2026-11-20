@@ -149,24 +149,30 @@ The delivered foundation and enforcement, and only this:
   [API contract](api-contract.md#dual-gate-for-reservationsread_all) for
   the full contract and enforcer guidance.
 - **Booking eligibility enforcement for NEW reservations**:
-  `Asset.booking_restricted` (default False) and
+  `Asset.booking_restricted` (default False),
   `Asset.allowed_booking_groups` (an M2M to the EXISTING `auth.Group`
-  model; one new forward assets migration) plus a small shared
-  `assets/authorization.py` predicate built on
+  model) and `Asset.excluded_booking_groups` (the exact-asset booking
+  deny-list; blank, default-empty for every existing asset) plus a small
+  shared `assets/authorization.py` predicate built on
   `has_reservation_permission(user, "book_assets")` and actual group
-  membership. The predicate is enforced in the row-locked
-  `create_reservation` service (after the fresh principal and asset locks,
-  before any reservation/audit write), on the member browser reserve
-  GET/POST surface (direct requests are denied, not only hidden buttons),
-  as the bearer `POST /api/v1/reservations/` preflight BEFORE any cached
-  idempotent creation response is returned, and on future legacy-import
-  plans/apply (the documented completed-past historical exception is
-  preserved). Every existing asset migrates unrestricted with an empty
-  group list; staff, unrelated Administration permissions and
-  inactive/service identities never bypass the gate, trusted active
-  superusers keep global `has_perm` semantics but still need an allowed
-  group on restricted assets, and owners keep list/inspect/cancel/release
-  of existing bookings after losing the capability or a group.
+  membership. Membership in ANY excluded group denies the NEW booking on
+  that exact asset, before the allowed-group pass is considered: the
+  exclusion wins over the allowed list (dual membership is denied) and
+  applies to unrestricted assets as well. The predicate is enforced in
+  the row-locked `create_reservation` service (after the fresh principal
+  and asset locks, before any reservation/audit write), on the member
+  browser reserve GET/POST surface (direct requests are denied, not only
+  hidden buttons), as the bearer `POST /api/v1/reservations/` preflight
+  BEFORE any cached idempotent creation response is returned, and on
+  future legacy-import plans/apply (the documented completed-past
+  historical exception is preserved). Every existing asset migrates
+  unrestricted with an empty group list; staff, unrelated Administration
+  permissions and inactive/service identities never bypass the gate,
+  trusted active superusers keep global `has_perm` semantics but still
+  need an allowed group on restricted assets and are denied by the
+  deny-list like any other member, and owners keep
+  list/inspect/cancel/release of existing bookings after losing the
+  capability or a group.
 
 The enforced application permissions are the booking capability,
 exact-asset eligibility, the management capabilities and the bearer
@@ -212,22 +218,25 @@ read-all dual gate documented above; the deferrals below remain deferred.
   accepts only its bounded known fields; `external_identifier` is not an
   API input.
 - Booking eligibility is enforced for NEW reservations (global
-  `book_assets` capability plus exact-asset group eligibility; restricted
-  with no allowed groups fails closed; owners retain existing-booking
-  lifecycle). Both cross-user read surfaces are live: the All
-  reservations **browser** and the explicit read-only **bearer** read-all
-  routes.
+  `book_assets` capability, the exact-asset booking deny-list and exact
+  asset group eligibility; restricted with no allowed groups fails
+  closed; owners retain existing-booking lifecycle). Both cross-user read
+  surfaces are live: the All reservations **browser** and the explicit
+  read-only **bearer** read-all routes.
 
 ## Permission matrix (enforced)
 
 Grants combine by union across all of a user's groups and individual
-permissions; there is no parallel membership, no hardcoded operator group
-names and no explicit deny. Every application access still requires an
-active non-service-account human.
+permissions; there is no parallel membership and no hardcoded operator
+group names. The only explicit deny is the exact-asset booking deny-list
+(SAR-057): membership in a group listed in an asset's
+`excluded_booking_groups` denies NEW bookings on that exact asset alone,
+on top of the union semantics below. Every application access still
+requires an active non-service-account human.
 
 | Application permission (reservations namespace) | Meaning (enforced) |
 |---|---|
-| reservations.book_assets | Create new reservations; additionally subject to exact-asset eligibility and existing policy/domain checks. |
+| reservations.book_assets | Create new reservations; additionally subject to exact-asset eligibility, the exact-asset booking deny-list and existing policy/domain checks. |
 | reservations.view_all_reservations | Cross-user reservation listing/detail in the separate All reservations browser/read-only API surfaces. |
 | reservations.cancel_others_reservations | Audited cancellation of another owner's reservation; no implied read-all or release permission. |
 | reservations.release_others_reservations | Audited release of another owner's reservation; no implied read-all or cancellation permission. |
@@ -364,7 +373,9 @@ automatic privileged membership (nothing is pre-populated for any named
 group), no model View permission granting read-all (it does not), and no
 administrator bypassing asset groups (it cannot — a restricted asset
 still requires membership in at least one of its allowed groups in
-addition to `reservations.book_assets`).
+addition to `reservations.book_assets`), and no grant bypasses the
+exact-asset booking deny-list (a member of an excluded group is denied on
+that asset even if they hold every other grant).
 
 **Asset allowed-group membership** is configured separately on each
 restricted asset (asset change page → "Allowed booking groups"): booking
@@ -377,14 +388,29 @@ membership. Existing tokens stay owner-only on the owner endpoints; the
 cross-user bearer `reservations:read_all` scope and its issuance ceilings
 are implemented as documented above (a reader group gains the bearer
 surface only through a NEW token carrying the scope — existing tokens are
-never auto-expanded). This target promises no projects, deny policies,
-directory or machine access.
+never auto-expanded). This target promises no projects, general deny
+policies, directory or machine access.
+
+**Asset booking deny-list** is configured separately on each asset (asset
+change page → "Excluded booking groups"): members of any listed existing
+group are denied NEW bookings on that exact asset, whether the asset is
+restricted or unrestricted, and the exclusion wins over the allowed list
+(a member of both is denied). Only the booked asset is checked (no parent
+inheritance, in either direction); the deny-list grants nothing else,
+never rewrites existing bookings, and is blank by default — existing
+assets start with no excluded groups. These group names are operator
+configuration, not authorization constants.
 
 ## Exact-asset booking eligibility (implemented)
 
 - Each asset is explicitly **unrestricted** or **group-restricted**.
 - A restricted asset requires membership in **at least one** of its allowed
   existing groups; restricted with no allowed groups **fails closed**.
+- Each asset also carries an optional **booking deny-list**
+  (`excluded_booking_groups`, blank and empty by default): membership in
+  any listed existing group denies NEW bookings on that exact asset, on
+  top of both states above, and the exclusion **wins** over the allowed
+  list. The deny-list never rewrites existing bookings.
 - Only the asset being booked is checked; there is **no implicit parent
   inheritance**.
 - **All existing assets migrate unrestricted** in the upgrade.
@@ -518,8 +544,9 @@ directory or machine access.
   grant (removing grants is a deliberate operator action); Git rollback of
   the code does **not** restore identity data or revert an applied
   database; a real upgrade requires an operator backup/restore plan. The
-  new asset booking configuration (`booking_restricted` and the
-  allowed-group list) is ordinary database state: normal database backups
+  asset booking configuration (`booking_restricted`, the allowed-group
+  list and the excluded-group deny-list) is ordinary database state:
+  normal database backups
   include it and restoring from such a backup restores it; dropping or
   reverting that migration after the fact would delete that configuration,
   and a code rollback does not restore it.
