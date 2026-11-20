@@ -1,0 +1,80 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% translate 'Administration' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' app_label=app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; <a href="{% url 'admin:accounts_user_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+&rsaquo; {% translate "Send a plain-text email" %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="bulk-email">
+  {% if result %}
+  <div class="bulk-email-result">
+    <p>{% translate "The send finished. A message being accepted by the relay is not proof that it reached the recipient's inbox." %}</p>
+    <ul>
+      <li>{% blocktranslate count counter=result.accepted %}{{ counter }} message accepted by the relay{% plural %}{{ counter }} messages accepted by the relay{% endblocktranslate %}</li>
+      <li>{% blocktranslate count counter=result.uncertain %}{{ counter }} message unconfirmed — the relay may or may not have accepted it{% plural %}{{ counter }} messages unconfirmed — the relay may or may not have accepted them{% endblocktranslate %}</li>
+      <li>{% blocktranslate count counter=result.not_attempted %}{{ counter }} recipient not attempted (the send stopped before reaching it){% plural %}{{ counter }} recipients not attempted (the send stopped before reaching them){% endblocktranslate %}</li>
+    </ul>
+    <p class="warning">{% translate "There is no automatic retry and no resend from this page. To email these users again, select them on the user list and compose a new message." %}</p>
+  </div>
+  <p>
+    <a href="{% url 'admin:accounts_user_changelist' %}" class="closelink">{% translate "Back to the user list" %}</a>
+  </p>
+  {% else %}
+  <p class="bulk-email-count">
+    {% blocktranslate count counter=users|length %}{{ counter }} user selected{% plural %}{{ counter }} users selected{% endblocktranslate %}
+  </p>
+  {% if not email_enabled %}
+  <div class="bulk-email-disabled">
+    <p class="warning">{% translate "Account email is not configured, so no message can be sent. Configure the account email (SMTP) transport first; while it is disabled this action offers no send, sends nothing and never reports a delivery." %}</p>
+  </div>
+  {% else %}
+  <div class="bulk-email-recipients">
+    <p class="bulk-email-recipients-title">{% translate "Recipients" %}</p>
+    <ul>
+      {% for user in users %}
+      <li>{{ user.email }}</li>
+      {% endfor %}
+    </ul>
+    <p class="bulk-email-recipients-note">{% translate "Each recipient receives this message separately as plain text, with no CC/BCC and no visible recipient list." %}</p>
+  </div>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="selected_pks" value="{{ selected_pks }}">
+    <div class="form-row field-subject">
+      {% if form.subject.errors %}
+      <div class="errorlist">
+        {% for error in form.subject.errors %}<p>{{ error }}</p>{% endfor %}
+      </div>
+      {% endif %}
+      <label for="id_subject">{% translate "Subject" %}</label>
+      {{ form.subject }}
+      <div id="id_subject_helptext" class="help">{{ form.subject.help_text }}</div>
+    </div>
+    <div class="form-row field-body">
+      {% if form.body.errors %}
+      <div class="errorlist">
+        {% for error in form.body.errors %}<p>{{ error }}</p>{% endfor %}
+      </div>
+      {% endif %}
+      <label for="id_body">{% translate "Message" %}</label>
+      {{ form.body }}
+      <div id="id_body_helptext" class="help">{{ form.body.help_text }}</div>
+    </div>
+    <p class="bulk-email-warning">{% translate "Email delivery can be ambiguous: if the relay does not confirm a message, the send stops for the remaining recipients and this page reports the accepted, unconfirmed and not-attempted counts. There is no automatic retry." %}</p>
+    <p class="submit-row">
+      <button type="submit" class="default">{% translate "Send email" %}</button>
+      <a href="{% url 'admin:accounts_user_changelist' %}" class="cancellink">{% translate "Cancel" %}</a>
+    </p>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

@@ -24,7 +24,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.debug import sensitive_post_parameters
 
-from slaif_reservation.accounts import onboarding
+from slaif_reservation.accounts import bulk_email, onboarding
 from slaif_reservation.accounts.forms import SlaifUserCreationForm
 from slaif_reservation.accounts.models import ApiToken, User
 
@@ -293,6 +293,7 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
     )
     readonly_fields = ["created_at", "updated_at"]
     change_password_form = SlaifAdminPasswordChangeForm
+    actions = ["email_selected_users"]
 
     def get_readonly_fields(self, request: HttpRequest, obj: Any = None) -> list[Any]:
         readonly = list(super().get_readonly_fields(request, obj))
@@ -516,6 +517,11 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
                 self.admin_site.admin_view(self.onboarding_reissue),
                 name="accounts_user_onboarding_reissue",
             ),
+            path(
+                "bulk-email/",
+                self.admin_site.admin_view(csrf_protect(self.bulk_email_compose)),
+                name="accounts_user_bulk_email",
+            ),
         ]
         return urls + super().get_urls()
 
@@ -602,6 +608,147 @@ class UserAdmin(DjangoUserAdmin):  # type: ignore[type-arg]
         }
         request.current_app = self.admin_site.name
         return render(request, "admin/accounts/user/onboarding_reissue.html", context)
+
+    # --- selected-user plain-text email (SAR-058) -------------------------
+
+    @admin.action(
+        permissions=("change",),
+        description=_("Send a plain-text email to the selected users"),
+    )
+    def email_selected_users(self, request: HttpRequest, queryset: QuerySet[Any]) -> HttpResponse:
+        """Selection step of the bounded two-step email flow.
+
+        Validating the selection bounds (empty and over the per-request
+        cap, including a select-across selection) and redirecting to the
+        permission-checked compose page is ALL this step does: it never
+        sends. The compose GET renders only, and the single final send
+        is the POST on that page.
+        """
+        count = queryset.count()
+        if count == 0:
+            messages.error(
+                request,
+                "Select at least one user to email; no message was sent.",
+            )
+            return HttpResponseRedirect(request.get_full_path())
+        if count > bulk_email.MAX_BULK_RECIPIENTS:
+            messages.error(
+                request,
+                "A single email action is limited to "
+                f"{bulk_email.MAX_BULK_RECIPIENTS} selected users; the "
+                "selection was not truncated and no message was sent.",
+            )
+            return HttpResponseRedirect(request.get_full_path())
+        pks = ",".join(str(pk) for pk in queryset.order_by("pk").values_list("pk", flat=True))
+        return HttpResponseRedirect(f"{reverse('admin:accounts_user_bulk_email')}?pks={pks}")
+
+    @sensitive_post_parameters_m
+    def bulk_email_compose(self, request: HttpRequest) -> HttpResponse:
+        """Bounded selected-user email: GET compose (never sends), POST
+        final send.
+
+        The route is admitted only by the administration site gate
+        (active non-service-account human staff) plus the model change
+        permission, checked on every method here. The GET renders the
+        branded compose page (exact count and protected address list,
+        editable subject/body) and is never a mutation. The POST
+        revalidates the exact selected accounts (existing, unique,
+        within the per-request bound), the enabled transport and the
+        bounded plain-text form before any send, then reports the
+        nonsecret accepted/uncertain/not-attempted counts. The subject,
+        body and addresses never enter the URL, session state,
+        application logs, exception screens or the Admin action log,
+        and every response is uncacheable.
+        """
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
+        if request.method == "GET":
+            users = bulk_email.resolve_selected_users(
+                bulk_email.selected_pks(request.GET.get("pks"))
+            )
+            if users is None or len(users) > bulk_email.MAX_BULK_RECIPIENTS:
+                messages.error(
+                    request,
+                    "No email can be composed: no users were selected, or "
+                    "the selection is stale, invalid or larger than "
+                    f"{bulk_email.MAX_BULK_RECIPIENTS} users. Nothing was "
+                    "sent; select the users on the user list again.",
+                )
+                return HttpResponseRedirect(reverse("admin:accounts_user_changelist"))
+            email_enabled = settings.ACCOUNT_EMAIL_ENABLED
+            context = {
+                **self.admin_site.each_context(request),
+                "title": _("Send a plain-text email to the selected users"),
+                "opts": self.opts,
+                "app_label": self.opts.app_label,
+                "users": users,
+                "selected_pks": ",".join(str(u.pk) for u in users),
+                "email_enabled": email_enabled,
+                "form": bulk_email.BulkEmailForm() if email_enabled else None,
+                "result": None,
+            }
+            request.current_app = self.admin_site.name
+            response = render(request, "admin/accounts/user/bulk_email.html", context)
+        elif request.method == "POST":
+            users = bulk_email.resolve_selected_users(
+                bulk_email.selected_pks(request.POST.get("selected_pks"))
+            )
+            if users is None or len(users) > bulk_email.MAX_BULK_RECIPIENTS:
+                messages.error(
+                    request,
+                    "No email was sent: the selection is empty, stale, "
+                    "invalid or larger than "
+                    f"{bulk_email.MAX_BULK_RECIPIENTS} users. Select the "
+                    "users on the user list again and compose a new "
+                    "message.",
+                )
+                return HttpResponseRedirect(reverse("admin:accounts_user_changelist"))
+            if not settings.ACCOUNT_EMAIL_ENABLED:
+                messages.error(
+                    request,
+                    "Account email is not configured, so no message was "
+                    "sent. Configure the account email transport first; "
+                    "while it is disabled the compose action offers no "
+                    "send and never reports a delivery.",
+                )
+                return HttpResponseRedirect(reverse("admin:accounts_user_changelist"))
+            form = bulk_email.BulkEmailForm(request.POST)
+            if not form.is_valid():
+                context = {
+                    **self.admin_site.each_context(request),
+                    "title": _("Send a plain-text email to the selected users"),
+                    "opts": self.opts,
+                    "app_label": self.opts.app_label,
+                    "users": users,
+                    "selected_pks": ",".join(str(u.pk) for u in users),
+                    "email_enabled": True,
+                    "form": form,
+                    "result": None,
+                }
+                request.current_app = self.admin_site.name
+                response = render(request, "admin/accounts/user/bulk_email.html", context)
+            else:
+                counts = bulk_email.send_selected_user_emails(
+                    users, form.cleaned_data["subject"], form.cleaned_data["body"]
+                )
+                context = {
+                    **self.admin_site.each_context(request),
+                    "title": _("Send a plain-text email to the selected users"),
+                    "opts": self.opts,
+                    "app_label": self.opts.app_label,
+                    "users": users,
+                    "selected_pks": "",
+                    "email_enabled": True,
+                    "form": None,
+                    "result": counts,
+                }
+                request.current_app = self.admin_site.name
+                response = render(request, "admin/accounts/user/bulk_email.html", context)
+        else:
+            raise Http404
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 if AuthGroup in admin.site._registry:

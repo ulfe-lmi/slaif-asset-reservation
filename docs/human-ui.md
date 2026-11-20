@@ -191,6 +191,21 @@ first. The temporary password is never displayed outside the non-cacheable
 add-user form prefill (and the one login-details email): no other
 administration page, log or audit record contains it.
 
+The user list offers one additional action for administrators: select
+users with the checkboxes and choose **Send a plain-text email to the
+selected users**. The compose page shows exactly how many users are
+selected and their addresses, and the administrator edits a plain-text
+subject and message before a single **Send email** click sends the
+message. Each selected user receives the same message separately (no
+CC/BCC and no visible recipient list); nothing is sent until that single
+click, and the page explains that relay acceptance is not proof of inbox
+delivery, that a failure stops the send without any automatic retry and
+reports the accepted, unconfirmed and not-attempted counts, and that the
+action is limited to 200 selected users per request. While account email
+is not configured, the compose page shows a setup notice instead of a
+send control. The subject, message and addresses never appear in URLs,
+logs or audit records.
+
 Policies, reservations, blackouts, audit events and API tokens are protected
 read-only records in administration. Their guidance identifies the supported
 management or account-owned mutation route; appearance does not relax those

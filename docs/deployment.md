@@ -109,7 +109,8 @@ Implemented variables:
 - `SLAIF_LOGIN_IP_LIMIT`, `SLAIF_LOGIN_IDENTITY_LIMIT`, `SLAIF_LOGIN_WINDOW_SECONDS`;
 - `SLAIF_API_IP_LIMIT`, `SLAIF_API_OWNER_LIMIT`, `SLAIF_API_TOKEN_LIMIT`, `SLAIF_API_WINDOW_SECONDS`;
 - `SLAIF_BRANDING_DIR` (optional read-only appearance assets);
-- `SLAIF_ACCOUNT_EMAIL_ENABLED` (optional account email transport, default `false`);
+- `SLAIF_ACCOUNT_EMAIL_ENABLED` (optional account email transport for
+  onboarding and administration selected-user email, default `false`);
 - `SLAIF_PUBLIC_BASE_URL` (canonical https service origin, required when enabled);
 - `SLAIF_SMTP_HOST`, `SLAIF_SMTP_PORT`, `SLAIF_SMTP_USERNAME`,
   `SLAIF_SMTP_PASSWORD`, `SLAIF_SMTP_FROM` (required when enabled;
@@ -163,6 +164,19 @@ The one-time send has no automatic retry: if the relay does not confirm
 acceptance the account stays inactive and the administrator uses the
 explicit onboarding reissue action (which rotates the previous temporary
 credential). Development and tests use synthetic sinks only.
+
+The same operator-enabled transport also carries ONE bounded
+Administration mail action (SAR-058): an administrator may check users on
+the Administration user list and send each of them one plain-text message
+(editable subject and body, at most 200 recipients per request). The
+action is available to active non-service-account staff holding the user
+change permission; while the transport is disabled the action offers no
+send and never reports a delivery, and a failed or unconfirmed relay
+acceptance stops the batch without automatic retry (the page reports
+only nonsecret accepted/unconfirmed/not-attempted counts). No new
+environment variable, queue, template engine or relay is introduced by
+this action; it sends no campaign, HTML or attachments and is not a
+notification system.
 - Local (non-production) settings accept the same keys for synthetic
   development against a loopback SMTP sink without TLS; no real relay or
   recipient is configured by default. Development and tests never use a

@@ -209,3 +209,92 @@ input:not([type="submit"]):not([type="checkbox"]):not([type="radio"]),select,tex
 
 .submit-row a.closelink, .submit-row a.closelink:hover, .submit-row a.closelink:focus,
 .submit-row a.deletelink:hover, .submit-row a.deletelink:focus { color: #fff; }
+
+/* 066-a: Administration selected-user email (compose and result).
+   Presentation only — the permission, CSRF, bound and failure
+   semantics are enforced server-side. */
+.bulk-email {
+  max-width: 46rem;
+}
+
+.bulk-email-count {
+  color: var(--body-quiet-color, #666);
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.bulk-email-recipients {
+  margin-bottom: 0.4rem;
+}
+
+.bulk-email-recipients ul {
+  list-style: none;
+  margin: 0.25rem 0 0.4rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  background: var(--darkened-row-background, #f7f7f7);
+  columns: 2;
+  column-gap: 2rem;
+}
+
+.bulk-email-recipients ul li {
+  break-inside: avoid;
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+}
+
+.bulk-email-recipients-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.bulk-email-recipients-note {
+  margin: 0.2rem 0 0;
+}
+
+.bulk-email-recipients-note,
+.bulk-email-warning {
+  color: var(--body-quiet-color, #666);
+}
+
+.bulk-email-warning {
+  margin: 0.15rem 0 0.3rem;
+}
+
+.bulk-email .form-row fieldset,
+.bulk-email .form-row {
+  margin-bottom: 0.35rem;
+}
+
+.bulk-email .form-row > label {
+  display: block;
+  margin-bottom: 0.1rem;
+}
+
+.bulk-email .form-row input[type="text"],
+.bulk-email .form-row textarea {
+  width: 100%;
+  max-width: 46rem;
+  box-sizing: border-box;
+}
+
+.bulk-email .form-row div.help {
+  margin: 0.1rem 0 0;
+  font-size: 0.95rem;
+}
+
+.bulk-email .submit-row {
+  margin-top: 0.4rem;
+}
+
+.bulk-email-result ul {
+  margin: 0.25rem 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .bulk-email-recipients ul {
+    columns: 1;
+  }
+}

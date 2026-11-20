@@ -1199,6 +1199,58 @@ def test_admin_user_onboarding_reissue_page_guidance(
 
 
 @pytest.mark.django_db
+def test_admin_bulk_email_compose_guidance(client: Client, admin_user: User, settings: Any) -> None:
+    """066-a: the selected-user compose page explains the bounded
+    plain-text form and the per-recipient delivery semantics, with the
+    help bound to its controls; the invalid-POST page keeps the
+    rendered, bound help."""
+    settings.ACCOUNT_EMAIL_ENABLED = True
+    created = [
+        User.objects.create_user(
+            email=f"guidance-bulk-{i}@example.com",
+            password="not-a-secret",
+            display_name=f"Guidance Bulk {i}",
+        )
+        for i in range(1, 3)
+    ]
+    pks = ",".join(str(user.pk) for user in created)
+    client.force_login(admin_user)
+    html = client.get(f"/admin/accounts/user/bulk-email/?pks={pks}").content.decode()
+    assert "2 users selected" in html
+    assert "Each recipient receives this message separately as plain text" in unescape(html)
+    _assert_no_dangling_aria(html)
+    _assert_guided(
+        html,
+        "id_subject_helptext",
+        "Plain text, one line, at most 200 characters",
+        control_id="id_subject",
+    )
+    _assert_guided(
+        html,
+        "id_body_helptext",
+        "Each selected recipient receives this same message separately",
+        control_id="id_body",
+    )
+    assert "There is no automatic retry." in unescape(html)
+
+    # Invalid POST: the rendered, bound help is preserved with the errors.
+    response = client.post(
+        "/admin/accounts/user/bulk-email/",
+        {"selected_pks": pks, "subject": "", "body": ""},
+    )
+    assert response.status_code == 200
+    html_post = response.content.decode()
+    _assert_no_dangling_aria(html_post)
+    _assert_guided(
+        html_post,
+        "id_subject_helptext",
+        "Plain text, one line, at most 200 characters",
+        control_id="id_subject",
+    )
+    assert "This field is required." in html_post
+
+
+@pytest.mark.django_db
 def test_admin_user_change_safe_password_status_and_help(
     client: Client,
     admin_user: User,

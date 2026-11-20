@@ -1,7 +1,9 @@
 # ARCHITECTURE-for-agents — executor projection
 
-Source: root ARCHITECTURE.md, 2026-11-20 edition (A-01..A-18, SAR-001..SAR-057); current
-full-source SHA-256 `69e3b5a5deb8ffd030974878ee6ad690bdc0e5507bdd71989ffeda969f34dcd9`. The
+Source: root ARCHITECTURE.md, 2026-11-20 edition (A-01..A-19, SAR-001..SAR-058); current
+full-source SHA-256 `c01fe2fcab3bb5b360f7065737a3440f155884150f25a2f47b931ec3fd19d2ca`. The
+2026-11-20 pre-066-a source SHA-256
+`69e3b5a5deb8ffd030974878ee6ad690bdc0e5507bdd71989ffeda969f34dcd9` (pre-066-a), the
 2026-11-09 edition source SHA-256
 `f7b5c98876a40b052c2d2fe057e57281e917ac5a72508e98caca512c1f0d1286` (pre-065-a) and the
 2026-11-09 pre-055-b source SHA-256
@@ -15,18 +17,24 @@ Scope: preservation and bounded development of existing SLAIF Asset Reservation,
 selected M-INTERNET-UX-PILOT development target (A-15), the later-selected
 M-GROUP-AUTHORIZATION target (A-16) and the later-selected M-ACCOUNT-ONBOARDING target
 (A-17); the human-selected exact-asset booking deny-list amendment (A-18,
-2026-11-20, issue #135) extends only the A-16 booking gate; real Internet
-exposure remains human D2.
+2026-11-20, issue #135) extends only the A-16 booking gate; the
+human-selected Administration selected-user email amendment (A-19,
+2026-11-20, issue #137) adds only ONE bounded, permission-gated
+plain-text mail action reusing the A-17 opt-in SMTP transport; real
+Internet exposure remains human D2.
 SAR-039..SAR-047 rows carry their executor-relevant conditions directly; SAR-048..SAR-053 rows
 and the group-authorization clauses below carry the A-16 executor obligations directly;
 SAR-054..SAR-056 rows and the account-onboarding clauses below carry the A-17 executor
 obligations directly; the SAR-057 row and the booking-deny-list amendment
-clause below carry the A-18 executor obligations directly; root A-15, A-16,
-A-17 and A-18 are reference only (not mandatory reads). All six
+clause below carry the A-18 executor obligations directly; the SAR-058
+row and the selected-user email amendment clause below carry the A-19
+executor obligations directly; root A-15, A-16, A-17, A-18 and A-19 are
+reference only (not mandatory reads). All six
 SAR-048..SAR-053 rows are initially UNPROVEN until a fresh ICA at the exact
 merged revision, the three new SAR-054..SAR-056 rows are initially UNPROVEN
-for the same fresh-ICA rule, and the new SAR-057 row is initially UNPROVEN
-for the same fresh-ICA rule. Not independent architecture or approval.
+for the same fresh-ICA rule, the new SAR-057 row is initially UNPROVEN for
+the same fresh-ICA rule, and the new SAR-058 row is initially UNPROVEN for
+the same fresh-ICA rule. Not independent architecture or approval.
 Normal coding reads this file, not the full source. A genuine gap goes to
 strategy for a bounded correction/excerpt.
 
@@ -148,9 +156,37 @@ A-18 (selected amendment, 2026-11-20, issue #135) extends this gate with ONE nar
 
 **SAR-055 / Operator SMTP onboarding and failure boundary:** SMTP is explicitly operator-enabled (standard Django email-backend settings plus a canonical configured HTTPS base URL); development uses synthetic SMTP only, never a real relay or recipient. Disabled/incomplete relay => admin add must not claim delivery and must not create an active short-password account. Enabled add: commit the account first inactive (pending onboarding), send exactly one login-details email (canonical HTTPS URL, account email identifier, temporary password), activate only after SMTP accepts; failure stays inactive with a nonsecret status; manual reissue rotates the previous credential; no ambiguous-send auto-retry; no plaintext persistence; no bodies/credentials in logs; links from the canonical URL, never Host; production-enabled relay requires TLS and bounded timeout; no queue/Celery/Gateway dependency; not a general mail system or notifications.
 
+A-19 (selected amendment, 2026-11-20, issue #137) extends this opt-in
+transport with ONE narrow Administration selected-user plain-text mail
+action (SAR-058); the onboarding send/activation boundary and every other
+clause above are unchanged.
+
 **SAR-056 / Six-character temporary admin creation and forced change:** The admin add GET prepopulates BOTH password controls with the same new CSPRNG six-character value; only a generated initial temporary credential gets this narrow length exception — the normal validators are never globally weakened. It expires within 24h and cannot establish a NEW login after expiry; successful login is restricted to changing it to a normal-validator password before any member/management/Administration/session-API work. Existing accounts unchanged; human/password permissions, group grants, API token records and reservation domain services intact.
 
 **SAR-057 / Exact-asset group booking denylist:** Optional `Asset.excluded_booking_groups` M2M to the EXISTING `auth.Group`, blank/default-empty for all existing assets, one forward-only migration, no data backfill or other schema change. Membership in ANY excluded group denies NEW bookings on exactly that asset, restricted OR unrestricted, and the exclusion wins over the allowed list (dual membership denied). The one shared predicate remains the single new-booking authority (row-locked service, member browser direct GET/POST, bearer preflight BEFORE idempotent replay, legacy planner); staff/unrelated-admin/superuser never bypass a membership exclusion; exact asset only, no parent inheritance; same stable non-disclosing `403 booking_not_authorized` naming no group; member list/detail show a DISTINCT excluded state without group names/IDs or other member data while the asset stays browsable and non-excluded members stay bookable; changes take effect on the next request; existing reservations never rewritten, owner lifecycle retained; Admin field independently configurable with deny-precedence/exact-asset/no-other-access help.
+
+**SAR-058 / Administration selected-user plain-text email:** User-list
+checkbox action for active non-service-account staff holding
+`accounts.change_user`; the selection opens a branded compose page (exact
+count, protected address list, editable bounded plain-text subject/body)
+and ONE **Send email** click is the final CSRF-protected POST — the GET
+never sends and direct/forged requests cannot bypass the checks. The final
+POST revalidates the exact selected accounts (existing, unique, <=200 per
+request; empty/stale/forged/larger, incl. select-across, fail with a useful
+message and send nothing, never silently truncated), the same authority,
+the enabled transport and the form (nonempty subject/body, subject without
+CR/LF). Reuses the established opt-in `SLAIF_ACCOUNT_EMAIL_ENABLED`/
+`SLAIF_SMTP_*` backend: disabled => no send affordance, POST refuses, dummy
+backend never reported as delivery. One plain-text message per selected
+address, no CC/BCC/visible list, no HTML/attachments/template execution;
+unselected users receive nothing. Relay acceptance is not inbox delivery:
+the first rejection or exception stops the batch WITHOUT automatic retry
+and the result reports only nonsecret accepted/uncertain/not-attempted
+counts. Subject/body/addresses never enter URLs, logs, exception screens,
+session state or the Admin action log; compose/result pages uncacheable.
+Onboarding (SAR-055) and all account/reservation/auth/transport semantics
+unchanged; not a campaign, queue, template engine or general notification
+system.
 
 **Selected target qualification (A-15):** Real unit/integration tests, PostgreSQL concurrency/rollback, browser HTTP auth/CSRF/privacy, real Gunicorn positive plus old-sync negative, disposable Internet HTTPS proxy, shared abuse controls, production-settings negatives, container/Compose/health, fresh+upgrade policy init, default/custom branding; standard five exact-head checks plus links/pip audit; exact source/revision/evidence statuses, no mocked-boundary pass. Browser surfaces: anonymous landing/login/admin login; member dashboard/assets list+detail/availability/reservation create+list+detail/profile/token list+create; staff management/policy list+detail+form/blackout list+detail+form/reservations/audit list+detail+export controls; admin index/user list+change/asset list+change/relevant protected models. Real Playwright capture/view/iterate at ~1440/1024/768/390 desktop/mobile, default/custom, with STRATEGIC visual review mandatory; durable semantic assertions on overflow, actions, navigation, focus, labels, associated help, tables, forms, no framework text, no anonymous leak; privacy-safe screenshots (no tokens/passwords/verifiers/CSRF/cookies/raw traces/private data); no brittle pixel CI unless stability proven. Final fresh isolated full-architecture ICA over all SAR-001..SAR-047 at the exact merged revision runs AFTER implementation; the old internal audit is historical; findings require bounded repair then a FULL architecture-to-current-main re-audit, not closed-findings-only review. Human acceptance/release/D2 real resources remain separate. Product-first docs reconcile behavior without ledger or public-production claims.
 
@@ -380,6 +416,70 @@ migration/default-empty upgrade, Chromium desktop/mobile screenshots,
 unchanged conflicts/lifecycle/audit/idempotency, and the standard five
 exact-head checks; a fresh exact-revision independent ICA maps all
 applicable stable rows and is not strategic self-certification or real
+deployment authorization.
+
+## Selected Administration selected-user email amendment (A-19)
+
+Selected 2026-11-20 by the attributable human (GitHub issue #137) as ONE
+narrow amendment to the A-17 account-email transport. This section
+carries the A-19 executor obligations directly; it is a selected target.
+It narrows the A-17/P-04/SAR-036 general-notifications deferral ONLY for
+administrator-initiated, selected-user, plain-text Administration mail:
+no campaign, queue, template engine, HTML/attachments, address export or
+external integration, and everything else in the deferral stands. Nothing
+here authorizes deployment, real exposure, DNS/TLS/firewall,
+identity/secret administration, real sending, execution or physical
+allocation. The facet remains UNPROVEN until a fresh independent ICA at
+the exact merged revision (SAR-058).
+
+**One bounded selected-user mail action.** An Administration user-list
+checkbox action is offered only to an active non-service-account staff
+session holding the existing `accounts.change_user` model permission
+(the administration site human boundary already applies to the route).
+Selecting users opens a branded, accessible compose page showing the
+exact recipient count and the protected list of selected addresses, with
+editable plain-text subject and body; one **Send email** click on that
+page performs the final CSRF-protected POST; the GET page never sends,
+GET never mutates, and direct or forged requests cannot bypass the
+checks. The final POST revalidates the exact selected accounts
+(existing, unique, at most 200 per request — an empty, stale, forged or
+larger selection, including a select-across selection, fails with a
+useful message and sends nothing and is never silently truncated), the
+same authority, the enabled transport and the bounded form (nonempty
+subject and body; the subject stays a single line without CR/LF).
+
+**Delivery and privacy.** The message reuses the established
+operator-enabled `SLAIF_ACCOUNT_EMAIL_ENABLED`/`SLAIF_SMTP_*` Django
+email backend: while the transport is disabled the compose surface offers
+no send and the POST refuses before any send, and the dummy backend is
+never reported as delivery. Exactly one plain-text message is sent to
+each selected address — no CC/BCC, no visible recipient list, no HTML,
+attachments or template execution; unselected users receive nothing.
+Relay acceptance is not inbox delivery: the first explicit rejection or
+exception stops the batch without automatic retry, and the result
+reports only the nonsecret accepted/uncertain/not-attempted counts, never
+claiming all recipients were sent when only a subset was accepted. The
+subject, body and recipient addresses never enter URLs, application
+logs, exception screens, session state or the Admin action log, and the
+compose and result pages are uncacheable.
+
+**Preservation and evidence.** The onboarding send/activation path
+(SAR-055), the temporary-credential rules, the reissue control and every
+account/reservation/authorization/token/proxy/database/transport setting
+are unchanged; no schema, migration, dependency, container or CI change.
+Development and tests use synthetic addresses and a local or fake
+backend only — no real relay, recipient, credential or deployment.
+Evidence: focused positive/negative server tests covering selection and
+compose visibility for the exact permission, one-click send,
+per-recipient privacy, permission/CSRF/method/disabled-transport guards,
+invalid input and subject header injection, empty/stale/forged/oversized
+selections, all-accepted/zero-acceptance/exception-after-partial outcomes
+without automatic retry, no content in URLs/logs/session/action log and
+unchanged onboarding; a meaningful Chromium flow at desktop and narrow
+width with privacy-safe screenshots; operator/Administration/security
+documentation reconciled to the behavior; the standard five exact-head
+checks; a fresh exact-revision independent ICA mapping all applicable
+stable rows, which is not strategic self-certification or real
 deployment authorization.
 
 ## Component routing
